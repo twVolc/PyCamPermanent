@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
-"""Setup classes for defining default parameters or loading in parameters from files:
+"""
+Setup classes for defining default parameters or loading in parameters from files:
 > PiCam attributes
-> Spectrometer attributes"""
+> Spectrometer attributes
+"""
 
 
 class CameraSpecs:
