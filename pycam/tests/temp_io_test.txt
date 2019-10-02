@@ -1,0 +1,29 @@
+# -*- coding: utf-8 -*-
+# File holding camera specifications
+bit_depth=10
+shutter_speed=1000
+pix_size_x=5.6e-06
+pix_size_y=5.6e-06
+pix_num_x=648
+pix_num_y=486
+fov_x=28
+fov_y=24
+save_path=.\Images\
+file_ext=.png
+file_datestr=%Y-%m-%dT%H%M%S
+DICT=file_filterids
+on=fltrA
+off=fltrB
+DICT_END
+file_ss=%iss
+file_ss_units=1e-06
+DICT=file_img_type
+meas=Plume
+dark=Dark
+cal=ppm
+DICT_END
+framerate=0.5
+analog_gain=1
+auto_ss=True
+min_saturation=0.4
+max_saturation=0.9

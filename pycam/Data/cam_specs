@@ -1,0 +1,15 @@
+# -*- coding: utf-8 -*-
+# File holding camera specifications
+
+# PiCam triplet settings
+pix_size_x=5.6e-6
+pix_size_y=5.6e-6
+pix_num_x=648
+pix_num_y=486
+fov_x=28
+fov_y=24
+
+shutter_speed=100000
+framerate=0.25
+analog_gain=1
+auto_ss=1
