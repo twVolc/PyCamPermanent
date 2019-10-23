@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # File holding camera specifications
 bit_depth=10
-shutter_speed=1000
+shutter_speed=50000
 pix_size_x=5.6e-06
 pix_size_y=5.6e-06
 pix_num_x=648
@@ -22,8 +22,8 @@ meas=Plume
 dark=Dark
 cal=ppm
 DICT_END
-framerate=0.5
+framerate=0.25
 analog_gain=1
-auto_ss=True
+auto_ss=3
 min_saturation=0.4
 max_saturation=0.9

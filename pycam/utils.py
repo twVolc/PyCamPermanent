@@ -20,9 +20,9 @@ def check_filename(filename, ext):
     # Split filename by .
     split_name = filename.split('.')
 
-    # Ensure filename contains exactly one . for file extension
-    if len(split_name) != 2:
-        raise ValueError('Filename is not in the correct format. Name contained {} points'.format(len(split_name)-1))
+    # # Ensure filename contains exactly one . for file extension
+    # if len(split_name) != 2:
+    #     raise ValueError('Filename is not in the correct format. Name contained {} points'.format(len(split_name)-1))
 
     # Compare file extension to expected extension
     if split_name[-1] != ext:

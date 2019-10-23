@@ -11,7 +11,9 @@ import os
 import time
 import datetime
 import numpy as np
+from fractions import Fraction
 import cv2
+import seabreeze.spectrometers as sb
 
 from .setupclasses import CameraSpecs, SpecSpecs
 from .utils import format_time
@@ -84,7 +86,7 @@ class Camera(CameraSpecs):
     def set_cam_framerate(self):
         """Determines appropriate framerate based on current shutter speed (framerate limits shutter speed so must be
         set appropriately)"""
-        framerate = 0.95 / (self.shutter_speed / 1000000.0)
+        framerate = Fraction(1, (self.shutter_speed / 1000000.0))
         if framerate > 20:
             framerate = 20
         self.cam.framerate = framerate
@@ -109,20 +111,20 @@ class Camera(CameraSpecs):
         else:
             return 0
 
-    def generate_filename(self, time_str, type):
+    def generate_filename(self, time_str, img_type):
         """Generates the image filename
 
         Parameters
         ----------
         time_str: str
             Time string containing date and time
-        type: str
+        img_type: str
             Type of image. Value should be retrieved from one of dictionary options in <self.file_img_type>"""
         return time_str + '_' + \
                self.file_filterids[self.band] + '_' + \
                str(self.analog_gain) + 'ag_' + \
                str(self.exposure_speed) + 'ss_' + \
-               type + self.file_ext
+               img_type + self.file_ext
 
     def capture(self):
         """Controls main capturing process on PiCam"""
@@ -244,5 +246,235 @@ class Spectrometer(SpecSpecs):
     def __init__(self, filename):
         super().__init__(filename)
 
-        self.capture_q = queue.Queue()       # Queue for requesting spectra
+        self.capture_q = queue.Queue()      # Queue for requesting spectra
+        self.spec_q = queue.Queue()         # Queue to put spectra in for access elsewhere
 
+        # Discover spectrometer devices
+        self.devices = None  # List of detected spectrometers
+        self.spec = None  # Holds spectrometer for interfacing via seabreeze
+        self.find_device()
+
+        # Set integration time (ALL IN MICROSECONDS)
+        self._int_limit_lower = 1000  # Lower integration time limit
+        self._int_limit_upper = 20000000  # Upper integration time limit
+        self._int_time = None  # Integration time attribute
+        self.int_time = self.start_int_time
+
+        self.min_coadd = 1
+        self.max_coadd = 100
+        self._coadd = None  # Controls coadding of spectra
+        self.coadd = self.start_coadd
+
+    def find_device(self):
+        """Function to search for devices"""
+        try:
+            self.devices = sb.list_devices()
+            self.spec = sb.Spectrometer(self.devices[0])
+            self.spec.trigger_mode(0)
+
+            # If we have a spectrometer we then retrieve its wavelength calibration and store it as an attribute
+            self.get_wavelengths()
+
+        except IndexError:
+            self.devices = None
+            self.spec = None
+            raise SpectrometerConnectionError('No spectrometer found')
+
+    @property
+    def int_time(self):
+        return self._int_time / 1000  # Return time in milliseconds
+
+    @int_time.setter
+    def int_time(self, int_time):
+        """Set integration time
+
+        Parameters
+        ----------
+        int_time: int
+            Integration time for spectrometer, provided in milliseconds
+        """
+        # Adjust to work in microseconds (class takes time in milliseconds) and ensure we have an <int>
+        int_time = int(int_time * 1000)
+
+        # Check requested integration time is acceptable
+        if int_time < self._int_limit_lower:
+            raise ValueError('Integration time below %i us is not possible' % self._int_limit_lower)
+        elif int_time > self._int_limit_upper:
+            raise ValueError('Integration time above %i us is not possible' % self._int_limit_upper)
+
+        self._int_time = int_time
+
+        # Adjust _int_time_idx to reflect the closest integration time to the current int_time
+        self._int_time_idx = np.argmin(np.abs(self.int_list - self.int_time))
+
+        # Set spectrometer integration time
+        self.spec.integration_time_micros(int_time)
+
+    @property
+    def int_time_idx(self):
+        return self._int_time_idx
+
+    @int_time_idx.setter
+    def int_time_idx(self, value):
+        """Update integration time to value in int_list defined by int_time_idx when int_time_idx is changed
+        Accesses hidden variable _int_time directly to avoid causing property method being called"""
+        self._int_time_idx = value
+        self._int_time = self.int_list[self.int_time_idx]
+
+    @property
+    def coadd(self):
+        return self._coadd
+
+    @coadd.setter
+    def coadd(self, coadd):
+        """Set coadding property"""
+        if coadd < self.min_coadd:
+            coadd = self.min_coadd
+        elif coadd > self.max_coadd:
+            coadd = self.max_coadd
+        self._coadd = int(coadd)
+
+    def generate_filename(self, time_str, spec_type):
+        """Generates the spectrum filename
+
+        Parameters
+        ----------
+        time_str: str
+            Time string containing date and time
+        """
+        return time_str + '_' + str(self.int_time) + 'ss_' + str(self.coadd) + 'coadd_' + spec_type + self.file_ext
+
+    def get_spec(self):
+        """Acquire spectrum from spectrometer"""
+        # Set array for coadding spectra
+        coadded_spectrum = np.zeros(len(self.wavelengths))
+
+        # Loop through number of coadds
+        for i in range(self.coadd):
+            coadded_spectrum += self.spec.intensities()
+
+        # Correct for number of coadds to result in a spectrum with correct digital numbers for bit-depth of device
+        coadded_spectrum /= self.coadd
+        self.spectrum = coadded_spectrum
+
+    def get_spec_now(self):
+        """Immediately acquire spectrum from spectrometer - does not discard first spectrum (probably never used)"""
+        self.spectrum = self.spec.intensities()
+
+    def get_wavelengths(self):
+        """Returns wavelengths"""
+        self.wavelengths = self.spec.wavelengths()
+
+    def extract_subspec(self, wavelengths):
+        """Extract and return wavelengths and spectrum data for subsection of spectrum defined by wavelengths
+
+        Parameters
+        ----------
+        wavelengths: list, tuple
+
+        Returns
+        -------
+        wavelengths: list
+            wavelengths of spectrometer extracted between range requested
+        spectrum: list
+            intensities from spectrum extracted between requested range
+        """
+        # Check wavelengths have been provided correctly
+        if len(wavelengths) != 2:
+            raise ValueError('Expected list or tuple of length 2')
+
+        # Determine indices of arrays where wavelengths are closest to requested extraction wavelengths
+        min_idx = np.argmin(np.abs(wavelengths[0] - self.wavelengths))
+        max_idx = np.argmax(np.abs(wavelengths[1] - self.wavelengths))
+
+        return self.wavelengths[min_idx:max_idx+1], self.spectrum[min_idx:max_idx+1]
+
+    def check_saturation(self):
+        """Check spectrum saturation
+        return -1: if saturation exceeds the maximum allowed
+        return 1:  if saturation is below minimum allowed
+        return 0:  otherwise
+        """
+        # Extract spectrum in specific wavelength range to be checked
+        wavelengths, spectrum = self.extract_subspec(self.saturation_range)
+
+        if np.amax(spectrum) / self._max_DN > self.max_saturation:
+            return -1
+        elif np.amax(spectrum) / self._max_DN < self.min_saturation:
+            return 1
+        else:
+            return 0
+
+    def capture_sequence(self):
+        """Captures sequence of spectra"""
+        if self.int_time is None:
+            raise ValueError('Cannot acquire sequence until initial integration time is correctly set')
+
+        # Get acquisition rate in seconds
+        frame_rep = round(1 / self.framerate)
+
+        # Previous second value for check that we don't take 2 images in one second
+        prev_sec = None
+
+        while True:
+
+            # Rethink this later - how to react perhaps depends on what is sent to the queue?
+            if self.capture_q.get(block=False):
+                return
+
+            # Get current time
+            time_obj = datetime.datetime.now()
+
+            # Only capture an image if we are at the right time
+            if time_obj.second % frame_rep == 0 and time_obj != prev_sec:
+
+                # Generate time string
+                time_str = format_time(time_obj)
+
+                # Acquire spectra
+                self.get_spec()
+
+                # Generate filename
+                filename = self.generate_filename(time_str, self.file_spec_type['meas'])
+
+                # Add spectrum and filename to queue
+                self.spec_q.put(filename)
+                self.spec_q.put(self.spectrum)
+
+                # Check image saturation and adjust shutter speed if required
+                if self.auto_int:
+                    adj_saturation = self.check_saturation()
+                    if adj_saturation:
+                        self.int_time_idx += adj_saturation
+                        self.int_time = self.int_list[self.int_time_idx]
+
+                # Set seconds value (used as check to prevent 2 images being acquired in same second)
+                prev_sec = time_obj.second
+
+    def capture_darks(self):
+        """Capture dark images from all shutter speeds in <self.ss_list>"""
+        # Loop through shutter speeds in ss_list
+        for int_time in self.int_list:
+
+            # Set camera shutter speed
+            self.int_time = int_time
+
+            # Get time for stamping
+            time_str = format_time(datetime.datetime.now())
+
+            # Acquire image
+            self.get_spec()
+
+            # Generate filename for spectrum
+            filename = self.generate_filename(time_str, self.file_spec_type['dark'])
+
+            # Add data to queue
+            self.spec_q.put(filename)
+            self.spec_q.put(self.spectrum)
+
+
+class SpectrometerConnectionError(Exception):
+    """
+    Error raised if no spectrometer is detected
+    """
+    pass
