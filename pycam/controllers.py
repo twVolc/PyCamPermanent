@@ -6,18 +6,21 @@ Main controller classes for the PiCam and OO Flame spectrometer
 
 import warnings
 import queue
+import multiprocessing
 import io
 import os
 import time
 import datetime
 import numpy as np
-from fractions import Fraction
 import cv2
-import seabreeze.spectrometers as sb
 
 from .setupclasses import CameraSpecs, SpecSpecs
 from .utils import format_time
 
+try:
+    import seabreeze.spectrometers as sb
+except ModuleNotFoundError:
+    warnings.warn('Working on machine without seabreeze, functionality of some classes will be lost')
 try:
     import picamera
 except ModuleNotFoundError:
@@ -30,16 +33,20 @@ class Camera(CameraSpecs):
     subclass of: class: CameraSpecs
     """
     def __init__(self, band='on', filename=None):
-        super().__init__(filename)
         self.band = band                    # 'on' or 'off' band camera
         self.capture_q = queue.Queue()      # Queue for requesting images
+        self.img_q = queue.Queue()          # Queue where images are put for extraction
         self.cam = picamera.PiCamera()      # picamera object for control of camera acquisitions
 
-        self.image = np.array([self.pix_size_x, self.pix_size_y])   # Image array
         self.filename = None                                        # Image filename
-
         self._analog_gain = 1
         self.exposure_speed = None  # True camera exposure speed retrieved from picamera object
+
+        # Get default specs from parent class and any other attributes
+        super().__init__(filename)
+
+        # Create empty image array after we have got pix_num_x/y from super()
+        self.image = np.array([self.pix_num_x, self.pix_num_y])  # Image array
 
     @property
     def analog_gain(self):
@@ -86,7 +93,7 @@ class Camera(CameraSpecs):
     def set_cam_framerate(self):
         """Determines appropriate framerate based on current shutter speed (framerate limits shutter speed so must be
         set appropriately)"""
-        framerate = Fraction(1, (self.shutter_speed / 1000000.0))
+        framerate = 1 / (self.shutter_speed / 1000000.0)
         if framerate > 20:
             framerate = 20
         self.cam.framerate = framerate
@@ -154,7 +161,7 @@ class Camera(CameraSpecs):
             # ====================
 
             # Resize image to requested size
-            self.image = cv2.resize(data, (self.pix_size_x, self.pix_size_y), interpolation=cv2.INTER_AREA)
+            self.image = cv2.resize(data, (self.pix_num_x, self.pix_num_y), interpolation=cv2.INTER_AREA)
 
     def save_current_image(self, filename):
         """Saves image
@@ -174,8 +181,22 @@ class Camera(CameraSpecs):
         # Remove lock to free image for transfer
         os.remove(lock)
 
-    def capture_sequence(self):
-        """Main capturing sequence"""
+    def capture_sequence(self, img_q=None):
+        """Main capturing sequence
+
+        Parameters
+        ----------
+        img_q: Queue-like object, such as <queue.Queue> or <multiprocessing.Queue>
+            Filenames and images are passed to this object using its put() method"""
+        # Setup queue
+        if img_q is None:
+            img_q = self.img_q
+        elif isinstance(img_q, multiprocessing.managers.BaseProxy):
+            print('Using multiprocessing queue')
+        else:
+            print('Unrecognized queue object, reverting to default')
+            img_q = self.img_q
+
         # Set shutter speed to start
         self.set_shutter_speed(self.shutter_speed)
 
@@ -188,8 +209,11 @@ class Camera(CameraSpecs):
         while True:
 
             # Rethink this later - how to react perhaps depends on what is sent to the queue?
-            if self.capture_q.get(block=False):
+            try:
+                mess = self.capture_q.get(block=False)
                 return
+            except queue.Empty:
+                pass
 
             # Get current time
             time_obj = datetime.datetime.now()
@@ -203,8 +227,14 @@ class Camera(CameraSpecs):
                 # Acquire image
                 self.capture()
 
+                # Generate filename
+                filename = self.generate_filename(time_str, self.file_img_type['meas'])
+
                 # Generate filename for image and save it
-                self.save_current_image(self.generate_filename(time_str, self.file_img_type['meas']))
+                # self.save_current_image(self.generate_filename(time_str, self.file_img_type['meas']))
+
+                # Put filename and image into q
+                img_q.put([filename, self.image])
 
                 # Check image saturation and adjust shutter speed if required
                 if self.auto_ss:
@@ -419,8 +449,12 @@ class Spectrometer(SpecSpecs):
         while True:
 
             # Rethink this later - how to react perhaps depends on what is sent to the queue?
-            if self.capture_q.get(block=False):
+            try:
+                mess = self.capture_q.get(block=False)
                 return
+            except queue.Empty:
+                # If there is nothing in the queue telling us to stop then we continue with acquisitions
+                pass
 
             # Get current time
             time_obj = datetime.datetime.now()
@@ -438,8 +472,7 @@ class Spectrometer(SpecSpecs):
                 filename = self.generate_filename(time_str, self.file_spec_type['meas'])
 
                 # Add spectrum and filename to queue
-                self.spec_q.put(filename)
-                self.spec_q.put(self.spectrum)
+                self.spec_q.put([filename, self.spectrum])
 
                 # Check image saturation and adjust shutter speed if required
                 if self.auto_int:

@@ -74,7 +74,7 @@ class TestSockets:
         time_start = time.time()
 
         # Send image over socket
-        sock_cli.send_img()
+        sock_cli.send_img(sock_cli.camera.filename, sock_cli.camera.image)
 
         # Receive image on server
         img_recv, filename = sock_serv.recv_img()

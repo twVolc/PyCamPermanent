@@ -8,6 +8,7 @@ import numpy as np
 from .controllers import Camera, Spectrometer
 from .setupclasses import CameraSpecs, SpecSpecs
 
+import time
 
 class SendRecvSpecs:
     """Simple class containing some message separators for sending and receiving messages via sockets"""
@@ -15,8 +16,9 @@ class SendRecvSpecs:
     end_str = bytes("END" + ret_char, 'utf-8')
     len_end_str = len(end_str)
 
-    header_char = 'H_DATASIZE='  # Header start for comms
-    header_size = 21
+    header_char = 'H_DATASIZE='     # Header start for comms
+    header_num_size = 8             # Size of number in digits for header
+    header_size = len(header_char) + len(ret_char) + header_num_size
 
     filename_start = b'FILENAME='
     filename_end = b'FILE_END'
@@ -31,8 +33,6 @@ class SocketClient(SendRecvSpecs):
         IP address of server
     port: int
         Communication port
-    end_str: bytes
-        End of message string
     """
     def __init__(self, host_ip, port):
         self.host_ip = host_ip                          # IP address of server
@@ -63,8 +63,9 @@ class SocketClient(SendRecvSpecs):
 
     def generate_header(self, msg_size):
         """Generates a header with the given message size and returns byte array version"""
-        header = self.header_char + str(msg_size).rjust(8, '0') + self.ret_char
+        header = self.header_char + str(msg_size).rjust(self.header_num_size, '0') + self.ret_char
         return header.encode()
+
 
 class PiSocketCam(SocketClient):
     """Subclass of :class: SocketClient for specific use on PiCam end"""
@@ -73,13 +74,27 @@ class PiSocketCam(SocketClient):
 
         self.camera = camera        # Camera object for interface/control
 
-    def send_img(self):
-        """Sends current image to server"""
+    def send_img(self, filename=None, image=None):
+        """Sends current image to server
+
+        Parameters
+        ----------
+        filename: str
+            filename for the image. If None it is taken from the socket's camera attribute
+        image: np.array
+            image to be sent. If None it is taken from the socket's camera attribute
+        """
+        # Get filename and image if they aren't provided as arguments to the method.
+        if filename is None:
+            filename = self.camera.filename
+        if image is None:
+            image = self.camera.image
+
         # Convert image to bytes for sending
-        img_bytes = self.camera.image.tobytes()
+        img_bytes = image.tobytes()
 
         # Encode filename
-        filename_bytes = self.filename_start + bytes(self.camera.filename, 'utf-8') + self.filename_end
+        filename_bytes = self.filename_start + bytes(filename, 'utf-8') + self.filename_end
 
         # Calculate size of message
         msg_size = len(filename_bytes) + len(img_bytes) + self.len_end_str
@@ -130,8 +145,6 @@ class SocketServer(SendRecvSpecs):
         IP address of server
     port: int
         Communication port
-    end_str: str
-        End of message string
     """
     def __init__(self, host_ip, port):
         self.host_ip = host_ip              # IP address of host
@@ -172,8 +185,12 @@ class SocketServer(SendRecvSpecs):
         header_txt = header.decode()
         bytes_to_recv = int(header_txt.split('=')[1])
 
-        # Receive the rest of the incoming message
-        data_buff = self.connections[0][0].recv(bytes_to_recv)
+        # Receive the rest of the incoming message (needs a while loop to ensure all data is received
+        # as packets can come incomplete)
+        data_buff = bytearray()
+        while len(data_buff) < bytes_to_recv:
+            data_buff += self.connections[0][0].recv(bytes_to_recv - len(data_buff))
+
         return data_buff
 
     def extract_data(self, data_buff):
@@ -189,6 +206,7 @@ class SocketServer(SendRecvSpecs):
 
         # Extract data by removing end string from message
         data = data_buff.split(self.end_str)[0]
+
         return filename, data
 
     def recv_img(self):
