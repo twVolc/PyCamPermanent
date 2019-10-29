@@ -6,7 +6,7 @@ Main controller classes for the PiCam and OO Flame spectrometer
 
 import warnings
 import queue
-import multiprocessing
+import multiprocessing.managers
 import io
 import os
 import time
@@ -57,6 +57,26 @@ class Camera(CameraSpecs):
         """Set camera analog gain"""
         self._analog_gain = ag
         self.cam.analog_gain = ag
+
+    def _q_check(self, q, q_type='capt'):
+        """Checks type of queue object and returns queue (ret_q). Sets queue to default queue if none is provided"""
+        if isinstance(q, multiprocessing.managers.BaseProxy):
+            print('Using multiprocessing queue')
+            ret_q = q
+        elif isinstance(q, queue.Queue):
+            print('Using Queue queue')
+            ret_q = q
+        else:
+            print('Unrecognized queue object, reverting to default')
+            if q_type == 'capt':
+                ret_q = self.capture_q
+            elif q_type == 'img':
+                ret_q = self.img_q
+            else:
+                ret_q = queue.Queue()
+
+        return ret_q
+
 
     def initialise_camera(self):
         """Initialises PiCam by setting appropriate settings"""
@@ -181,6 +201,54 @@ class Camera(CameraSpecs):
         # Remove lock to free image for transfer
         os.remove(lock)
 
+    def interactive_capture(self, capt_q=None):
+        """Interactive capturing by requesting captures through img_q
+
+        Parameters
+        ---------
+        capt_q: Queue-like object
+            Capture commands are passed to this object using its put() method
+        """
+        # Setup queue (code repeated in capture_sequence() - possibly turn this check into a function)
+        capt_q = self._q_check(capt_q, q_type='capt')
+
+        while True:
+
+            # Wait for imaging command (expecting a dictionary containing information for acquisition)
+            command = capt_q.get(block=True)
+
+            # Extract img queue
+            if 'img_q' not in command or command['img_q'] is None:
+                img_q = self.img_q
+            else:
+                img_q = command['img_q']
+
+            # Set shutter speed
+            self.set_shutter_speed(command['ss'])
+
+            # If a sequence isn't requested we take one typical image
+            if command['type'] is not 'meas':
+
+                # Get time and format
+                time_str = format_time(datetime.datetime.now())
+
+                # Capture image
+                self.capture()
+
+                # Generate filename
+                filename = self.generate_filename(time_str, command['type'])
+
+                # Put filename and image in queue
+                img_q.put([filename, self.image])
+
+            # Otherwise we capture a sequence
+            else:
+                # If we have been provided with a queue for images we pass this to capture_sequence()
+                if 'img_q' in command:
+                    self.capture_sequence(command['img_q'])
+                else:
+                    self.capture_sequence()
+
     def capture_sequence(self, img_q=None):
         """Main capturing sequence
 
@@ -189,13 +257,7 @@ class Camera(CameraSpecs):
         img_q: Queue-like object, such as <queue.Queue> or <multiprocessing.Queue>
             Filenames and images are passed to this object using its put() method"""
         # Setup queue
-        if img_q is None:
-            img_q = self.img_q
-        elif isinstance(img_q, multiprocessing.managers.BaseProxy):
-            print('Using multiprocessing queue')
-        else:
-            print('Unrecognized queue object, reverting to default')
-            img_q = self.img_q
+        img_q = self._q_check(img_q, q_type='img')
 
         # Set shutter speed to start
         self.set_shutter_speed(self.shutter_speed)

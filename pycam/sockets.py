@@ -7,8 +7,44 @@ import socket
 import numpy as np
 from .controllers import Camera, Spectrometer
 from .setupclasses import CameraSpecs, SpecSpecs
-
+from .utils import check_filename
 import time
+
+
+def read_network_file(filename):
+    """Reads IP address and port from text file
+
+    Parameters
+    ----------
+    filename: str
+        file to be read from
+
+    :returns
+    ip_address: str
+        IP address corresponding to the server IP
+    port: int
+        communication port"""
+    # Check we have a text file
+    try:
+        check_filename(filename, 'txt')
+    except ValueError:
+        raise
+
+    ip_addr = None
+    port = None
+
+    # Read file and extract ip address and port if present
+    with open(filename, 'r') as f:
+        for line in f:
+            if line[0] == '#':
+                continue
+            if 'ip_address=' in line:
+                ip_addr = line.split('=')[1].split('#')[0].strip('\n')
+            if 'port=' in line:
+                port = int(line.split('=')[1].split('#')[0].strip('\n'))
+
+    return ip_addr, port
+
 
 class SendRecvSpecs:
     """Simple class containing some message separators for sending and receiving messages via sockets"""

@@ -3,7 +3,8 @@
 """Testing socket functionality:
 > Sending and receiving images
 """
-from pycam.sockets import SocketClient, SocketServer, PiSocketCam
+from pycam.sockets import read_network_file, SocketClient, SocketServer, PiSocketCam
+from pycam.utils import write_file
 import threading
 import time
 import cv2
@@ -13,8 +14,22 @@ from PIL import Image
 
 class TestSockets:
 
+    def test_io(self):
+        """Tests file I/O of socket information (IP address and port)"""
+        filename = '.\\test_data\\network.txt'
+        sock_data = {'port': 12345, 'ip_address': '255.255.255.255'}
+
+        # Write socket data to file
+        write_file(filename, sock_data)
+
+        # Read network file
+        ip_addr, port = read_network_file(filename)
+
+        assert ip_addr == sock_data['ip_address'] and port == sock_data['port']
+
     def open_sockets(self):
-        """Open host and client sockets for use in tests"""
+        """Open host and client sockets for use in tests
+        NOTE: This is not a test itself, hence its name does not start with test"""
         host = '127.0.0.1'  # Localhost
         port = 12345  # Port number
 
@@ -42,8 +57,6 @@ class TestSockets:
         """Tests initial socket creation and basic send function"""
         # Create sockets
         sock_serv, sock_cli = self.open_sockets()
-
-
 
         # Send data over through socket
         message = b'test'
@@ -91,3 +104,4 @@ class TestSockets:
     def test_send_recv_spec(self):
         """Tests send and receive funcionality of PiSockets for spectrum and associated information"""
         pass
+

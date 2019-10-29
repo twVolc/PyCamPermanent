@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """Utilities for pycam"""
+import os
 
 
 def check_filename(filename, ext):
@@ -17,6 +18,9 @@ def check_filename(filename, ext):
     if not isinstance(filename, str):
         raise ValueError('Filename must be in string format')
 
+    if not os.path.exists(filename):
+        raise FileNotFoundError
+
     # Split filename by .
     split_name = filename.split('.')
 
@@ -27,6 +31,72 @@ def check_filename(filename, ext):
     # Compare file extension to expected extension
     if split_name[-1] != ext:
         raise ValueError('Wrong file extension encountered')
+
+    return
+
+
+def write_file(filename, my_dict):
+    """Writes all attributes of dictionary to file
+
+    Parameters
+    ----------
+    filename: str
+        file name to be written to
+    my_dict: dict
+        Dictionary of all data
+    """
+    # Check filename is legal
+    try:
+        check_filename(filename, 'txt')
+    except ValueError:
+        raise
+
+    with open(filename, 'w') as f:
+        # Loop through dictionary and write to file
+        for key in my_dict:
+            string = '{}={}\n'.format(key, my_dict[key])
+            f.write(string)
+    return
+
+
+def read_file(filename, separator='=', ignore='#'):
+    """Reads all lines of file separating into keys using the separator
+
+        Parameters
+        ----------
+        filename: str
+            file name to be written to
+        separator: str
+            string used to separate the key from its atttribute
+        ignore: str
+            lines beginning with this string are ignored
+            
+        :returns
+        data: dict
+            dictionary of all attributes in file
+    """
+    # Check we are working with a text file
+    check_filename(filename, 'txt')
+
+    # Create empty dictionary to be filled
+    data = dict()
+
+    with open(filename, 'r') as f:
+
+        # Loop through file line by line
+        for line in f:
+
+            # If line is start with ignore string then ignore line
+            if line[0:len(ignore)] == ignore:
+                continue
+
+            # Split line into key and the key attribute
+            key, attr = line.split(separator)[0:2]
+
+            # Add attribute to dictionary
+            data[key] = attr.split(ignore)[0].strip('\n')
+
+    return data
 
 
 def format_time(time_obj):
@@ -40,4 +110,4 @@ def format_time(time_obj):
     time_obj = time_obj.replace(microsecond=0)
 
     # Return string format
-    return time_obj.isoformat().replace(':','')
+    return time_obj.isoformat().replace(':', '')

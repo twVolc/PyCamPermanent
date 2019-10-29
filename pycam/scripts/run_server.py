@@ -13,7 +13,7 @@ from pycam.controllers import Camera
 cam = Camera()
 
 # Instantiate server socket
-sock_serv = SocketServer('169.254.10.180', 12346)
+sock_serv = SocketServer('169.254.10.180', 12345)
 
 # Open socket and listen for connection and accept 1st connection
 sock_serv.open_socket()

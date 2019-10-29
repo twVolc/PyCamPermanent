@@ -16,7 +16,7 @@ import multiprocessing
 cam = Camera(band='on')
 
 # Create socket object and connect to socket
-cam_sock = PiSocketCam('169.254.10.180', 12346, camera=cam)
+cam_sock = PiSocketCam('169.254.10.180', 12345, camera=cam)
 cam_sock.connect_socket()
 
 # Start a camera capture thread
