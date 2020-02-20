@@ -6,7 +6,7 @@ Script to be run on Raspberry Pi server.
 Script opens server socket and receives images from the camera socket
 """
 
-from pycam.sockets import SocketServer
+from pycam.networking.sockets import SocketServer
 from pycam.controllers import Camera
 
 # Create Camera object

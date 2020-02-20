@@ -2,6 +2,8 @@
 
 """Utilities for pycam"""
 import os
+import cv2
+import numpy as np
 
 
 def check_filename(filename, ext):
@@ -93,7 +95,7 @@ def read_file(filename, separator='=', ignore='#'):
             # Split line into key and the key attribute
             key, attr = line.split(separator)[0:2]
 
-            # Add attribute to dictionary
+            # Add attribute to dictionary, first removing any unwanted information at the end of the line
             data[key] = attr.split(ignore)[0].strip('\n')
 
     return data

@@ -7,10 +7,9 @@ Script opens socket and instantiates camera module to acquire images
 """
 
 from pycam.controllers import Camera
-from pycam.sockets import PiSocketCam
+from pycam.networking.sockets import PiSocketCam
 
 import threading
-import multiprocessing
 
 # Create Camera object
 cam = Camera(band='on')

@@ -10,6 +10,19 @@ import numpy as np
 from .utils import check_filename
 
 
+class FileLocator:
+    """Defines locations of important files"""
+    PYCAM_ROOT = '.\\pycam'                                     # Root to pycam on Pis from home directory
+
+    NET_PATH = '.\\network'                                     # Path to network files
+    NET_COMM_FILE = NET_PATH + '\\network_comm.txt'             # Network file for communicating acquisitions
+    NET_TRANSFER_FILE = NET_PATH + '\\network_transfer.txt'     # Network file for transferring data
+
+    CONFIG_CAM = '.\\cam_specs.txt'                             # Camera configuration file
+
+    IMG_SPEC_PATH = '.\\Images\\'                               # Image and spectra path on main Pi
+
+
 class CameraSpecs:
     """Object containing information on camera setup and acquisition settings
 
@@ -62,7 +75,7 @@ class CameraSpecs:
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
         self.file_ss = '%iss'                                   # Shutter speed format spec
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
-        self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppm'}
+        self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
         self.ss_list = np.concatenate((np.arange(10 ** 3, 10 ** 4, 10 ** 3),
@@ -261,13 +274,12 @@ class SpecSpecs:
         if isinstance(self.filename, str):
             self.load_specs(self.filename)
 
-
     def _default_specs(self):
         """Define spectrometer default specs > Flame-S"""
         # Spectrometer specs
         self.model = "Flame-S"      # Spectrometer model
-        self.file_ext = '.spec'
-        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark'}
+        self.file_ext = '.npy'      # Spectra saved as numpy array
+        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
         self.fov = None             # Field of view fo spectrometer
         self.ILS = None             # Number array holding instrument line shape (possibly don't hold this here?)
 

@@ -1,6 +1,2 @@
 port=12345
 ip_address=255.255.255.255
-port=12345
-ip_address=255.255.255.255
-port=12345
-ip_address=255.255.255.255

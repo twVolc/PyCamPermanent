@@ -1,0 +1,14 @@
+# PYCAM CONFIGURATION FILE
+# This configuration file is whitespace sensitive on each configuration line. The format should therefore be strictly
+# maintained. ONLY EDIT THIS FILE IF YOU KNOW WHAT YOU ARE DOING.
+
+host_ip=169.254.10.180              # IP address of server pi (server pi runs the spectrometer)
+pi_ip=169.254.10.178,169.254.10.179 # IP addresses of two camera pis
+
+port_comm = 12345                   # Communication port
+port_transfer = 12346               # Image/spectra transfer port
+port_ext = 12347                    # External communication port (laptop etc)
+
+remote_scripts=.\\pycam_camera.py   # List of scripts to be run on remote pi, separated by commas
+
+cam_specs=.\\cam_specs.txt          # Location of camera specs file on master Pi
