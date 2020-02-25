@@ -101,15 +101,16 @@ def read_file(filename, separator='=', ignore='#'):
     return data
 
 
-def format_time(time_obj):
+def format_time(time_obj, fmt):
     """Formats datetime object to string for use in filenames
 
     Parameters
     ----------
     time_obj: datetime.datetime
         Time to be converted to string"""
-    # Remove microseconds
-    time_obj = time_obj.replace(microsecond=0)
-
-    # Return string format
-    return time_obj.isoformat().replace(':', '')
+    return time_obj.strftime(fmt)
+    # # Remove microseconds
+    # time_obj = time_obj.replace(microsecond=0)
+    #
+    # # Return string format
+    # return time_obj.isoformat().replace(':', '')

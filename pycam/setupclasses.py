@@ -73,6 +73,7 @@ class CameraSpecs:
         self.file_ext = '.png'                                  # File extension for images
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
+        self.file_ag = '%sag'                                   # Analog gain format spec
         self.file_ss = '%iss'                                   # Shutter speed format spec
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
         self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
@@ -278,13 +279,17 @@ class SpecSpecs:
         """Define spectrometer default specs > Flame-S"""
         # Spectrometer specs
         self.model = "Flame-S"      # Spectrometer model
-        self.file_ext = '.npy'      # Spectra saved as numpy array
-        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
         self.fov = None             # Field of view fo spectrometer
         self.ILS = None             # Number array holding instrument line shape (possibly don't hold this here?)
+        self.pix_num = 2048         # Number of pixels
+        self.bit_depth = 16         # Bit depth of spectrometer detector
 
-        self.pix_num = 2048     # Number of pixels
-        self.bit_depth = 16     # Bit depth of spectrometer detector
+        # File information
+        self.file_ext = '.npy'  # Spectra saved as numpy array
+        self.file_ss = '%iss'  # Shutter speed format spec
+        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
+        self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
+
 
         # Acquisition settings
         self.start_int_time = 100       # Starting integration time

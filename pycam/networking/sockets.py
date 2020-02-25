@@ -12,6 +12,7 @@ from pycam.utils import check_filename
 from pycam.savefuncs import save_img, save_spectrum
 import time
 import queue
+import threading
 
 
 def read_network_file(filename):
@@ -84,10 +85,13 @@ class CommsFuncs(SendRecvSpecs):
             'SMX': (float, [0.1, 1.0]),         # Maximum saturation accepted before adjusting shutter speed
             'WMN': (int, [300, 400]),           # Minimum wavelength of spectra to check saturation
             'WMX': (int, [300, 400]),           # Maximum wavelength of spectra to check saturation
+            'SNS': (float, [0.0, 0.9]),         # Minimum saturation accepted for spectra before adjusting int. time
             'SXS': (float, [0.1, 1.0]),         # Maximum saturation accepted for spectra before adjusting int. time
             'TYP': (str, [a for a in CameraSpecs().file_img_type]),  # Type of image
-            'STP': (bool, 1),           # Stops continuous image and spectra acquisitions
-            'STT': (bool, 1),           # Starts continuous image and spectra acquisitions
+            'SPC': (bool, 1),           # Stops continuous image acquisitions
+            'SPS': (bool, 1),           # Stops continuous spectra acquisitions
+            'STC': (bool, 1),           # Starts continuous image acquisitions
+            'STS': (bool, 1),           # Starts continuous spectra acquisitions
             'EXT': (bool, 1),           # Close program (should only be succeeded by 1, to confirm close request)
             'RST': (bool, 1),           # Restart entire system
             'RSS': (bool, 1),           # Restart spectrometer (restarts pycam_spectrometer.py)
@@ -178,6 +182,10 @@ class CommsFuncs(SendRecvSpecs):
         """Acts on WMX command"""
         self.comms_spec_cmd({'WMX': value}, socks)
 
+    def SNS(self, value, connection, socks, config):
+        """Acts on SNS command"""
+        self.comms_spec_cmd({'SNS': value}, socks)
+
     def SXS(self, value, connection, socks, config):
         """Acts on SXS command"""
         self.comms_spec_cmd({'SXS': value}, socks)
@@ -186,15 +194,21 @@ class CommsFuncs(SendRecvSpecs):
         """Acts on TYP command"""
         self.comms_img_cmd({'TYP': value}, socks, config)
 
-    def STP(self, value, connection, socks, config):
-        """Acts on STP command, stopping acquisitions on cameras and spectrometer"""
-        self.comms_img_cmd({'STP': value}, socks, config)
-        self.comms_spec_cmd({'STP': value}, socks)
+    def SPC(self, value, connection, socks, config):
+        """Acts on STP command, stopping acquisitions on cameras"""
+        self.comms_img_cmd({'SPC': value}, socks, config)
 
-    def STT(self, value, connection, socks, config):
-        """Acts on STP command, stopping acquisitions on cameras and spectrometer"""
-        self.comms_img_cmd({'STT': value}, socks, config)
-        self.comms_spec_cmd({'STT': value}, socks)
+    def STC(self, value, connection, socks, config):
+        """Acts on STT command, starting acquisitions on cameras"""
+        self.comms_img_cmd({'STC': value}, socks, config)
+
+    def SPS(self, value, connection, socks, config):
+        """Acts on SPS command, stopping acquisitions on spectrometer"""
+        self.comms_spec_cmd({'SPS': value}, socks)
+
+    def STS(self, value, connection, socks, config):
+        """Acts on STS command, starting acquisitions on spectrometer"""
+        self.comms_spec_cmd({'STS': value}, socks)
 
     def EXT(self, value, connection, socks, config):
         """Acts on EXT command, closing everything down"""
@@ -342,8 +356,12 @@ class SocketMeths(CommsFuncs):
         data_buff = bytearray()  # Instantiate empty byte array to append received data to
 
         while True:
-            # Receive data and add to buffer
-            data_buff += connection.recv(1)
+            try:
+                # Receive data and add to buffer
+                data_buff += connection.recv(1)
+
+            except:
+                raise
 
             # Once we have a full message, with end_str, we return it after removing the end_str and decoding to a str
             if self.end_str in data_buff:
@@ -454,11 +472,14 @@ class PiSocketCam(SocketClient):
         # Format header containing length of message information
         header = self.generate_header(msg_size)
 
-        # Send header, filename, image bytes and then end string
-        self.sock.sendall(header)
-        self.sock.sendall(filename_bytes)
-        self.sock.sendall(img_bytes)
-        self.sock.sendall(self.end_str)
+        try:
+            # Send header, filename, image bytes and then end string
+            self.sock.sendall(header)
+            self.sock.sendall(filename_bytes)
+            self.sock.sendall(img_bytes)
+            self.sock.sendall(self.end_str)
+        except:
+            raise
 
 
 class PiSocketSpec(SocketClient):
@@ -473,13 +494,22 @@ class PiSocketSpec(SocketClient):
 
         self.spectrometer = spectrometer        # Spectrometer object for interface/control
 
-    def send_spectrum(self):
-        """Sends current spectrum to server"""
-        # Convert wavelength and spectrum arrays to bytes
-        wave_bytes = self.spectrometer.wavelengths.tobytes()
-        spec_bytes = self.spectrometer.spectrum.tobytes()
+    def send_spectrum(self, filename=None, wavelengths=None, spectrum=None):
+        """Sends spectrum to server. If not provided with arguments it takes current data from spectrometer object"""
+        # If arguments are None, retrieve associated data from spectrometer object
+        if filename is None:
+            filename = self.spectrometer.filename
+        if wavelengths is None:
+            wavelengths = self.spectrometer.wavelengths
+        if spectrum is None:
+            spectrum = self.spectrometer.spectrum
 
-        filename_bytes = self.filename_start + bytes(self.spectrometer.filename, 'utf-8') + self.filename_end
+        # Convert wavelength and spectrum arrays to bytes
+        wave_bytes = wavelengths.tobytes()
+        spec_bytes = spectrum.tobytes()
+
+        # Encode filename
+        filename_bytes = self.filename_start + bytes(filename, 'utf-8') + self.filename_end
 
         # Calculate message size
         msg_size = len(filename_bytes) + len(wave_bytes) + len(spec_bytes) + self.len_end_str
@@ -487,10 +517,13 @@ class PiSocketSpec(SocketClient):
         # Generate header
         header = self.generate_header(msg_size)
 
-        self.sock.sendall(header)
-        self.sock.sendall(filename_bytes)
-        self.sock.sendall(wave_bytes + spec_bytes)
-        self.sock.sendall(self.end_str)
+        try:
+            self.sock.sendall(header)
+            self.sock.sendall(filename_bytes)
+            self.sock.sendall(wave_bytes + spec_bytes)
+            self.sock.sendall(self.end_str)
+        except:
+            raise
 
 
 class PiSocketCamComms(SocketClient):
@@ -570,15 +603,21 @@ class PiSocketCamComms(SocketClient):
         """Acts on TYP command, requesting this type of image from the camera"""
         self.camera.capture_q.put({'type': value})
 
-    def STP_comm(self, value):
-        """Acts on STP command by adding a stop command dictionary to the camera's capture queue"""
+    def SPC_comm(self, value):
+        """Acts on SPC command by adding a stop command dictionary to the camera's capture queue"""
         if value:
             self.camera.capture_q.put({'exit_cont': True})
 
-    def STT_comm(self, value):
-        """Acts on STP command by adding a stop command dictionary to the camera's capture queue"""
+    def STC_comm(self, value):
+        """Acts on STC command by adding a stop command dictionary to the camera's capture queue"""
         if value:
             self.camera.capture_q.put({'start_cont': True})
+
+    def EXT_comm(self, value):
+        """Shuts down camera - shutdown of the camera script still needs to be performed"""
+        if value:
+            self.camera.capture_q.put({'exit_cont': True})
+            self.camera.capture_q.put({'exit': True})
 
 
 class PiSocketSpecComms(SocketClient):
@@ -658,6 +697,17 @@ class PiSocketSpecComms(SocketClient):
         # Return communication to say whether the work has been done or not
         self.send_comms(self.sock, comm)
 
+    def SNS_comm(self, value):
+        """Acts on SNS command"""
+        # Try to set spectrometer max saturation value. If we encounter any kind of error, return error value
+        try:
+            self.spectrometer.min_saturation = value
+            comm = self.encode_comms({'SNS': 1})
+        except:
+            comm = self.encode_comms({'SNS': 0})
+        finally:
+            self.send_comms(self.sock, comm)
+
     def SXS_comm(self, value):
         """Acts on SXS command"""
         # Try to set spectrometer max saturation value. If we encounter any kind of error, return error value
@@ -679,16 +729,21 @@ class PiSocketSpecComms(SocketClient):
             comm = self.encode_comms({'AUT': False})
         self.send_comms(self.sock, comm)
 
-    def STP_comm(self, value):
-        """Acts on STP command by adding a stop command dictionary to the camera's capture queue"""
+    def SPS_comm(self, value):
+        """Acts on SPS command by adding a stop command dictionary to the spectrometer's capture queue"""
         if value:
             self.spectrometer.capture_q.put({'exit_cont': True})
 
-    def STT_comm(self, value):
-        """Acts on STP command by adding a stop command dictionary to the camera's capture queue"""
+    def STS_comm(self, value):
+        """Acts on STS command by adding a stop command dictionary to the spectrometer's capture queue"""
         if value:
             self.spectrometer.capture_q.put({'start_cont': True})
 
+    def EXT_comm(self, value):
+        """Shuts down camera - shutdown of the camera script still needs to be performed"""
+        if value:
+            self.spectrometer.capture_q.put({'exit_cont': True})
+            self.spectrometer.capture_q.put({'exit': True})
 
 
 class SocketServer(SocketMeths):
@@ -777,7 +832,10 @@ class SocketServer(SocketMeths):
             Socket connection in standard form from Socket.accept()
         """
         # Receive header and decode
-        header = connection.recv(self.header_size)
+        try:
+            header = connection.recv(self.header_size)
+        except:     # Catch socket errors and re-raise
+            raise
         header_txt = header.decode()
         bytes_to_recv = int(header_txt.split('=')[1])
 
@@ -785,7 +843,10 @@ class SocketServer(SocketMeths):
         # as packets can come incomplete)
         data_buff = bytearray()
         while len(data_buff) < bytes_to_recv:
-            data_buff += connection.recv(bytes_to_recv - len(data_buff))
+            try:
+                data_buff += connection.recv(bytes_to_recv - len(data_buff))
+            except:
+                raise
 
         return data_buff
 
@@ -812,7 +873,10 @@ class SocketServer(SocketMeths):
             connection = self.connections[0][0]
 
         # Receive image data
-        data_buff = self.recv_data(connection)
+        try:
+            data_buff = self.recv_data(connection)
+        except:
+            raise
 
         # Extract filename from the data
         [filename, data] = self.extract_data(data_buff)
@@ -828,7 +892,10 @@ class SocketServer(SocketMeths):
         if connection is None:
             connection = self.connections[0][0]
 
-        data_buff = self.recv_data(connection)
+        try:
+            data_buff = self.recv_data(connection)
+        except:
+            raise
 
         # Extract filename
         [filename, data] = self.extract_data(data_buff)
@@ -869,7 +936,53 @@ class SocketServer(SocketMeths):
         connection.send(packed_data)
 
 
-def recv_save_imgs(sock, connection, event=None):
+def send_imgs(sock, img_q, event):
+    """Continually loops through sending images from a queue
+
+    sock: PiSocketCam
+        Socket which contains
+    img_q: queue.Queue
+        Queue where images and filenames are passed as a list [filename, image]
+    event: threading.Event
+        Event which will close function when set
+    """
+    while not event.is_set():
+        try:
+            # Retreive image from queue
+            [filename, image] = img_q.get()
+
+            # Send image over socket
+            sock.send_img(filename, image)
+
+        # Return if socket error is thrown (should signify that the connection has been closed)
+        except socket.error:
+            return
+
+
+def send_spectra(sock, spec_q, event):
+    """Continually loops through sending spectra from a queue
+
+    sock: PiSocketCam
+        Socket which contains
+    img_q: queue.Queue
+        Queue where images and filenames are passed as a list [filename, image]
+    event: threading.Event
+        Event which will close function when set
+    """
+    while not event.is_set():
+        try:
+            # Retrieve image from queue
+            [filename, spectrum] = spec_q.get()
+
+            # Send image over socket (wavelengths are retrieved from spectrometer object, so not passed to function here
+            sock.send_spectrum(filename=filename, spectrum=spectrum)
+
+        # Return if socket error is thrown (should signify that the connection has been closed)
+        except socket.error:
+            return
+
+
+def recv_save_imgs(sock, connection, event):
     """ Continually loops through receiving and saving images, until stopped
 
     Parameters
@@ -882,15 +995,19 @@ def recv_save_imgs(sock, connection, event=None):
         Event which will close function when set
     """
     while not event.is_set():
+        try:
+            # Receive image from pi client
+            img, filename = sock.recv_img(connection)
 
-        # Receive image from pi client
-        img, filename = sock.recv_img(connection)
+            # Save image
+            save_img(img, FileLocator.IMG_SPEC_PATH + filename)
 
-        # Save image
-        save_img(img, FileLocator.IMG_SPEC_PATH + filename)
+        # Return if socket error is thrown (should signify that the connection has been closed)
+        except socket.error:
+            return
 
 
-def recv_save_spectra(sock, connection, event=None):
+def recv_save_spectra(sock, connection, event):
     """ Continually loops through receiving and saving spectra, until stopped by threading event
 
     Parameters
@@ -903,15 +1020,19 @@ def recv_save_spectra(sock, connection, event=None):
         Event which will close function when set
     """
     while not event.is_set():
+        try:
+            # Receive image from pi client
+            wavelengths, spectrum, filename = sock.recv_spectrum(connection)
 
-        # Receive image from pi client
-        wavelengths, spectrum, filename = sock.recv_spectrum(connection)
+            # Save image
+            save_spectrum(wavelengths, spectrum, FileLocator.IMG_SPEC_PATH + filename)
 
-        # Save image
-        save_spectrum(wavelengths, spectrum, FileLocator.IMG_SPEC_PATH + filename)
+        # Return if socket error is thrown (should signify that the connection has been closed)
+        except socket.error:
+            return
 
 
-def recv_comms(sock, connection, mess_q=None, close_q=None):
+def recv_comms(sock, connection, mess_q=None, event=threading.Event()):
     """ Continually loops through receiving communications and passing them to a queue
 
         Parameters
@@ -922,25 +1043,30 @@ def recv_comms(sock, connection, mess_q=None, close_q=None):
             Socket connection for Pi
         mess_q: queue.Queue
             Queue to place received socket messages in
-        close_q: queue.Queue
-            Queue to close function
+        close_q: threading.Event
+            When event is set the function is closed
         """
-    while True:
-        # Check queue to see if function is being closed
+    # while True:
+    #     # Check queue to see if function is being closed
+    #     try:
+    #         mess = close_q.get(block=False)
+    #         if mess:
+    #             return
+    #     except queue.Empty:
+    #         pass
+
+    while not event.is_set():
         try:
-            mess = close_q.get(block=False)
-            if mess:
-                return
-        except queue.Empty:
-            pass
+            # Receive socket data (this is a blocking process until a complete message is received)
+            message = sock.recv_comms(connection)
 
-        # Receive socket data (this is a blocking process until a complete message is received)
-        message = sock.recv_comms(connection)
+            # Decode the message into dictionary
+            dec_mess = sock.decode(message)
 
-        # Decode the message into dictionary
-        dec_mess = sock.decode(message)
+            # Add message to queue to be processed
+            mess_q.put(dec_mess)
 
-        # Add message to queue to be processed
-        mess_q.put(dec_mess)
-
+        # If connection has been closed, return
+        except socket.error:
+            return
 

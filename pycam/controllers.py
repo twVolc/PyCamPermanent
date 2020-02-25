@@ -137,7 +137,7 @@ class Camera(CameraSpecs):
         # Return the camera's exact exposure speed
         return '{}'.format(self.cam.exposure_speed)
 
-    def image_saturation(self):
+    def check_saturation(self):
         """Check image saturation
         return -1: if saturation exceeds the maximum allowed
         return 1:  if saturation is below minimum allowed
@@ -160,8 +160,8 @@ class Camera(CameraSpecs):
             Type of image. Value should be retrieved from one of dictionary options in <self.file_img_type>"""
         return time_str + '_' + \
                self.file_filterids[self.band] + '_' + \
-               str(self.analog_gain) + 'ag_' + \
-               str(self.exposure_speed) + 'ss_' + \
+               self.file_ag.format(str(self.analog_gain)) + '_' + \
+               self.file_ss.format(self.exposure_speed) + '_' + \
                img_type + self.file_ext
 
     def capture(self):
@@ -260,15 +260,17 @@ class Camera(CameraSpecs):
                         self.capture_sequence(img_q=command['img_q'], capt_q=capt_q)
                     else:
                         self.capture_sequence(img_q=img_q, capt_q=capt_q)
+                    # Function should now hold here until capture_sequence() returns, then interactive_capture can
+                    # continue
 
             # If continuous capture is not requested we check if any single image is requested
             else:
                 if 'type' in command:
                     # If a sequence isn't requested we take one typical image
-                    if command['type'] in CameraSpecs.file_img_type:
+                    if command['type'] in self.file_img_type:
 
                         # Get time and format
-                        time_str = format_time(datetime.datetime.now())
+                        time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
                         # Capture image
                         self.capture()
@@ -320,9 +322,13 @@ class Camera(CameraSpecs):
                     # If auto_ss is changed we need to readjust all parameters
                     if not mess['auto_ss']:
                         self.auto_ss = False
-                        self.set_shutter_speed(mess['ss'])
                     else:
                         self.auto_ss = True
+
+                # If we aren't using auto_ss, check for ss in message to set shutter speed
+                if not self.auto_ss:
+                    if 'ss' in mess:
+                        self.set_shutter_speed(mess['ss'])
 
                 if 'framerate' in mess:
                     # We readjust to requested framerate regardless of if auto_ss is True or False
@@ -338,7 +344,7 @@ class Camera(CameraSpecs):
             if time_obj.second % frame_rep == 0 and time_obj != prev_sec:
 
                 # Generate time string
-                time_str = format_time(time_obj)
+                time_str = format_time(time_obj, self.file_datestr)
 
                 # Acquire image
                 self.capture()
@@ -354,7 +360,7 @@ class Camera(CameraSpecs):
 
                 # Check image saturation and adjust shutter speed if required
                 if self.auto_ss:
-                    adj_saturation = self.image_saturation()
+                    adj_saturation = self.check_saturation()
                     if adj_saturation:
                         self.ss_idx += adj_saturation
                         self.set_shutter_speed(self.ss_list[self.ss_idx])
@@ -375,7 +381,7 @@ class Camera(CameraSpecs):
             self.set_shutter_speed(ss)
 
             # Get time for stamping
-            time_str = format_time(datetime.datetime.now())
+            time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
             # Acquire image
             self.capture()
@@ -507,7 +513,8 @@ class Spectrometer(SpecSpecs):
         time_str: str
             Time string containing date and time
         """
-        return time_str + '_' + str(self.int_time) + 'ss_' + str(self.coadd) + 'coadd_' + spec_type + self.file_ext
+        return time_str + '_' + self.file_ss.format(self.int_time) + '_' \
+               + str(self.coadd) + 'coadd_' + spec_type + self.file_ext
 
     def get_spec(self):
         """Acquire spectrum from spectrometer"""
@@ -614,12 +621,12 @@ class Spectrometer(SpecSpecs):
             else:
                 if 'type' in command:
                     # If a sequence isn't requested we take one typical image
-                    if command['type'] in SpecSpecs.file_img_type:
+                    if command['type'] in self.file_spec_type:
 
                         # Get time and format
-                        time_str = format_time(datetime.datetime.now())
+                        time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
-                        # Capture sectrum
+                        # Capture spectrum
                         self.get_spec()
 
                         # Generate filename
@@ -660,6 +667,23 @@ class Spectrometer(SpecSpecs):
                 if 'exit_cont' in mess:
                     if mess['exit_cont']:
                         return
+
+                if 'auto_ss' in mess:
+                    # If auto_ss is changed we need to readjust all parameters
+                    if not mess['auto_ss']:
+                        self.auto_ss = False
+                    else:
+                        self.auto_ss = True
+
+                    # If we aren't using auto_ss, check for ss in message to set shutter speed
+                if not self.auto_ss:
+                    if 'ss' in mess:
+                        self.int_time = mess['ss']
+
+                if 'framerate' in mess:
+                    # We readjust to requested framerate regardless of if auto_ss is True or False
+                    frame_rep = round(1 / mess['framerate'])
+
             except queue.Empty:
                 # If there is nothing in the queue telling us to stop then we continue with acquisitions
                 pass
@@ -671,7 +695,7 @@ class Spectrometer(SpecSpecs):
             if time_obj.second % frame_rep == 0 and time_obj != prev_sec:
 
                 # Generate time string
-                time_str = format_time(time_obj)
+                time_str = format_time(time_obj, self.file_datestr)
 
                 # Acquire spectra
                 self.get_spec()
@@ -701,7 +725,7 @@ class Spectrometer(SpecSpecs):
             self.int_time = int_time
 
             # Get time for stamping
-            time_str = format_time(datetime.datetime.now())
+            time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
             # Acquire image
             self.get_spec()

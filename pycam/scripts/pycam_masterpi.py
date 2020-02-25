@@ -80,7 +80,7 @@ for i in range(2):
     ext_comm_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
     ext_comm_threads[i].daemon = True
     ext_comm_threads[i].start()
-receiving_ext_comms = []     # List holding thread names for all external comms which are currently being received
+receiving_ext_comms = [0, 0]     # List holding thread names for all external comms which are currently being received
 
 # Instantiate CommsFuncs object for controlling execution of external communication requests
 comms_funcs = CommsFuncs()
@@ -114,29 +114,42 @@ save_thread_spec.daemon = True
 save_thread_spec.start()
 
 while True:
-    # NEXT DEV!!! Organise communication protocol here, using port_comms port from config. pycam_camera.py will need to setup a socket for this communication too, and have a way of dealing with this communication
-    # If we have external computers receive their messages and act on them
 
     if len(sock_serv_ext.connections) > 0:
+
+        # If we have more recorded threads than we have socket connections a comm connection must have been closed,
+        # so we update the list to reflect this and run thread to accept a new connection
+        if len(sock_serv_ext.connections) < len(receiving_ext_comms):
+
+            # If we have a thread which has closed down because there is no connection, we remove it from the
+            # receiving_ext_comms list. NOTE: This assume the thread closes when the connection closes - CHECK THIS
+            for i in range(len(receiving_ext_comms)):
+                if not receiving_ext_comms[i][0].is_alive():
+                    del receiving_ext_comms[i]
+
+            # Setup thread to receive new connection (we need to be ready to accept new connections after one closes)
+            for i in range(len(ext_comm_threads)):
+                if not ext_comm_threads[i].is_alive():
+                    ext_comm_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
+                    ext_comm_threads[i].daemon = True
+                    ext_comm_threads[i].start()
 
         # If we have more ext connections than we are receiving messages from, setup new thread to receive from most
         # recent connection
         # Determine how many new connections we need to setup receivers for
-        num_conns = len(sock_serv_ext.connections) - receiving_ext_comms
+        num_conns = len(sock_serv_ext.connections) - len(receiving_ext_comms)
         for i in range(num_conns):
 
-            q = [queue.Queue(), queue.Queue]        # Generate queues to be passed to recevier thread
-            name = 'Ext-comm thread: %i' % i        # Give thread a name
+            q = [queue.Queue(), threading.Event()]      # Generate queue and event to be passed to receiver thread
 
             # Start thread for receiving communications from external instruments
             t = threading.Thread(target=recv_comms,
-                                 args=(sock_serv_ext, sock_serv_ext.connections[-1*i][0], q[0], q[1], ),
-                                 name=name)
+                                 args=(sock_serv_ext, sock_serv_ext.connections[-1*i][0], q[0], q[1], ))
             t.daemon = True
             t.start()
 
             # A tuple is appended to receiving comms, representing that thread/connection (thread name, mess_q, close_q)
-            receiving_ext_comms.append((name, q[0], q[1]))
+            receiving_ext_comms.append((t, q[0], q[1]))
 
         # Generate dictionary with latest connection object (may be obsolete redoing this each loop of the objects
         # auto-update within a dictionary? i.e. do they change when changed outside of the dictionary object?
@@ -160,16 +173,29 @@ while True:
             except queue.Empty:
                 pass
 
+            # ------------------------------------------------------------------------------------
+            # Close everything if requested - THIS NEEDS REMOVING AND PLACING ELSEWHERE I THINK.
+            if 'EXT' in comm_cmd.keys():
+                if comm_cmd['EXT']:
+                    recv_event.set()    # Close threads for receiving images and spectra
 
+                    # Close threads for comms in all cases
+                    for comm_tup in receiving_ext_comms:
+                        comm_tup[2].set()
 
+                    # Close all sockets
+                    sock_serv_ext.close_socket()
+                    sock_serv_comm.close_socket()
+                    sock_serv_transfer.close_socket()
 
-        # Close everything if requested - THIS NEEDS REMOVING AND PLACING ELSEWHERE I THINK.
-        if 'EXT' in comm_cmd.keys():
-            if comm_cmd['EXT']:
-                recv_event.set()    # Close threads for receiving images and spectra
-                #DO EVERYTHING ELSE TO SHUTDOWN CAMERA
+                    # Wait for all threads to finish
+                    for thread in ext_comm_threads:
+                        thread.join()
+                    for thread in save_threads_img:
+                        thread.join()
+                    save_thread_spec.join()
+            # --------------------------------------------------------------------------------------
 
-        # Pass message to pis if requested
 
     # Receive data from Pis
 
