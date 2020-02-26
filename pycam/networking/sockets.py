@@ -13,6 +13,7 @@ from pycam.savefuncs import save_img, save_spectrum
 import time
 import queue
 import threading
+import pickle
 
 
 def read_network_file(filename):
@@ -504,15 +505,14 @@ class PiSocketSpec(SocketClient):
         if spectrum is None:
             spectrum = self.spectrometer.spectrum
 
-        # Convert wavelength and spectrum arrays to bytes
-        wave_bytes = wavelengths.tobytes()
-        spec_bytes = spectrum.tobytes()
+        # Put wavelengths and spectrum into single 2D array and serialise using pickle, ready to send
+        spec_bytes = pickle.dumps(np.array([wavelengths, spectrum]))
 
         # Encode filename
         filename_bytes = self.filename_start + bytes(filename, 'utf-8') + self.filename_end
 
         # Calculate message size
-        msg_size = len(filename_bytes) + len(wave_bytes) + len(spec_bytes) + self.len_end_str
+        msg_size = len(filename_bytes) + len(spec_bytes) + self.len_end_str
 
         # Generate header
         header = self.generate_header(msg_size)
@@ -520,7 +520,8 @@ class PiSocketSpec(SocketClient):
         try:
             self.sock.sendall(header)
             self.sock.sendall(filename_bytes)
-            self.sock.sendall(wave_bytes + spec_bytes)
+            # self.sock.sendall(wave_bytes + spec_bytes)
+            self.sock.sendall(spec_bytes)
             self.sock.sendall(self.end_str)
         except:
             raise
@@ -900,10 +901,10 @@ class SocketServer(SocketMeths):
         # Extract filename
         [filename, data] = self.extract_data(data_buff)
 
-        # Extract wavelengths and spectrum
-        data = np.frombuffer(data, dtype='uint16')
-        wavelengths = data[:self.spectrometer.pix_num]
-        spectrum = data[self.spectrometer.pix_num:]
+        # # Extract wavelengths and spectrum
+        data_arr = pickle.loads(data)
+        wavelengths = data_arr[0]
+        spectrum = data_arr[1]
 
         return wavelengths, spectrum, filename
 

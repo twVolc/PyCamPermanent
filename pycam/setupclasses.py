@@ -10,6 +10,12 @@ import numpy as np
 from .utils import check_filename
 
 
+pycam_details = {
+    'version': '0.1.0',
+    'date': '26 February 2020'
+    }
+
+
 class FileLocator:
     """Defines locations of important files"""
     PYCAM_ROOT = '.\\pycam'                                     # Root to pycam on Pis from home directory

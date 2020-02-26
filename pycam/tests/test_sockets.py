@@ -3,7 +3,7 @@
 """Testing socket functionality:
 > Sending and receiving images
 """
-from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, CommsFuncs
+from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, PiSocketSpec, CommsFuncs
 from pycam.utils import write_file
 import threading
 import time
@@ -26,7 +26,7 @@ class TestSockets:
 
         assert ip_addr == sock_data['ip_address'] and port == sock_data['port']
 
-    def open_sockets(self):
+    def open_sockets(self, cli='cam'):
         """Open host and client sockets for use in tests
         NOTE: This is not a test itself, hence its name does not start with test"""
         host = '127.0.0.1'  # Localhost
@@ -43,7 +43,12 @@ class TestSockets:
         t_1.start()
 
         # Make client socket
-        sock_cli = PiSocketCam(host, port)
+        if cli == 'cam':
+            sock_cli = PiSocketCam(host, port)
+        elif cli == 'spec':
+            sock_cli = PiSocketSpec(host, port)
+        else:
+            raise ValueError('Unexpected input for cli argument')
 
         # Connect client to socket
         sock_cli.connect_socket()
@@ -102,7 +107,34 @@ class TestSockets:
 
     def test_send_recv_spec(self):
         """Tests send and receive funcionality of PiSockets for spectrum and associated information"""
-        pass
+        # Path to spectrum
+        spec_path = '.\\test_data\\sample_spectrum.npy'
+
+        # Open sockets
+        sock_serv, sock_cli = self.open_sockets(cli='spec')
+
+        # Load spectrum
+        spec = np.load(spec_path)
+
+        # Set timer for test
+        time_start = time.time()
+
+        # Send spectrum. Spectrum value are not provided, but are part of the spectrometer attributes
+        sock_cli.send_spectrum(filename=spec_path, wavelengths=spec[0], spectrum=spec[1])
+
+        # Receive the spectrum
+        wavelengths, spectrum, filename = sock_serv.recv_spectrum()
+
+        print('Time taken to send and receive image: {:.6f}'.format(time.time() - time_start))
+
+        # Close sockets
+        sock_cli.close_socket()
+        sock_serv.close_socket()
+
+        # Compare sent spectrum with received
+        assert np.array_equal(spectrum, spec[1, :])
+        assert np.array_equal(wavelengths, spec[0, :])
+        assert filename == spec_path
 
     def test_get_connection(self):
         """Tests get connection"""
@@ -172,3 +204,7 @@ class TestSockets:
         sock_serv.close_socket()
 
         assert comms_out == comms_exp
+
+    def test_internal_comms(self):
+        """Tests comms between server socket and camera/spectrometer client to see how they handle the comms"""
+        pass
