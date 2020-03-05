@@ -28,7 +28,19 @@ class PyMenu:
         tab = 'File'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_command(label='Settings')
+        self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Exit', command=self.parent.exit_app)
+
+        # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
+        tab = 'View'
+        keys.append(tab)
+        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_separator()
+        self.menus[tab].add_command(label='Camera window')
+        self.menus[tab].add_command(label='DOAS window')
+        self.menus[tab].add_command(label='Analysis window')
+        self.menus[tab].add_separator()
 
         # Help tab
         tab = 'Help'

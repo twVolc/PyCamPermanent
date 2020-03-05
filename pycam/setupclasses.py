@@ -24,9 +24,26 @@ class FileLocator:
     NET_COMM_FILE = NET_PATH + '\\network_comm.txt'             # Network file for communicating acquisitions
     NET_TRANSFER_FILE = NET_PATH + '\\network_transfer.txt'     # Network file for transferring data
 
+    CONFIG = '.\\config.txt'                                    # Main configuration file
     CONFIG_CAM = '.\\cam_specs.txt'                             # Camera configuration file
+    CONFIG_SPEC = '\\spec_specs.txt'                            # Spectrometer configuration file
 
     IMG_SPEC_PATH = '.\\Images\\'                               # Image and spectra path on main Pi
+
+
+
+
+class ConfigInfo:
+    """Defines important attributes related to config files, allowing references to link to this file rather than being
+    explicitly coded elsewhere"""
+    pi_ip = 'pi_ip'                 # Tag for remote pi ip addresses in config file
+    local_ip = 'local_ip'           # Tag for local ip address in config file
+    remote_scripts = 'remote_scripts'
+    local_scripts = 'local_scripts'
+    cam_script = 'cam_script'       # Tag for defining camera script to be run on pi
+    spec_script = 'spec_script'
+    cam_specs = 'cam_specs'
+
 
 
 class CameraSpecs:

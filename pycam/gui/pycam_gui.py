@@ -3,10 +3,12 @@
 """Main GUI script to be run as main executable"""
 
 from pycam.gui.menu import PyMenu
+from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
+from ttkthemes import ThemedStyle
 
 import sys
 
@@ -15,11 +17,34 @@ class PyCam(ttk.Frame):
     def __init__(self, parent, x_size, y_size):
         ttk.Frame.__init__(self, parent)
         self.parent = parent
-        parent.title('PySpec')
+        parent.title('PyCam')
         self.parent.protocol('WM_DELETE_WINDOW', self.exit_app)
 
+        # Setup style
+        self.style = ThemedStyle(self.parent)
+        self.style.set_theme('equilux')
+
+        # Menu bar setup
         self.menu = PyMenu(self, self.parent)
         self.parent.config(menu=self.menu.frame)
+
+        # -----------------------------------------------
+        # Windows setup
+        self.windows = ttk.Notebook(self.parent)
+        self.windows.pack(fill='both', expand=1)
+
+        # Create object of each window
+        self.cam_wind = CameraWind(self.windows)
+        self.spec_wind = SpecWind(self.windows)
+        self.anal_wind = AnalysisWind(self.windows)
+
+        # Add each window to Notebook
+        self.windows.add(self.cam_wind.frame, text=self.cam_wind.name)
+        self.windows.add(self.spec_wind.frame, text=self.spec_wind.name)
+        self.windows.add(self.anal_wind.frame, text=self.anal_wind.name)
+        # -----------------------------------------------
+
+
 
     def exit_app(self):
         """Closes application"""
@@ -34,7 +59,7 @@ def run_GUI():
     padx = 0
     pady = 0
     root = tk.Tk()
-    root.geometry('{0}x{1}+0+0'.format(root.winfo_screenwidth() - padx, root.winfo_screenheight() - pady))
+    root.geometry('{}x{}+0+0'.format(root.winfo_screenwidth() - padx, root.winfo_screenheight() - pady))
     x_size = root.winfo_screenwidth()  # Get screen width
     y_size = root.winfo_screenheight()  # Get screen height
     myGUI = PyCam(root, x_size, y_size)

@@ -43,6 +43,7 @@ class Camera(CameraSpecs):
         self._analog_gain = 1
         self.exposure_speed = None          # True camera exposure speed retrieved from picamera object
         self.lock = False                   # A lock to make sure that the camera is not being accessed somewhere
+        self.continuous_capture = False     # Bool to flag when in continuous capture mode
 
         # Get default specs from parent class and any other attributes
         super().__init__(filename)
@@ -263,6 +264,11 @@ class Camera(CameraSpecs):
                     # Function should now hold here until capture_sequence() returns, then interactive_capture can
                     # continue
 
+            # Instigate capture of all dark images
+            elif 'dark_seq' in command:
+                if command['dark_seq']:
+                    self.capture_darks()
+
             # If continuous capture is not requested we check if any single image is requested
             else:
                 if 'type' in command:
@@ -290,6 +296,8 @@ class Camera(CameraSpecs):
             Filenames and images are passed to this object using its put() method
         capt_q: Queue-like object, such as <queue.Queue> or <multiprocessing.Queue>
             Camera controlled parameters are externally passed to this object and checked in this function"""
+        self.continuous_capture = True
+
         # Initialise camera if not already done
         if not self.cam_init:
             self.initialise_camera()
@@ -316,6 +324,7 @@ class Camera(CameraSpecs):
                 # Exit if requested
                 if 'exit_cont' in mess:
                     if mess['exit_cont']:
+                        self.continuous_capture = False
                         return
 
                 if 'auto_ss' in mess:
@@ -416,6 +425,8 @@ class Spectrometer(SpecSpecs):
         self.max_coadd = 100
         self._coadd = None  # Controls coadding of spectra
         self.coadd = self.start_coadd
+
+        self.continuous_capture = False     # Bool set to true when camera is in continuous capture mode
 
     def find_device(self):
         """Function to search for devices"""
@@ -617,6 +628,11 @@ class Spectrometer(SpecSpecs):
                     else:
                         self.capture_sequence(spec_q=spec_q, capt_q=capt_q)
 
+            # Instigate capture of all dark images
+            elif 'dark_seq' in command:
+                if command['dark_seq']:
+                    self.capture_darks()
+
             # If continuous capture is not requested we check if any single image is requested
             else:
                 if 'type' in command:
@@ -645,6 +661,7 @@ class Spectrometer(SpecSpecs):
         capt_q: Queue-like object
             Capture commands are passed to this object using its put() method
         """
+        self.continuous_capture = True
 
         if self.int_time is None:
             raise ValueError('Cannot acquire sequence until initial integration time is correctly set')
@@ -666,6 +683,7 @@ class Spectrometer(SpecSpecs):
                 mess = capt_q.get(block=False)
                 if 'exit_cont' in mess:
                     if mess['exit_cont']:
+                        self.continuous_capture = False
                         return
 
                 if 'auto_ss' in mess:

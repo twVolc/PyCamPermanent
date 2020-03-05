@@ -13,7 +13,7 @@ import threading
 import queue
 
 # Read config file
-config = read_file(FileLocator.CONFIG_CAM)
+config = read_file(FileLocator.CONFIG_SPEC)
 
 # Setup camera object
 spec = Spectrometer()
@@ -22,6 +22,7 @@ spec = Spectrometer()
 # Setup image transfer socket
 serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
 sock_trf = PiSocketSpec(serv_ip, port, spectrometer=spec)
+sock_trf.connect_socket()
 
 # Start spectra sending thread
 trf_event = threading.Event()
@@ -34,6 +35,7 @@ thread_trf.start()
 # Setup comms socket
 serv_ip, port = read_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketSpecComms(serv_ip, port, spectrometer=spec)
+sock_comms.connect_socket()
 q_comm = queue.Queue()              # Queue for putting received comms in
 comm_event = threading.Event()      # Event to shut thread down
 

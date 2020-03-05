@@ -11,6 +11,7 @@ from pycam.utils import read_file
 
 import threading
 import queue
+import time
 
 # Read config file
 config = read_file(FileLocator.CONFIG_CAM)
@@ -36,6 +37,7 @@ cam.capture_q.put({'start_cont': True})
 # Setup image transfer socket
 serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
 sock_trf = PiSocketCam(serv_ip, port, camera=cam)
+sock_trf.connect_socket()
 
 # Start image sending thread
 trf_event = threading.Event()
@@ -48,6 +50,7 @@ thread_trf.start()
 # Setup comms socket
 serv_ip, port = read_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketCamComms(serv_ip, port, camera=cam)
+sock_comms.connect_socket()
 q_comm = queue.Queue()              # Queue for putting received comms in
 comm_event = threading.Event()      # Event to shut thread down
 

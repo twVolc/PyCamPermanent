@@ -6,6 +6,7 @@
 from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, PiSocketSpec, CommsFuncs
 from pycam.utils import write_file
 import threading
+import socket
 import time
 import numpy as np
 from PIL import Image
@@ -125,7 +126,7 @@ class TestSockets:
         # Receive the spectrum
         wavelengths, spectrum, filename = sock_serv.recv_spectrum()
 
-        print('Time taken to send and receive image: {:.6f}'.format(time.time() - time_start))
+        print('Time taken to send and receive spectrum: {:.6f}'.format(time.time() - time_start))
 
         # Close sockets
         sock_cli.close_socket()
@@ -147,6 +148,26 @@ class TestSockets:
         sock_serv.close_socket()
 
         assert conn == sock_serv.connections[0][0]
+
+    def test_close_connection(self):
+        """Tests closing and deleting a connection"""
+        sock_serv, sock_cli = self.open_sockets()
+
+        # Check teh server is recording 1 connection
+        assert len(sock_serv.connections) == 1
+
+        sock_serv.close_connection(ip='127.0.0.1')
+
+        # Check that the connection has now been closed and the connections list is updated
+        assert len(sock_serv.connections) == 0
+
+    def test_get_ip(self):
+        """Tests get_ip method"""
+        sock_serv, sock_cli = self.open_sockets()
+
+        ip = '127.0.0.1'
+
+        assert ip == sock_serv.get_ip(conn_num=0)
 
     def test_all_comms_cmds(self):
         """Tests that all comms in the CommsFunc.cmd_dict have and associated method in CommsFun"""
@@ -185,7 +206,7 @@ class TestSockets:
         # Receive data
         cmd = sock_cli.recv_comms(sock_cli.sock)
 
-        # Decode data
+        # Decode data - This method checks the validity of commands too and will create ERR keys if necessary
         comms_out = sock_cli.decode_comms(cmd)
 
         t_2 = time.clock() - t_1
