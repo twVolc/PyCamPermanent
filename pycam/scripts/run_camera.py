@@ -6,6 +6,10 @@ Script to be run on Raspberry Pi with UV camera connected.
 Script opens socket and instantiates camera module to acquire images
 """
 
+# Update python path so that pycam module can be found
+import sys
+sys.path.append('/home/pi/')
+
 from pycam.controllers import Camera
 from pycam.networking.sockets import PiSocketCam
 

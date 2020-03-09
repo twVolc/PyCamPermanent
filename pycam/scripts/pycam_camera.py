@@ -1,8 +1,14 @@
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
 
-"""Script to be run on the camera pi.
+"""
+Script to be run on the camera pi.
 - Deals with socket communication and camera control.
 """
+
+# Update python path so that pycam module can be found
+import sys
+sys.path.append('/home/pi/')
 
 from pycam.controllers import Camera
 from pycam.networking.sockets import PiSocketCam, PiSocketCamComms, read_network_file, recv_comms, send_imgs
@@ -56,6 +62,8 @@ comm_event = threading.Event()      # Event to shut thread down
 
 # Start comms receiving thread
 thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
+thread_comm.daemon = True
+thread_comm.start()
 # -----------------------------------------------------------------
 
 """Final loop where all processes are carried out - mainly comms"""
@@ -79,6 +87,7 @@ while True:
                     trf_event.set()
                     thread_comm.join()
                     thread_trf.join()
+                    capt_thread.join()
 
                     # Close sockets
                     sock_comms.close_socket()
@@ -90,3 +99,13 @@ while True:
     except queue.Empty():
         pass
     # ---------------------------------------------------------------------------------------------
+
+    # If our comms thread has died we try to reset it
+    if not thread_comm.is_alive():
+        sock_comms.connect_socket()
+        comm_event = threading.Event()  # Event to shut thread down
+
+        # Start comms receiving thread
+        thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
+        thread_comm.daemon = True
+        thread_comm.start()

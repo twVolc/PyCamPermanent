@@ -1,8 +1,14 @@
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
 
-"""Script to be run on the spectrometer pi.
+"""
+Script to be run on the spectrometer pi.
 - Deals with socket communication and spectrometer control.
 """
+
+# Update python path so that pycam module can be found
+import sys
+sys.path.append('/home/pi/')
 
 from pycam.controllers import Spectrometer
 from pycam.networking.sockets import PiSocketSpec, PiSocketSpecComms, read_network_file, recv_comms, send_spectra
@@ -17,6 +23,14 @@ config = read_file(FileLocator.CONFIG_SPEC)
 
 # Setup camera object
 spec = Spectrometer()
+
+# Setup thread for controlling spectrometer capture
+capt_thread = threading.Thread(target=spec.interactive_capture, args=())
+capt_thread.daemon = True
+capt_thread.start()
+
+# Start up continuous capture straight away
+spec.capture_q.put({'start_cont': True})
 
 # ----------------------------------------------------------------
 # Setup image transfer socket
@@ -41,9 +55,11 @@ comm_event = threading.Event()      # Event to shut thread down
 
 # Start comms receiving thread
 thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
+thread_comm.daemon = True
+thread_comm.start()
 # -----------------------------------------------------------------
 
-"""Final loop where all processes are carried out - mainly comms"""
+"""Final loop where all processes are carried out - mainly comms, spectrometer is doing work in background"""
 while True:
 
     # --------------------------------------------------------------------------------------------
@@ -55,8 +71,20 @@ while True:
 
             # Loop through each command code in the dictionary, carrying our the commands individually
             for key in comm_cmd:
+
+                # INSTEAD OF EACH COMMAND DOING A DIFFERENT SETTING I NEED TO LOOP THROUGH ALL COMMANDS IN A MESSAGE
+                # AND THEN GIVE ONE BIG COMMAND TO THE SPECTROMETER capture_q, otherwise we will receive just on
+                # dictionary command each time, within the interactive capture, so it won't be possible to set shutter speed
+                # and change framerate at the same time etc. This may need to stem originally from sorting the command
+                # in master pi in the first place, so that commands aren't recieved by the spectrometer and camera pis
+                # in bits and pieces.
+                # I probably need an organising function which groups everything and returns the final command to pass
+                # to the camera capture queue
+
                 # Call correct method determined by 3 character code from comms message
                 getattr(sock_comms, key + '_comm')(comm_cmd[key])
+
+
 
                 if key == 'EXT':
                     # Close down all threads
@@ -64,6 +92,7 @@ while True:
                     trf_event.set()
                     thread_comm.join()
                     thread_trf.join()
+                    capt_thread.join()
 
                     # Close sockets
                     sock_comms.close_socket()
@@ -75,3 +104,13 @@ while True:
     except queue.Empty():
         pass
     # ---------------------------------------------------------------------------------------------
+
+    # If our comms thread has died we try to reset it
+    if not thread_comm.is_alive():
+        sock_comms.connect_socket()
+        comm_event = threading.Event()  # Event to shut thread down
+
+        # Start comms receiving thread
+        thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
+        thread_comm.daemon = True
+        thread_comm.start()

@@ -48,9 +48,9 @@ def read_network_file(filename):
             if line[0] == '#':
                 continue
             if 'ip_address=' in line:
-                ip_addr = line.split('=')[1].split('#')[0].strip('\n')
+                ip_addr = line.split('=')[1].split('#')[0].strip('\n').strip()
             if 'port=' in line:
-                port = int(line.split('=')[1].split('#')[0].strip('\n'))
+                port = int(line.split('=')[1].split('#')[0].strip('\n').strip())
 
     return ip_addr, port
 
@@ -598,13 +598,18 @@ class PiSocketCamComms(SocketClient):
         value: int
             Value to set camera shutter speed to
         """
-        try:
-            self.camera.set_shutter_speed(value)
-            comm = self.encode_comms({'SSC': value})
-        except:
+        if not self.camera.auto_ss:
+            try:
+                # self.spectrometer.capture_q.put({'int_time': value})
+                self.camera.set_shutter_speed(value)
+                comm = self.encode_comms({'SSC': value})
+            except:
+                comm = self.encode_comms({'ERR': 'SSC'})
+        else:
             comm = self.encode_comms({'ERR': 'SSC'})
-        finally:
-            self.send_comms(self.sock, comm)
+
+        # Send return communication
+        self.send_comms(self.sock, comm)
 
     def FRC_comm(self, value):
         """Acts on FRC command
@@ -749,6 +754,7 @@ class PiSocketSpecComms(SocketClient):
         """
         if not self.spectrometer.auto_int:
             try:
+                # self.spectrometer.capture_q.put({'int_time': value})
                 self.spectrometer.int_time = value
                 comm = self.encode_comms({'SSS': value})
             except ValueError:

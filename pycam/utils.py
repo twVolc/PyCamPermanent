@@ -69,7 +69,7 @@ def read_file(filename, separator='=', ignore='#'):
         filename: str
             file name to be written to
         separator: str
-            string used to separate the key from its atttribute
+            string used to separate the key from its attribute
         ignore: str
             lines beginning with this string are ignored
             
@@ -92,11 +92,16 @@ def read_file(filename, separator='=', ignore='#'):
             if line[0:len(ignore)] == ignore:
                 continue
 
-            # Split line into key and the key attribute
-            key, attr = line.split(separator)[0:2]
+            try:
+                # Split line into key and the key attribute
+                key, attr = line.split(separator)[0:2]
+            # ValueError will be thrown if nothing is after (or before) the equals sign. So we ignore these lines
+            except ValueError:
+                continue
 
             # Add attribute to dictionary, first removing any unwanted information at the end of the line
-            data[key] = attr.split(ignore)[0].strip('\n')
+            # (including whitespace)
+            data[key] = attr.split(ignore)[0].strip('\n').strip()
 
     return data
 

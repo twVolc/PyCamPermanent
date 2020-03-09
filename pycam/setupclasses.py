@@ -18,25 +18,25 @@ pycam_details = {
 
 class FileLocator:
     """Defines locations of important files"""
-    PYCAM_ROOT = '.\\pycam'                                     # Root to pycam on Pis from home directory
+    PYCAM_ROOT = '/home/pi/pycam'                               # Root to pycam on Pis from home directory
 
-    NET_PATH = '.\\network'                                     # Path to network files
-    NET_COMM_FILE = NET_PATH + '\\network_comm.txt'             # Network file for communicating acquisitions
-    NET_TRANSFER_FILE = NET_PATH + '\\network_transfer.txt'     # Network file for transferring data
+    CONF_DIR = PYCAM_ROOT + '/conf/'                            # Directory holding configuration files
 
-    CONFIG = '.\\config.txt'                                    # Main configuration file
-    CONFIG_CAM = '.\\cam_specs.txt'                             # Camera configuration file
-    CONFIG_SPEC = '\\spec_specs.txt'                            # Spectrometer configuration file
+    CONFIG = CONF_DIR + 'config.txt'                            # Main configuration file
+    CONFIG_CAM = CONF_DIR + 'cam_specs.txt'                     # Camera configuration file
+    CONFIG_SPEC = CONF_DIR + 'spec_specs.txt'                   # Spectrometer configuration file
 
-    IMG_SPEC_PATH = '.\\Images\\'                               # Image and spectra path on main Pi
+    NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
+    NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data
 
-
+    IMG_SPEC_PATH = PYCAM_ROOT + '/Images'                      # Image and spectra path on main Pi
 
 
 class ConfigInfo:
     """Defines important attributes related to config files, allowing references to link to this file rather than being
     explicitly coded elsewhere"""
     pi_ip = 'pi_ip'                 # Tag for remote pi ip addresses in config file
+    host_ip = 'host_ip'
     local_ip = 'local_ip'           # Tag for local ip address in config file
     remote_scripts = 'remote_scripts'
     local_scripts = 'local_scripts'

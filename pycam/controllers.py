@@ -404,7 +404,7 @@ class Spectrometer(SpecSpecs):
 
     subclass of :class: SpecSpecs
     """
-    def __init__(self, filename):
+    def __init__(self, filename=None):
         super().__init__(filename)
 
         self.capture_q = queue.Queue()      # Queue for requesting spectra
@@ -588,8 +588,6 @@ class Spectrometer(SpecSpecs):
         else:
             return 0
 
-    """THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION AND NEEDS FULLY EDITING AS IT CURRENTLY IS JUST A COPY FROM 
-    Camera()"""
     def interactive_capture(self, spec_q=None, capt_q=None):
         """Interactive capturing by requesting captures through capt_q
 

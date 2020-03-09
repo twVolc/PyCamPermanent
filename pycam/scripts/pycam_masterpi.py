@@ -1,7 +1,12 @@
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
 
 """Master script to be run on server pi for interfacing with worker pis and any external connection (such as a laptop
 connected via ethernet)"""
+
+# Update python path so that pycam module can be found
+import sys
+sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
     acc_connection
@@ -28,18 +33,18 @@ pi_ip = config[ConfigInfo.pi_ip].split(',')
 # Open sockets so they are listening
 # ----------------------------------
 # Get network parameters for socket setup
-# local_ip = config['host_ip']
-# local_ip = socket.gethostbyname(socket.gethostname())
-local_ip = config[ConfigInfo.local_ip]
+# host_ip = config['host_ip']
+# host_ip = socket.gethostbyname(socket.gethostname())
+host_ip = config[ConfigInfo.host_ip]
 port_transfer = int(config['port_transfer'])
 
 # Open sockets for image/spectra transfer
-sock_serv_transfer = SocketServer(local_ip, port_transfer)
+sock_serv_transfer = SocketServer(host_ip, port_transfer)
 sock_serv_transfer.open_socket()
 
 # Open socket for communication with pis (cameras and spectrometer)
 port_comm = int(config['port_comm'])
-sock_serv_comm = SocketServer(local_ip, port_comm)
+sock_serv_comm = SocketServer(host_ip, port_comm)
 sock_serv_comm.open_socket()
 
 # ======================================================================================================================
@@ -53,7 +58,7 @@ for ip in pi_ip:
 
     # First make sure the up-to-date specs file is present on the pi
     # POSSIBLY DONT DO THIS, AS WE MAY WANT THE REMOTE PROGRAM TO SAVE CAMERA PROPERTIES LOCALLY ON SHUTDOWN?
-    file_upload(ssh_clients[-1], config[ConfigInfo.cam_specs], FileLocator.PYCAM_ROOT + FileLocator.CONFIG_CAM)
+    file_upload(ssh_clients[-1], config[ConfigInfo.cam_specs], FileLocator.CONFIG_CAM)
 
     # Loop through scripts and send command to start them
     for script in remote_scripts:
@@ -70,8 +75,8 @@ for ip in pi_ip:
 for script in config[ConfigInfo.local_scripts]:
     subprocess.run([script])
 
-# Run spectrometer script on local machine
-subprocess.run(config[ConfigInfo.spec_script])
+# Run spectrometer script on local machine in background
+subprocess.run(config[ConfigInfo.spec_script] + ' &')
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -99,11 +104,11 @@ for i in range(2):
 
 # Do same for spectrum, which is on the local pi
 recv_event = threading.Event()  # Have different recv_event so we can stop this thread separately to camera thread
-save_threads[local_ip] = (threading.Thread(
-    target=recv_save_spectra, args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=local_ip), recv_event,)),
-    recv_event)
-save_threads[local_ip][0].daemon = True
-save_threads[local_ip][0].start()
+save_threads[host_ip] = (threading.Thread(
+    target=recv_save_spectra, args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=host_ip), recv_event,)),
+                         recv_event)
+save_threads[host_ip][0].daemon = True
+save_threads[host_ip][0].start()
 
 # -----------------------
 # Communications socket
@@ -138,7 +143,7 @@ for i in range(3):
 # Setup external communication port
 # ----------------------------------
 port_ext = int(config['port_ext'])
-sock_serv_ext = SocketServer(local_ip, port_ext)
+sock_serv_ext = SocketServer(host_ip, port_ext)
 sock_serv_ext.open_socket()
 
 # Create threads for accepting 2 new connections (one may be local computer conn, other may be wireless)
@@ -240,33 +245,33 @@ while True:
                     if 'RSS' in comm_cmd.keys():
                         if comm_cmd['RSS']:
                             # First join previous threads
-                            cam_spec_comms[local_ip][2].set()
-                            save_threads[local_ip][1].set()
-                            cam_spec_comms[local_ip][0].join()
-                            save_threads[local_ip][0].join()
+                            cam_spec_comms[host_ip][2].set()
+                            save_threads[host_ip][1].set()
+                            cam_spec_comms[host_ip][0].join()
+                            save_threads[host_ip][0].join()
 
                             # Always do transfer socket first and then comms socket (so scripts don't hang trying to
                             # connect for something when the socket isn't listening - may not be necessary as the socket
                             # listen command can listen without accepting)
                             # Close old transfer socket
-                            sock_serv_transfer.close_connection(ip=local_ip)
+                            sock_serv_transfer.close_connection(ip=host_ip)
 
                             # Setup new transfer socket
                             sock_serv_transfer.acc_connection()
 
                             recv_event = threading.Event()
-                            save_threads[local_ip] = (threading.Thread(
+                            save_threads[host_ip] = (threading.Thread(
                                 target=recv_save_spectra,
-                                args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=local_ip), recv_event,)),
-                                recv_event)
-                            save_threads[local_ip][0].daemon = True
-                            save_threads[local_ip][0].start()
+                                args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=host_ip), recv_event,)),
+                                                     recv_event)
+                            save_threads[host_ip][0].daemon = True
+                            save_threads[host_ip][0].start()
 
                             # First remove previous spectrometer connection
-                            sock_serv_comm.close_connection(ip=local_ip)
+                            sock_serv_comm.close_connection(ip=host_ip)
 
                             # Accept new connection and start receiving comms
-                            cam_spec_comms[local_ip] = acc_connection(sock_serv_comm, recv_comms)
+                            cam_spec_comms[host_ip] = acc_connection(sock_serv_comm, recv_comms)
 
                     # As with spectrometer we need to do the same with the cameras if restart is requested
                     if 'RSC' in comm_cmd.keys():
