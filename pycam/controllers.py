@@ -371,8 +371,13 @@ class Camera(CameraSpecs):
                 if self.auto_ss:
                     adj_saturation = self.check_saturation()
                     if adj_saturation:
-                        self.ss_idx += adj_saturation
-                        self.set_shutter_speed(self.ss_list[self.ss_idx])
+                        # Adjust ss_idx, but if we have gone beyond the indices available in ss_list it will throw an
+                        # idx error, so we catch this and continue with same ss if there are no higher/lower options
+                        try:
+                            self.ss_idx += adj_saturation
+                            self.set_shutter_speed(self.ss_list[self.ss_idx])
+                        except IndexError:
+                            pass
 
                 # Set seconds value (used as check to prevent 2 images being acquired in same second)
                 prev_sec = time_obj.second
@@ -568,7 +573,7 @@ class Spectrometer(SpecSpecs):
 
         # Determine indices of arrays where wavelengths are closest to requested extraction wavelengths
         min_idx = np.argmin(np.abs(wavelengths[0] - self.wavelengths))
-        max_idx = np.argmax(np.abs(wavelengths[1] - self.wavelengths))
+        max_idx = np.argmin(np.abs(wavelengths[1] - self.wavelengths))
 
         return self.wavelengths[min_idx:max_idx+1], self.spectrum[min_idx:max_idx+1]
 
@@ -726,8 +731,13 @@ class Spectrometer(SpecSpecs):
                 if self.auto_int:
                     adj_saturation = self.check_saturation()
                     if adj_saturation:
-                        self.int_time_idx += adj_saturation
-                        self.int_time = self.int_list[self.int_time_idx]
+                        # Adjust ss_idx, but if we have gone beyond the indices available in ss_list it will throw an
+                        # idx error, so we catch this and continue with same int if there are no higher/lower options
+                        try:
+                            self.int_time_idx += adj_saturation
+                            self.int_time = self.int_list[self.int_time_idx]
+                        except IndexError:
+                            pass
 
                 # Set seconds value (used as check to prevent 2 images being acquired in same second)
                 prev_sec = time_obj.second

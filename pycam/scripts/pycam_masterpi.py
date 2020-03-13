@@ -10,7 +10,7 @@ sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
     acc_connection
-from pycam.controllers import CameraSpecs
+from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
@@ -76,7 +76,8 @@ for script in config[ConfigInfo.local_scripts]:
     subprocess.run([script])
 
 # Run spectrometer script on local machine in background
-subprocess.run(config[ConfigInfo.spec_script] + ' &')
+subprocess.Popen(['python3', config[ConfigInfo.spec_script], '&'])
+# subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -87,7 +88,9 @@ subprocess.run(config[ConfigInfo.spec_script] + ' &')
 # ------------------
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
+    print('Getting connection')
     sock_serv_transfer.acc_connection()
+    print('Got connection {}'.format(sock_serv_transfer.get_connection(-1)))
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
 save_threads = dict()
@@ -147,11 +150,11 @@ sock_serv_ext = SocketServer(host_ip, port_ext)
 sock_serv_ext.open_socket()
 
 # Create threads for accepting 2 new connections (one may be local computer conn, other may be wireless)
-ext_comm_threads = []
+ext_comm_acc_threads = [0, 0]
 for i in range(2):
-    ext_comm_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
-    ext_comm_threads[i].daemon = True
-    ext_comm_threads[i].start()
+    ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
+    ext_comm_acc_threads[i].daemon = True
+    ext_comm_acc_threads[i].start()
 receiving_ext_comms = []     # List holding thread names for all external comms which are currently being received
 
 # Instantiate CommsFuncs object for controlling execution of external communication requests
@@ -162,7 +165,8 @@ comms_funcs = CommsFuncs()
 # INSTRUMENT SETUP
 # ======================================================================================================================
 # Load Camera specs parameters - possibly not actually needed to be held here
-cam_specs = CameraSpecs(config[ConfigInfo.cam_specs])
+cam_specs = CameraSpecs(FileLocator.CONFIG_CAM)
+spec_specs = SpecSpecs(FileLocator.CONFIG_SPEC)
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -186,11 +190,11 @@ while True:
         # Setup thread to receive new connection if any have closed
         # (we need to be ready to accept new connections after one closes)
         # These threads should close as soon as they have received a connection
-        for i in range(len(ext_comm_threads)):
-            if not ext_comm_threads[i].is_alive():
-                ext_comm_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
-                ext_comm_threads[i].daemon = True
-                ext_comm_threads[i].start()
+        for i in range(len(ext_comm_acc_threads)):
+            if not ext_comm_acc_threads[i].is_alive():
+                ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
+                ext_comm_acc_threads[i].daemon = True
+                ext_comm_acc_threads[i].start()
 
         # If we have more ext connections than we are receiving messages from, setup new thread to receive from most
         # recent connection
@@ -237,8 +241,9 @@ while True:
                     keys at this point"""
                     # Loop through each command code in the dictionary, carrying our the commands individually
                     for key in comm_cmd:
-                        # Call correct method determined by 3 character code from comms message
-                        getattr(comms_funcs, key)(comm_cmd[key], sock_serv_ext.get_connection(i), sock_dict, config)
+                        if key is not 'ERR':
+                            # Call correct method determined by 3 character code from comms message
+                            getattr(comms_funcs, key)(comm_cmd[key], sock_serv_ext.get_connection(i), sock_dict, config)
 
                     # If spectrometer restart is requested we need to reset all socket communications associated with
                     # the spectrometer and setup new ones
@@ -325,7 +330,7 @@ while True:
                             sock_serv_transfer.close_socket()
 
                             # Wait for all threads to finish
-                            for thread in ext_comm_threads:
+                            for thread in ext_comm_acc_threads:
                                 thread.join()
                             for thread_key in save_threads:
                                 save_threads[thread_key][0].join()

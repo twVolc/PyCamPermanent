@@ -29,7 +29,9 @@ class FileLocator:
     NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
     NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data
 
-    IMG_SPEC_PATH = PYCAM_ROOT + '/Images'                      # Image and spectra path on main Pi
+    IMG_SPEC_PATH = PYCAM_ROOT + '/Images/'                      # Image and spectra path on main Pi
+
+    LOG_PATH = PYCAM_ROOT + '/logs/'
 
 
 class ConfigInfo:
@@ -38,6 +40,10 @@ class ConfigInfo:
     pi_ip = 'pi_ip'                 # Tag for remote pi ip addresses in config file
     host_ip = 'host_ip'
     local_ip = 'local_ip'           # Tag for local ip address in config file
+    port_transfer = 'port_transfer'
+    port_comm = 'port_comm'
+    port_ext = 'port_ext'
+
     remote_scripts = 'remote_scripts'
     local_scripts = 'local_scripts'
     cam_script = 'cam_script'       # Tag for defining camera script to be run on pi
@@ -96,16 +102,17 @@ class CameraSpecs:
         self.file_ext = '.png'                                  # File extension for images
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
-        self.file_ag = '%sag'                                   # Analog gain format spec
-        self.file_ss = '%iss'                                   # Shutter speed format spec
+        self.file_ag = '{}ag'                                   # Analog gain format spec
+        self.file_ss = '{}ss'                                   # Shutter speed format spec
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
         self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
-        self.ss_list = np.concatenate((np.arange(10 ** 3, 10 ** 4, 10 ** 3),
-                                       np.arange(10 ** 4, 10 ** 5, 10 ** 4),
-                                       np.arange(10 ** 5, 10 ** 6, 5 * 10 ** 4),
-                                       np.arange(10 ** 6, 6 * 10 ** 6, 5 * 10 ** 5)))
+        self.ss_list = np.concatenate((np.arange(10**3, 10**4, 10**3),
+                                       np.arange(10**4, 10**5, 10**4),
+                                       np.arange(10**5, 10**6, 5 * 10**4),
+                                       np.arange(10**6, 6 * 10**6, 5 * 10**5),
+                                       np.array([6 * 10**5])))
 
         # Acquisition settings
         self.shutter_speed = 50000  # Camera shutter speeds (us)
@@ -214,9 +221,9 @@ class CameraSpecs:
 
                     elif attr in self.attr_to_io['bool'] or ('_' + attr) in self.attr_to_io['bool']:
                         val = self.extract_info(line)
-                        if val == 'True' or val == 1:
+                        if val == 'True' or val == '1':
                             setattr(self, attr, True)
-                        elif val == 'False' or val == 0:
+                        elif val == 'False' or val == '0':
                             setattr(self, attr, False)
                         else:
                             warnings.warn('Unexpected value for {}: {}. Setting to default {}'
@@ -309,7 +316,7 @@ class SpecSpecs:
 
         # File information
         self.file_ext = '.npy'  # Spectra saved as numpy array
-        self.file_ss = '%iss'  # Shutter speed format spec
+        self.file_ss = '{}ss'  # Shutter speed format spec
         self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
 
@@ -333,7 +340,8 @@ class SpecSpecs:
                                         np.arange(50, 100, 10),
                                         np.arange(100, 500, 50),
                                         np.arange(500, 1000, 100),
-                                        np.arange(10 ** 3, 10 ** 4, 500)))
+                                        np.arange(10 ** 3, 10 ** 4, 500),
+                                        np.array([10 ** 4])))
 
     def load_specs(self, filename):
         """Load spectrometer specifications from file

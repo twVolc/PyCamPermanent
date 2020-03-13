@@ -54,7 +54,7 @@ thread_trf.start()
 
 # ----------------------------------------------------------------
 # Setup comms socket
-serv_ip, port = read_file(FileLocator.NET_COMM_FILE)
+serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketCamComms(serv_ip, port, camera=cam)
 sock_comms.connect_socket()
 q_comm = queue.Queue()              # Queue for putting received comms in
@@ -94,9 +94,9 @@ while True:
                     sock_trf.close_socket()
 
                     # Exit script by breaking loop
-                    break
+                    sys.exit()
 
-    except queue.Empty():
+    except queue.Empty:
         pass
     # ---------------------------------------------------------------------------------------------
 

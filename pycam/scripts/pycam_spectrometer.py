@@ -10,7 +10,7 @@ Script to be run on the spectrometer pi.
 import sys
 sys.path.append('/home/pi/')
 
-from pycam.controllers import Spectrometer
+from pycam.controllers import Spectrometer, SpectrometerConnectionError
 from pycam.networking.sockets import PiSocketSpec, PiSocketSpecComms, read_network_file, recv_comms, send_spectra
 from pycam.setupclasses import FileLocator
 from pycam.utils import read_file
@@ -21,8 +21,12 @@ import queue
 # Read config file
 config = read_file(FileLocator.CONFIG_SPEC)
 
-# Setup camera object
-spec = Spectrometer()
+try:
+    # Setup camera object
+    spec = Spectrometer()
+except SpectrometerConnectionError:
+    print('No spectrometer detected, please connect spectrometer and restart program')
+    sys.exit()
 
 # Setup thread for controlling spectrometer capture
 capt_thread = threading.Thread(target=spec.interactive_capture, args=())
@@ -47,7 +51,7 @@ thread_trf.start()
 
 # ----------------------------------------------------------------
 # Setup comms socket
-serv_ip, port = read_file(FileLocator.NET_COMM_FILE)
+serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketSpecComms(serv_ip, port, spectrometer=spec)
 sock_comms.connect_socket()
 q_comm = queue.Queue()              # Queue for putting received comms in
@@ -99,9 +103,9 @@ while True:
                     sock_trf.close_socket()
 
                     # Exit script by breaking loop
-                    break
+                    sys.exit()
 
-    except queue.Empty():
+    except queue.Empty:
         pass
     # ---------------------------------------------------------------------------------------------
 

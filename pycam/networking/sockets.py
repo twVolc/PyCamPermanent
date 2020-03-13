@@ -136,7 +136,7 @@ class CommsFuncs(SendRecvSpecs):
             cmd = socks['comm'].encode_comms(cmd_dict)
             socks['comm'].send_comms(conn, cmd)
 
-    def comms_spec_cmd(self, cmd_dict, socks):
+    def comms_spec_cmd(self, cmd_dict, socks, config):
         """Sends the command and associated value to both remote pis
 
         Parameters
@@ -148,8 +148,8 @@ class CommsFuncs(SendRecvSpecs):
         config: dict
             Dictionary of any other configuration parameters which may be required
         """
-        # Get the retrieve the correct connection to send to
-        conn = socks['comm'].get_connection(ip=socket.gethostbyname(socket.gethostname()))
+        # Retrieve the correct connection to send to
+        conn = socks['comm'].get_connection(ip=config[ConfigInfo.host_ip])
 
         # Send command to function for sending over socket
         cmd = socks['comm'].encode_comms(cmd_dict)
@@ -165,7 +165,7 @@ class CommsFuncs(SendRecvSpecs):
 
     def SSS(self, value, connection, socks, config):
         """Acts on SSS command"""
-        self.comms_spec_cmd({'SSS': value}, socks)
+        self.comms_spec_cmd({'SSS': value}, socks, config)
 
     def FRC(self, value, connection, socks, config):
         """Acts on FRC command"""
@@ -173,7 +173,7 @@ class CommsFuncs(SendRecvSpecs):
 
     def FRS(self, value, connection, socks, config):
         """Acts on FRS command"""
-        self.comms_spec_cmd({'FRS': value}, socks)
+        self.comms_spec_cmd({'FRS': value}, socks, config)
 
     def AUT(self, value, connection, socks, config):
         """Acts on AUT command"""
@@ -189,19 +189,19 @@ class CommsFuncs(SendRecvSpecs):
 
     def WMN(self, value, connection, socks, config):
         """Acts on WMN command"""
-        self.comms_spec_cmd({'WMN': value}, socks)
+        self.comms_spec_cmd({'WMN': value}, socks, config)
 
     def WMX(self, value, connection, socks, config):
         """Acts on WMX command"""
-        self.comms_spec_cmd({'WMX': value}, socks)
+        self.comms_spec_cmd({'WMX': value}, socks, config)
 
     def SNS(self, value, connection, socks, config):
         """Acts on SNS command"""
-        self.comms_spec_cmd({'SNS': value}, socks)
+        self.comms_spec_cmd({'SNS': value}, socks, config)
 
     def SXS(self, value, connection, socks, config):
         """Acts on SXS command"""
-        self.comms_spec_cmd({'SXS': value}, socks)
+        self.comms_spec_cmd({'SXS': value}, socks, config)
 
     def TPC(self, value, connection, socks, config):
         """Acts on TPC command"""
@@ -229,11 +229,11 @@ class CommsFuncs(SendRecvSpecs):
 
     def SPS(self, value, connection, socks, config):
         """Acts on SPS command, stopping acquisitions on spectrometer"""
-        self.comms_spec_cmd({'SPS': value}, socks)
+        self.comms_spec_cmd({'SPS': value}, socks, config)
 
     def STS(self, value, connection, socks, config):
         """Acts on STS command, starting acquisitions on spectrometer"""
-        self.comms_spec_cmd({'STS': value}, socks)
+        self.comms_spec_cmd({'STS': value}, socks, config)
 
     def EXT(self, value, connection, socks, config):
         """Acts on EXT command, closing everything down"""
@@ -251,7 +251,7 @@ class CommsFuncs(SendRecvSpecs):
     def RSS(self, value, connection, socks, config):
         """Acts on RSS command, restarts pycam_spectrometer.py script"""
         # Pass the EXT command, as this is essentially the same process. But the script then needs starting again here
-        self.comms_spec_cmd({'EXT': value}, socks)
+        self.comms_spec_cmd({'EXT': value}, socks. config)
 
         # After we have closed the previous spectrometer script we open up a new one
         # MORE MAY BE NEEDED HERE AS I NEED TO REDO ALL SOCKET CONNECTIONS IN THIS CASE?
@@ -341,7 +341,10 @@ class SocketMeths(CommsFuncs):
         mess_list = message.split()
 
         cmd_ret = {'ERR': []}
-        for i in range(len(mess_list)):
+
+        # Loop through commands. Stop before the last command as it will be a value rather than key and means we don't
+        # hit and IndexError when using i+1
+        for i in range(len(mess_list)-1):
             if mess_list[i] in self.cmd_list:
 
                 # If we have a bool, check that we have either 1 or 0 as command, if not, it is not valid and is ignored
@@ -374,6 +377,10 @@ class SocketMeths(CommsFuncs):
                         continue
 
                 cmd_ret[mess_list[i]] = cmd
+
+        # If we haven't thrown any errors we can remove this key so that it isn't sent in message
+        if len(cmd_ret['ERR']) == 0:
+            del cmd_ret['ERR']
 
         return cmd_ret
 
@@ -445,18 +452,20 @@ class SocketClient(SocketMeths):
         try:
             while not self.connect_stat:
                 try:
+                    print('Connecting to {}'.format(self.server_addr))
                     self.sock.connect(self.server_addr)  # Attempting to connect to the server
                     self.connect_stat = True
                 except OSError:
-                    pass
+                    continue
         except Exception as e:
-            with open('client_socket_error.log', 'a') as f:
+            with open(FileLocator.LOG_PATH + 'client_socket_error.log', 'a') as f:
                 f.write('ERROR: ' + str(e) + '\n')
         return
 
     def close_socket(self):
         """Closes socket by disconnecting from host"""
         self.sock.close()
+        print('Closed socket {}'.format(self.server_addr))
         self.connect_stat = False
 
     def generate_header(self, msg_size):
@@ -950,13 +959,17 @@ class SocketServer(SocketMeths):
         # Listen for connection (backlog=5 connections - default)
         self.sock.listen(backlog)
 
+        self.sock.setblocking(True)
+
     def close_socket(self):
         """Closes socket"""
+        print('Closed socket {}'.format(self.server_addr))
         self.sock.close()
 
     def acc_connection(self):
         """Accept connection and add to listen"""
         # Establish connection with client and append to list of connections
+        print('Accepting connection at {}'.format(self.server_addr))
         self.connections.append(self.sock.accept())
         self.num_conns += 1
 
@@ -1313,10 +1326,14 @@ def recv_comms(sock, connection, mess_q=None, event=threading.Event()):
             message = sock.recv_comms(connection)
 
             # Decode the message into dictionary
-            dec_mess = sock.decode(message)
+            dec_mess = sock.decode_comms(message)
 
             # Add message to queue to be processed
             mess_q.put(dec_mess)
+
+            if 'EXT' in dec_mess:
+                if dec_mess['EXT']:
+                    return
 
         # If connection has been closed, return
         except socket.error:

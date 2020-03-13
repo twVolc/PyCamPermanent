@@ -21,7 +21,7 @@ def check_filename(filename, ext):
         raise ValueError('Filename must be in string format')
 
     if not os.path.exists(filename):
-        raise FileNotFoundError
+        raise FileNotFoundError(filename)
 
     # Split filename by .
     split_name = filename.split('.')
