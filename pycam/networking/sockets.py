@@ -970,9 +970,13 @@ class SocketServer(SocketMeths):
         """Accept connection and add to listen"""
         # Establish connection with client and append to list of connections
         print('Accepting connection at {}'.format(self.server_addr))
-        connection = self.sock.accept()
-        self.connections.append(connection)
-        self.num_conns += 1
+        try:
+            connection = self.sock.accept()
+            self.connections.append(connection)
+            self.num_conns += 1
+        except OSError:
+            print('Error in accepting socket connection, it is likely that the socket was closed during accepting')
+            connection = None
 
         return connection
 
@@ -1025,7 +1029,7 @@ class SocketServer(SocketMeths):
         elif isinstance(conn_num, int):
             return self.connections[conn_num][1][0]
 
-    def close_connection(self, conn_num=None, ip=None):
+    def close_connection(self, conn_num=None, ip=None, connection=None):
         """Closes connection if it has not been already, and then deletes it from the connection list to ensure that
         this list maintains an up-to-date record of connections
 
@@ -1035,9 +1039,26 @@ class SocketServer(SocketMeths):
             Number in connection list
         ip: str
             IP address to find specific connection
+        connection: socket connection object
+            The socket connection object that would be returned by an accept() call
         """
+        if connection is not None:
+            for i in range(self.num_conns):
+                if connection in self.connections[i]:
+                    # Get ip of connection, just closing print statement
+                    ip = self.get_ip(connection=connection)
+
+                    # Close the connection
+                    connection.close()
+
+                    # Remove connection from list
+                    del self.connections[i]
+
+                    # Update the number of connections we have
+                    self.num_conns -= 1
+
         # Search for ip address in connections list
-        if isinstance(ip, str):
+        elif isinstance(ip, str):
             for i in range(self.num_conns):
                 # Check if ip address is in the addr tuple. If it is, we set conn_num to this connection
                 if ip in self.connections[i][1]:
@@ -1048,6 +1069,9 @@ class SocketServer(SocketMeths):
                     # Remove connection from list
                     del self.connections[conn_num]
 
+                    # Update the number of connections we have
+                    self.num_conns -= 1
+
         # If explicitly passed the connection number we can just close that number directly
         else:
             if isinstance(conn_num, int):
@@ -1055,6 +1079,9 @@ class SocketServer(SocketMeths):
                 conn = self.connections[conn_num][0]
                 conn.close()
                 del self.connections[conn_num]
+
+                # Update the number of connections we have
+                self.num_conns -= 1
 
         print('Closed connection: {}'.format(ip))
 
@@ -1219,20 +1246,35 @@ class Connection:
     def __init__(self, sock, acc_conn=False):
         self.sock = sock
         self.ip = None
-        self.connection = None
+        self.connection_tuple = None        # Tuple returned by socket.accept()
+        self._connection = None
 
         self.q = queue.Queue()              # Queue for accessing information
         self.event = threading.Event()      # Event to close receiving function
         self.recv_thread = None             # Thread for receiving communication data
         self.acc_thread = None
 
+        self.accepting = False              # Flag to show if object is still running acc_connection()
         self.receiving = False
 
         if acc_conn:
             self.acc_connection()
 
+    @property
+    def connection(self):
+        """Updates the connection attributes"""
+        return self._connection
+
+    @connection.setter
+    def connection(self, connection):
+        """Setting new connection and updates new ip address too so everything is correct"""
+        self._connection = connection
+        self.ip = self.sock.get_ip(connection=connection)
+
     def acc_connection(self):
         """Public access thread starter for _acc_connection"""
+        self.accepting = True
+
         self.acc_thread = threading.Thread(target=self._acc_connection, args=())
         self.acc_thread.daemon = True
         self.acc_thread.start()
@@ -1240,18 +1282,24 @@ class Connection:
     def _acc_connection(self):
         """Accepts new connection"""
         # Accept new connection
-        self.connection = self.sock.acc_connection()
-
-        # Set ip
-        self.ip = self.sock.get_ip(connection=self.connection)
+        self.connection_tuple = self.sock.acc_connection()
+        self.connection = self.connection_tuple[0]
 
         # Start thread for receiving communications from external instruments
-        self.recv_thread = threading.Thread(target=self.recv_func,
+        self.recv_func()
+
+        # Flag that we are no longer accepting a connection (placed here so that recv flag is True before this is False)
+        self.accepting = False
+
+    def recv_func(self):
+        """Public access thread starter for recv_func"""
+        self.recv_thread = threading.Thread(target=self._recv_func,
                                             args=(self,))
         self.recv_thread.daemon = True
         self.recv_thread.start()
+        self.receiving = True
 
-    def recv_func(self):
+    def _recv_func(self):
         """Function to be overwritten by child classes"""
         pass
 
@@ -1268,9 +1316,8 @@ class CommConnection(Connection):
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def recv_func(self, ):
+    def _recv_func(self, ):
         """ Continually loops through receiving communications and passing them to a queue"""
-        self.receiving= True
         while not self.event.is_set():
             try:
                 # Receive socket data (this is a blocking process until a complete message is received)
@@ -1299,9 +1346,8 @@ class ImgConnection(Connection):
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def recv_func(self):
+    def _recv_func(self):
         """Image receiving and saving function"""
-        self.receiving = True
         while not self.event.is_set():
             try:
                 # Receive image from pi client
@@ -1322,9 +1368,8 @@ class SpecConnection(Connection):
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def recv_func(self):
+    def _recv_func(self):
         """Spectra receiving and saving function"""
-        self.receiving = True
         while not self.event.is_set():
             try:
                 # Receive image from pi client

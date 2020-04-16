@@ -100,6 +100,7 @@ subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
 # -------------------
 # Transfer socket
 # ------------------
+
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
     print('Getting connection')
@@ -107,25 +108,25 @@ for i in range(3):
     print('Got connection {}'.format(sock_serv_transfer.get_connection(-1)))
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
-save_threads = dict()
+save_connections = dict()
 for i in range(2):
-    # Setup event for controlling recv/save threads
-    recv_event = threading.Event()
+    # Setup connection objects and start thread to run image transfer
+    save_connections[pi_ip[i]] = ImgConnection(sock_serv_transfer, acc_conn=False)
 
-    # Staart thread
-    save_threads[pi_ip[i]] = (threading.Thread(
-        target=recv_save_imgs, args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=pi_ip[i]), recv_event,)),
-        recv_event)
-    save_threads[pi_ip[i]][0].daemon = True
-    save_threads[pi_ip[i]][0].start()
+    # Set connection to be one of the camera IP connections
+    save_connections[pi_ip[i]].connection = sock_serv_transfer.get_connection(ip=pi_ip[i])
+
+    # Start save thread
+    save_connections[pi_ip[i]].recv_func()
 
 # Do same for spectrum, which is on the local pi
-recv_event = threading.Event()  # Have different recv_event so we can stop this thread separately to camera thread
-save_threads[host_ip] = (threading.Thread(
-    target=recv_save_spectra, args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=host_ip), recv_event,)),
-                         recv_event)
-save_threads[host_ip][0].daemon = True
-save_threads[host_ip][0].start()
+save_connections[host_ip] = SpecConnection(sock_serv_transfer, acc_conn=False)
+
+# Set connection to that of the host_ip spectrometer connection
+save_connections[host_ip].connection = sock_serv_transfer.get_connection(ip=host_ip)
+
+# Start save thread
+save_connections[host_ip].recv_func()
 
 # -----------------------
 # Communications socket
@@ -163,13 +164,8 @@ port_ext = int(config['port_ext'])
 sock_serv_ext = SocketServer(host_ip, port_ext)
 sock_serv_ext.open_socket()
 
-# Create threads for accepting 2 new connections (one may be local computer conn, other may be wireless)
-ext_comm_acc_threads = [0, 0]
-for i in range(2):
-    ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
-    ext_comm_acc_threads[i].daemon = True
-    ext_comm_acc_threads[i].start()
-receiving_ext_comms = []    # List holding thread names for all external comms which are currently being received
+# Create obects for accepting and controlling 2 new connections (one may be local computer conn, other may be wireless)
+ext_comms = [CommConnection(sock_serv_ext, acc_conn=True), CommConnection(sock_serv_ext, acc_conn=True)]
 
 # Instantiate CommsFuncs object for controlling execution of external communication requests
 comms_funcs = CommsFuncs()
@@ -190,66 +186,26 @@ while True:
     if len(sock_serv_ext.connections) > 0:
 
         # Need to check that send_recv threads to cameras/spectrometers are still running. If not. Restart them.
-        for key in save_threads:
-            if not save_threads[key][0].is_alive():
+        for key in save_connections:
+            if not save_connections[key].receiving:
                 # Probably need to write in a reconnection attempt into pycam_spectrometer and pycam_camera. If not,
                 # I will need to assume the program has closed and restart it - then all connection would need to be
                 # redone.
                 pass
 
-        # If we have more recorded threads than we have socket connections a comm connection must have been closed,
-        # so we update the list to reflect this and run thread to accept a new connection
-        # If we have a thread which has closed down because there is no connection, we remove it from the
-        # receiving_ext_comms list. NOTE: This assume the thread closes when the connection closes - CHECK THIS
-        for i in range(len(receiving_ext_comms)):
-            if not receiving_ext_comms[i][0].is_alive():
-                # Remove that connection (we are assuming it is dead)
+        # If a CommConnection object is neither waiting to accept a connection or recieving data from a connection, we
+        # must have lost that connection, so we close that connection just to make sure, and then setup the object
+        # to accept a new connection
+        for comm_connection in ext_comms:
+            if not comm_connection.receiving and not comm_connection.accepting:
+                # Connection has probably already been close, but try closing it anyway
                 try:
-                    sock_serv_ext.close_connection(ip=receiving_ext_comms[i][3])
-                except IndexError:
-                    # If closing connection throws an index error I believe there has been an issue and we can just
-                    # continue assuming this connection doesn't exist
+                    sock_serv_ext.close_connection(ip=comm_connection.ip)
+                except socket.error:
                     pass
 
-                del receiving_ext_comms[i]
-
-        # Setup thread to receive new connection if any have closed
-        # (we need to be ready to accept new connections after one closes)
-        # These threads should close as soon as they have received a connection
-        for i in range(len(ext_comm_acc_threads)):
-            if not ext_comm_acc_threads[i].is_alive():
-                ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
-                ext_comm_acc_threads[i].daemon = True
-                ext_comm_acc_threads[i].start()
-                print('Here in accepting connection')
-
-        # If we have more ext connections than we are receiving messages from, setup new thread to receive from most
-        # recent connection
-        # Determine how many new connections we need to setup receivers for
-        num_conns = len(sock_serv_ext.connections) - len(receiving_ext_comms)
-        for i in range(num_conns):
-
-            # Generate queue and event to be passed to receiver thread
-            q = [queue.Queue(), threading.Event()]
-
-            # Calculate the connection index for the connections we need to setup new receivers for
-            # We start at the oldest connection that hasn't been setup and as we loop through we move towards the most
-            # recent connections
-            conn_num = -num_conns + i
-
-            # Retrieve connection ip
-            conn_ip = sock_serv_ext.get_ip(conn_num=conn_num)
-
-            # Start thread for receiving communications from external instruments
-            t = threading.Thread(target=recv_comms,
-                                 args=(sock_serv_ext, sock_serv_ext.connections[conn_num][0], q[0], q[1], ))
-            t.daemon = True
-            t.start()
-
-            # A tuple is appended to receiving comms, representing that thread/connection (thread name, mess_q, close_q)
-            receiving_ext_comms.append((t, q[0], q[1], conn_ip))
-
-            print('Here in receiving comms')
+                # Setup object to accept new connection
+                comm_connection.acc_connection()
 
         # Generate dictionary with latest connection object (may be obsolete redoing this each loop if the objects
         # auto-update within a dictionary? i.e. do they change when changed outside of the dictionary object?
@@ -257,121 +213,132 @@ while True:
         sock_dict = {'tsfr': sock_serv_transfer, 'comm': sock_serv_comm, 'ext': sock_serv_ext}
 
         # Check message queue in each comm port
-        for i in range(len(receiving_ext_comms)):
-            comm = receiving_ext_comms[i]
+        for comm_connection in ext_comms:
+            if comm_connection.receiving:
+                try:
+                    # Check message queue (taken from tuple at position [1])
+                    comm_cmd = comm_connection.q.get(block=False)
+                    print(comm_cmd)
+                    if comm_cmd:
 
-            try:
-                # Check message queue (taken from tuple at position [1])
-                comm_cmd = comm[1].get(block=False)
-                print(comm_cmd)
-                if comm_cmd:
+                        """An easier way of doing this may be to just forward it all to all instruments and let them
+                        decide how to act on it from there? It would mean not separating each message into individual
+                        keys at this point"""
+                        # Loop through each command code in the dictionary, carrying our the commands individually
+                        for key in comm_cmd:
+                            if key is not 'ERR':
+                                # Call correct method determined by 3 character code from comms message
+                                getattr(comms_funcs, key)(comm_cmd[key], sock_serv_ext.get_connection(i), sock_dict, config)
 
-                    """An easier way of doing this may be to just forward it all to all instruments and let them
-                    decide how to act on it from there? It would mean not separating each message into individual
-                    keys at this point"""
-                    # Loop through each command code in the dictionary, carrying our the commands individually
-                    for key in comm_cmd:
-                        if key is not 'ERR':
-                            # Call correct method determined by 3 character code from comms message
-                            getattr(comms_funcs, key)(comm_cmd[key], sock_serv_ext.get_connection(i), sock_dict, config)
+                        # If spectrometer restart is requested we need to reset all socket communications associated with
+                        # the spectrometer and setup new ones
+                        # Restarting the program itself is handled by the pycam_spectrometer script, so we don't need to do this
+                        if 'RSS' in comm_cmd.keys():
+                            if comm_cmd['RSS']:
+                                # First join previous threads
+                                cam_spec_comms[host_ip][2].set()
+                                save_connections[host_ip][1].set()
+                                cam_spec_comms[host_ip][0].join()
+                                save_connections[host_ip][0].join()
 
-                    # If spectrometer restart is requested we need to reset all socket communications associated with
-                    # the spectrometer and setup new ones
-                    # Restarting the program itself is handled by the pycam_spectrometer script, so we don't need to do this
-                    if 'RSS' in comm_cmd.keys():
-                        if comm_cmd['RSS']:
-                            # First join previous threads
-                            cam_spec_comms[host_ip][2].set()
-                            save_threads[host_ip][1].set()
-                            cam_spec_comms[host_ip][0].join()
-                            save_threads[host_ip][0].join()
-
-                            # Always do transfer socket first and then comms socket (so scripts don't hang trying to
-                            # connect for something when the socket isn't listening - may not be necessary as the socket
-                            # listen command can listen without accepting)
-                            # Close old transfer socket
-                            sock_serv_transfer.close_connection(ip=host_ip)
-
-                            # Setup new transfer socket
-                            sock_serv_transfer.acc_connection()
-
-                            recv_event = threading.Event()
-                            save_threads[host_ip] = (threading.Thread(
-                                target=recv_save_spectra,
-                                args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=host_ip), recv_event,)),
-                                                     recv_event)
-                            save_threads[host_ip][0].daemon = True
-                            save_threads[host_ip][0].start()
-
-                            # First remove previous spectrometer connection
-                            sock_serv_comm.close_connection(ip=host_ip)
-
-                            # Accept new connection and start receiving comms
-                            cam_spec_comms[host_ip] = acc_connection(sock_serv_comm, recv_comms)
-
-                    # As with spectrometer we need to do the same with the cameras if restart is requested
-                    # Restarting the program itself is handled by the pycam_camera script, so we don't need to do this
-                    if 'RSC' in comm_cmd.keys():
-                        if comm_cmd['RSC']:
-                            for ip in pi_ip:
-                                # Join previous threads
-                                cam_spec_comms[ip][2].set()
-                                save_threads[ip][1].set()
-                                cam_spec_comms[ip][0].join()
-                                save_threads[ip][0].join()
-
-                                # Close/remove old transfer socket
-                                sock_serv_transfer.close_connection(ip=ip)
+                                # Always do transfer socket first and then comms socket (so scripts don't hang trying to
+                                # connect for something when the socket isn't listening - may not be necessary as the socket
+                                # listen command can listen without accepting)
+                                # Close old transfer socket
+                                sock_serv_transfer.close_connection(ip=host_ip)
 
                                 # Setup new transfer socket
                                 sock_serv_transfer.acc_connection()
 
-                                # We can't be certain the first accepted conn will be the ip we are working with
-                                # So just get the ip of the most recent connection
-                                last_ip_conn = sock_serv_transfer.get_ip(conn_num=-1)
-
                                 recv_event = threading.Event()
-                                save_threads[last_ip_conn] = (threading.Thread(
+                                save_connections[host_ip] = (threading.Thread(
                                     target=recv_save_spectra,
-                                    args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=last_ip_conn),
-                                    recv_event,)), recv_event)
-                                save_threads[last_ip_conn][0].daemon = True
-                                save_threads[last_ip_conn][0].start()
+                                    args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=host_ip), recv_event,)),
+                                                             recv_event)
+                                save_connections[host_ip][0].daemon = True
+                                save_connections[host_ip][0].start()
 
-                                # Close/remove previous connection for ip address
-                                sock_serv_comm.close_connection(ip=ip)
+                                # First remove previous spectrometer connection
+                                sock_serv_comm.close_connection(ip=host_ip)
 
                                 # Accept new connection and start receiving comms
-                                ret_tup = acc_connection(sock_serv_comm, recv_comms)
-                                cam_spec_comms[sock_serv_comm.get_ip(conn_num=-1)] = ret_tup
+                                cam_spec_comms[host_ip] = acc_connection(sock_serv_comm, recv_comms)
 
-                    # ------------------------------------------------------------------------------------
-                    # Close everything if requested
-                    if 'EXT' in comm_cmd.keys():
-                        if comm_cmd['EXT']:
-                            for key in save_threads:
-                                save_threads[key][1].set()      # Close threads for receiving images and spectra
+                        # As with spectrometer we need to do the same with the cameras if restart is requested
+                        # Restarting the program itself is handled by the pycam_camera script, so we don't need to do this
+                        if 'RSC' in comm_cmd.keys():
+                            if comm_cmd['RSC']:
+                                for ip in pi_ip:
+                                    # Join previous threads
+                                    cam_spec_comms[ip][2].set()
+                                    save_connections[ip][1].set()
+                                    cam_spec_comms[ip][0].join()
+                                    save_connections[ip][0].join()
 
-                            # Close threads for comms in all cases
-                            for comm_tup in receiving_ext_comms:
-                                comm_tup[2].set()
+                                    # Close/remove old transfer socket
+                                    sock_serv_transfer.close_connection(ip=ip)
 
-                            # Close all sockets
-                            sock_serv_ext.close_socket()
-                            sock_serv_comm.close_socket()
-                            sock_serv_transfer.close_socket()
+                                    # Setup new transfer socket
+                                    sock_serv_transfer.acc_connection()
 
-                            # Wait for all threads to finish
-                            for thread in ext_comm_acc_threads:
-                                thread.join()
-                            for thread_key in save_threads:
-                                save_threads[thread_key][0].join()
+                                    # We can't be certain the first accepted conn will be the ip we are working with
+                                    # So just get the ip of the most recent connection
+                                    last_ip_conn = sock_serv_transfer.get_ip(conn_num=-1)
 
-                            sys.exit(0)
-                    # --------------------------------------------------------------------------------------
+                                    recv_event = threading.Event()
+                                    save_connections[last_ip_conn] = (threading.Thread(
+                                        target=recv_save_spectra,
+                                        args=(sock_serv_transfer, sock_serv_transfer.get_connection(ip=last_ip_conn),
+                                        recv_event,)), recv_event)
+                                    save_connections[last_ip_conn][0].daemon = True
+                                    save_connections[last_ip_conn][0].start()
 
-            except queue.Empty:
-                pass
+                                    # Close/remove previous connection for ip address
+                                    sock_serv_comm.close_connection(ip=ip)
+
+                                    # Accept new connection and start receiving comms
+                                    ret_tup = acc_connection(sock_serv_comm, recv_comms)
+                                    cam_spec_comms[sock_serv_comm.get_ip(conn_num=-1)] = ret_tup
+
+                        # ------------------------------------------------------------------------------------
+                        # Close everything if requested
+                        if 'EXT' in comm_cmd.keys():
+                            if comm_cmd['EXT']:
+                                # for key in save_connections:
+                                #     save_connections[key][1].set()      # Close threads for receiving images and spectra
+
+                                # # SHOULD BE ABLE TO JUST CLOSE THE SOCKETS AND THIS WILL THROW AN ERROR TO STOP THREADS
+                                # # THIS SHOULD PREVENT THREAD LOCKING?
+                                # # Close threads for comms in all cases
+                                # for comm_tup in receiving_ext_comms:
+                                #     comm_tup[2].set()
+
+                                # Close all sockets (must close connections before socket)
+                                for conn in sock_serv_ext.connections:
+                                    sock_serv_ext.close_connection(connection=conn[0])
+                                sock_serv_ext.close_socket()
+
+                                for conn in sock_serv_comm.connections:
+                                    sock_serv_comm.close_connection(connection=conn[0])
+                                sock_serv_comm.close_socket()
+
+                                for conn in sock_serv_transfer.connections:
+                                    sock_serv_transfer.close_connection(connection=conn[0])
+                                sock_serv_transfer.close_socket()
+
+                                # Wait for all threads to finish (closing sockets should cause this)
+                                for comm_connection in ext_comms:
+                                    while comm_connection.receiving or comm_connection.accepting:
+                                        pass
+                                for connection in save_connections:
+                                    while save_connections[connection].receiving or save_connections[connection].accepting:
+                                        pass
+
+                                sys.exit(0)
+                        # --------------------------------------------------------------------------------------
+
+                except queue.Empty:
+                    pass
 
     # Receive data from pis and simply forward them on to remote computers
     for key in cam_spec_comms:

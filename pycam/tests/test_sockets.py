@@ -156,7 +156,9 @@ class TestSockets:
         # Check teh server is recording 1 connection
         assert len(sock_serv.connections) == 1
 
-        sock_serv.close_connection(ip='127.0.0.1')
+        sock_serv.close_connection(connection=sock_serv.connections[0][0])
+
+        sock_serv.close_socket()
 
         # Check that the connection has now been closed and the connections list is updated
         assert len(sock_serv.connections) == 0
@@ -242,6 +244,29 @@ class TestSockets:
 
         time.sleep(2)
 
-        sock_serv.close_connection(conn_num=0)
+        sock_serv.close_connection(connection=sock_serv.get_connection(conn_num=0))
+        sock_serv.close_socket()
         recv_thread.join()
-        assert recv_thread.is_alive()
+        assert not recv_thread.is_alive()
+
+    def test_threading_acc_close(self):
+        """Tests the ability to close a socket if a thread is in a blocking accept call - can that socket be closed
+        or is the accept call blocking any other socket actions"""
+        host = '127.0.0.1'  # Localhost
+        port = 12345  # Port number
+
+        # Make host socket object
+        sock_serv = SocketServer(host, port)
+
+        # Open socket to listen for connection
+        sock_serv.open_socket()
+
+        acc_thread = threading.Thread(target=sock_serv.acc_connection, args=())
+        acc_thread.daemon = True
+        acc_thread.start()
+
+        time.sleep(2)
+
+        sock_serv.close_socket()
+        acc_thread.join()
+        assert not acc_thread.is_alive()
