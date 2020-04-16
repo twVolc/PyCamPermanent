@@ -3,7 +3,7 @@
 """Testing socket functionality:
 > Sending and receiving images
 """
-from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, PiSocketSpec, CommsFuncs
+from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, PiSocketSpec, CommsFuncs, recv_comms
 from pycam.utils import write_file
 import threading
 import socket
@@ -229,3 +229,19 @@ class TestSockets:
     def test_internal_comms(self):
         """Tests comms between server socket and camera/spectrometer client to see how they handle the comms"""
         pass
+
+    def test_threading_recv_close(self):
+        """Tests the ability to close a socket if a thread is in a blocking recieve call - can that socket be closed
+        or is the recv call blocking any other socket actions"""
+        # Open two sockets and connect them
+        sock_serv, sock_cli = self.open_sockets()
+
+        recv_thread = threading.Thread(target=recv_comms, args=(sock_serv, sock_serv.get_connection(conn_num=0),))
+        recv_thread.daemon = True
+        recv_thread.start()
+
+        time.sleep(2)
+
+        sock_serv.close_connection(conn_num=0)
+        recv_thread.join()
+        assert recv_thread.is_alive()

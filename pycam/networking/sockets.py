@@ -970,8 +970,11 @@ class SocketServer(SocketMeths):
         """Accept connection and add to listen"""
         # Establish connection with client and append to list of connections
         print('Accepting connection at {}'.format(self.server_addr))
-        self.connections.append(self.sock.accept())
+        connection = self.sock.accept()
+        self.connections.append(connection)
         self.num_conns += 1
+
+        return connection
 
     def get_connection(self, conn_num=None, ip=None):
         """Returns connection defined by conn_num. Wrapper for connections, to make access more intuitive.
@@ -1039,7 +1042,8 @@ class SocketServer(SocketMeths):
                 # Check if ip address is in the addr tuple. If it is, we set conn_num to this connection
                 if ip in self.connections[i][1]:
                     conn_num = i
-                    self.connections[conn_num][0].close()
+                    conn = self.connections[conn_num][0]
+                    conn.close()
 
                     # Remove connection from list
                     del self.connections[conn_num]
@@ -1047,8 +1051,12 @@ class SocketServer(SocketMeths):
         # If explicitly passed the connection number we can just close that number directly
         else:
             if isinstance(conn_num, int):
-                self.connections[conn_num][0].close()
+                ip = self.get_ip(conn_num=conn_num)
+                conn = self.connections[conn_num][0]
+                conn.close()
                 del self.connections[conn_num]
+
+        print('Closed connection: {}'.format(ip))
 
     def recv_data(self, connection=None):
         """Receives and decodes header, then receives the rest of message
@@ -1064,7 +1072,12 @@ class SocketServer(SocketMeths):
         except:     # Catch socket errors and re-raise
             raise
         header_txt = header.decode()
-        bytes_to_recv = int(header_txt.split('=')[1])
+
+        # If no = in header, we have an error, probably due to the socket being closed, so raise HeaderMessageError
+        try:
+            bytes_to_recv = int(header_txt.split('=')[1])
+        except IndexError:
+            raise HeaderMessageError
 
         # Receive the rest of the incoming message (needs a while loop to ensure all data is received
         # as packets can come incomplete)
@@ -1178,6 +1191,158 @@ class SocketServer(SocketMeths):
             self.send_comms(conn[0], cmd_bytes)
 
 
+# ====================================================================
+# Socket error classes
+class HeaderMessageError(Exception):
+    """Error raised if we have an error in decoding the header"""
+    pass
+
+
+class SaveSocketError(Exception):
+    """Error raised if we have an error in decoding the header"""
+    pass
+# =====================================================================
+
+# ======================================================================
+# CONNECTION CLASSES
+# ======================================================================
+
+
+class Connection:
+    """Parent class for various connection types
+
+    Parameters
+    ----------
+    sock: SocketServer
+        Object of server where external comms connection is  held
+    """
+    def __init__(self, sock, acc_conn=False):
+        self.sock = sock
+        self.ip = None
+        self.connection = None
+
+        self.q = queue.Queue()              # Queue for accessing information
+        self.event = threading.Event()      # Event to close receiving function
+        self.recv_thread = None             # Thread for receiving communication data
+        self.acc_thread = None
+
+        self.receiving = False
+
+        if acc_conn:
+            self.acc_connection()
+
+    def acc_connection(self):
+        """Public access thread starter for _acc_connection"""
+        self.acc_thread = threading.Thread(target=self._acc_connection, args=())
+        self.acc_thread.daemon = True
+        self.acc_thread.start()
+
+    def _acc_connection(self):
+        """Accepts new connection"""
+        # Accept new connection
+        self.connection = self.sock.acc_connection()
+
+        # Set ip
+        self.ip = self.sock.get_ip(connection=self.connection)
+
+        # Start thread for receiving communications from external instruments
+        self.recv_thread = threading.Thread(target=self.recv_func,
+                                            args=(self,))
+        self.recv_thread.daemon = True
+        self.recv_thread.start()
+
+    def recv_func(self):
+        """Function to be overwritten by child classes"""
+        pass
+
+
+class CommConnection(Connection):
+    """Communication class
+    An object of this class will be created for each separate comms connection
+
+    Parameters
+    ----------
+    sock: SocketServer
+        Object of server where external comms connection is  held
+    """
+    def __init__(self, sock, acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+    def recv_func(self, ):
+        """ Continually loops through receiving communications and passing them to a queue"""
+        self.receiving= True
+        while not self.event.is_set():
+            try:
+                # Receive socket data (this is a blocking process until a complete message is received)
+                message = self.sock.recv_comms(self.connection)
+
+                # Decode the message into dictionary
+                dec_mess = self.sock.decode_comms(message)
+
+                # Add message to queue to be processed
+                self.q.put(dec_mess)
+
+                if 'EXT' in dec_mess:
+                    if dec_mess['EXT']:
+                        self.receiving_comms = False
+                        return
+
+            # If connection has been closed, return
+            except socket.error:
+                self.receiving_comms = False
+                print('Socket Error, socket was closed, aborting thread.')
+                return
+
+
+class ImgConnection(Connection):
+    """Class for image transfer connection"""
+    def __init__(self, sock, acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+    def recv_func(self):
+        """Image receiving and saving function"""
+        self.receiving = True
+        while not self.event.is_set():
+            try:
+                # Receive image from pi client
+                img, filename = self.sock.recv_img(self.connection)
+
+                # Save image
+                save_img(img, FileLocator.IMG_SPEC_PATH + filename)
+
+            # Return if socket error is thrown (should signify that the connection has been closed)
+            # Return if the header was not decodable, probably because of the socket being closed
+            except (socket.error, HeaderMessageError):
+                self.receiving = False
+                return
+
+
+class SpecConnection(Connection):
+    """Class for image transfer connection"""
+    def __init__(self, sock, acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+    def recv_func(self):
+        """Spectra receiving and saving function"""
+        self.receiving = True
+        while not self.event.is_set():
+            try:
+                # Receive image from pi client
+                wavelengths, spectrum, filename = self.sock.recv_spectrum(self.connection)
+
+                # Save image
+                save_spectrum(wavelengths, spectrum, FileLocator.IMG_SPEC_PATH + filename)
+
+            # Return if socket error is thrown (should signify that the connection has been closed)
+            # Return if the header was not decodable, probably because of the socket being closed
+            except (socket.error, HeaderMessageError):
+                self.receiving = False
+                return
+# =================================================================================================================
+
+
+
+
 def acc_connection(sock, func):
     """Accepts a socket, connection and function and starts a thread to run function after accepting connection
     Assumes the accepted connection is the most recent, so can use -1 indexing
@@ -1268,7 +1433,8 @@ def recv_save_imgs(sock, connection, event):
             save_img(img, FileLocator.IMG_SPEC_PATH + filename)
 
         # Return if socket error is thrown (should signify that the connection has been closed)
-        except socket.error:
+        # Return if the header was not decodable, probably because of the socket being closed
+        except (socket.error, HeaderMessageError):
             return
 
 
@@ -1293,7 +1459,8 @@ def recv_save_spectra(sock, connection, event):
             save_spectrum(wavelengths, spectrum, FileLocator.IMG_SPEC_PATH + filename)
 
         # Return if socket error is thrown (should signify that the connection has been closed)
-        except socket.error:
+        # Return if the header was not decodable, probably because of the socket being closed
+        except (socket.error, HeaderMessageError):
             return
 
 
@@ -1337,5 +1504,6 @@ def recv_comms(sock, connection, mess_q=None, event=threading.Event()):
 
         # If connection has been closed, return
         except socket.error:
+            print('Socket Error, socket was closed, aborting thread.')
             return
 

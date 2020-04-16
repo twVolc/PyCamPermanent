@@ -9,7 +9,7 @@ import sys
 sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
-    acc_connection
+    acc_connection, SaveSocketError, ImgConnection, SpecConnection, CommConnection
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
@@ -19,6 +19,8 @@ import threading
 import queue
 import socket
 import subprocess
+import os
+import time
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
@@ -53,6 +55,7 @@ sock_serv_comm.open_socket()
 # Loop through remote pis and start scripts on them
 remote_scripts = config[ConfigInfo.remote_scripts].split(',')    # Remote scripts are held in the config file
 ssh_clients = []
+print('Running remote scripts...')
 for ip in pi_ip:
     ssh_clients.append(open_ssh(ip))
 
@@ -64,6 +67,9 @@ for ip in pi_ip:
     for script in remote_scripts:
         ssh_cmd(ssh_clients[-1], script)
 
+    # Sleep so the kill_process.py has time to finish, as we don't want to kill the new camera script
+    time.sleep(2)
+
     # Run core camera script
     ssh_cmd(ssh_clients[-1], config[ConfigInfo.cam_script])
 
@@ -72,12 +78,20 @@ for ip in pi_ip:
     close_ssh(ssh_clients[-1])
 
 # Run any other local scrips that need running
-for script in config[ConfigInfo.local_scripts]:
-    subprocess.run([script])
+print('Running local scripts...')
+local_scripts = config[ConfigInfo.local_scripts].split(',')
+for script in local_scripts:
+    script = script.split()
+    script.append('&')
+    subprocess.run(script, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# Sleep so the kill_process.py has time to finish, as we don't want to kill the new spectrometer script
+time.sleep(2)
 
 # Run spectrometer script on local machine in background
-subprocess.Popen(['python3', config[ConfigInfo.spec_script], '&'])
-# subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
+# subprocess.Popen(['python3', config[ConfigInfo.spec_script], '&'])
+subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
+# os.system('python3 ./pycam_spectrometer &')
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -155,7 +169,7 @@ for i in range(2):
     ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
     ext_comm_acc_threads[i].daemon = True
     ext_comm_acc_threads[i].start()
-receiving_ext_comms = []     # List holding thread names for all external comms which are currently being received
+receiving_ext_comms = []    # List holding thread names for all external comms which are currently being received
 
 # Instantiate CommsFuncs object for controlling execution of external communication requests
 comms_funcs = CommsFuncs()
@@ -173,8 +187,15 @@ spec_specs = SpecSpecs(FileLocator.CONFIG_SPEC)
 # FINAL LOOP - for dealing with communication between pis and any external computers
 # ======================================================================================================================
 while True:
-
     if len(sock_serv_ext.connections) > 0:
+
+        # Need to check that send_recv threads to cameras/spectrometers are still running. If not. Restart them.
+        for key in save_threads:
+            if not save_threads[key][0].is_alive():
+                # Probably need to write in a reconnection attempt into pycam_spectrometer and pycam_camera. If not,
+                # I will need to assume the program has closed and restart it - then all connection would need to be
+                # redone.
+                pass
 
         # If we have more recorded threads than we have socket connections a comm connection must have been closed,
         # so we update the list to reflect this and run thread to accept a new connection
@@ -183,7 +204,12 @@ while True:
         for i in range(len(receiving_ext_comms)):
             if not receiving_ext_comms[i][0].is_alive():
                 # Remove that connection (we are assuming it is dead)
-                sock_serv_ext.close_connection(ip=receiving_ext_comms[i][3])
+                try:
+                    sock_serv_ext.close_connection(ip=receiving_ext_comms[i][3])
+                except IndexError:
+                    # If closing connection throws an index error I believe there has been an issue and we can just
+                    # continue assuming this connection doesn't exist
+                    pass
 
                 del receiving_ext_comms[i]
 
@@ -195,6 +221,7 @@ while True:
                 ext_comm_acc_threads[i] = threading.Thread(target=sock_serv_ext.acc_connection, args=())
                 ext_comm_acc_threads[i].daemon = True
                 ext_comm_acc_threads[i].start()
+                print('Here in accepting connection')
 
         # If we have more ext connections than we are receiving messages from, setup new thread to receive from most
         # recent connection
@@ -222,6 +249,8 @@ while True:
             # A tuple is appended to receiving comms, representing that thread/connection (thread name, mess_q, close_q)
             receiving_ext_comms.append((t, q[0], q[1], conn_ip))
 
+            print('Here in receiving comms')
+
         # Generate dictionary with latest connection object (may be obsolete redoing this each loop if the objects
         # auto-update within a dictionary? i.e. do they change when changed outside of the dictionary object?
         # Dictionary is used by all comms functions
@@ -234,6 +263,7 @@ while True:
             try:
                 # Check message queue (taken from tuple at position [1])
                 comm_cmd = comm[1].get(block=False)
+                print(comm_cmd)
                 if comm_cmd:
 
                     """An easier way of doing this may be to just forward it all to all instruments and let them
@@ -247,6 +277,7 @@ while True:
 
                     # If spectrometer restart is requested we need to reset all socket communications associated with
                     # the spectrometer and setup new ones
+                    # Restarting the program itself is handled by the pycam_spectrometer script, so we don't need to do this
                     if 'RSS' in comm_cmd.keys():
                         if comm_cmd['RSS']:
                             # First join previous threads
@@ -279,6 +310,7 @@ while True:
                             cam_spec_comms[host_ip] = acc_connection(sock_serv_comm, recv_comms)
 
                     # As with spectrometer we need to do the same with the cameras if restart is requested
+                    # Restarting the program itself is handled by the pycam_camera script, so we don't need to do this
                     if 'RSC' in comm_cmd.keys():
                         if comm_cmd['RSC']:
                             for ip in pi_ip:
@@ -334,6 +366,8 @@ while True:
                                 thread.join()
                             for thread_key in save_threads:
                                 save_threads[thread_key][0].join()
+
+                            sys.exit(0)
                     # --------------------------------------------------------------------------------------
 
             except queue.Empty:
@@ -353,6 +387,7 @@ while True:
 
         except queue.Empty:
             pass
+
 
 
 

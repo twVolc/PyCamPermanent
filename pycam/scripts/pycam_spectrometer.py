@@ -88,8 +88,6 @@ while True:
                 # Call correct method determined by 3 character code from comms message
                 getattr(sock_comms, key + '_comm')(comm_cmd[key])
 
-
-
                 if key == 'EXT':
                     # Close down all threads
                     comm_event.set()

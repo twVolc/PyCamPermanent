@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 
-"""Script to test running an external connection to pycam and passing it commands"""
+"""Script to test running an external connection to pycam and passing it commands
+pycam_masterpi.py needs to be running on external host pi"""
 
 import sys
 sys.path.append('C:\\Users\\tw9616\\Documents\\PostDock\\Permanent Camera\\PyCamPermanent\\')
@@ -24,7 +25,7 @@ print(sock_ext.connect_stat)
 
 while True:
     # Ask user for input
-    cmd = input('Enter command dictionary to send to PyCam (Q:1 to Exit). String require double quotes: ')
+    cmd = input('Enter command dictionary to send to PyCam (Q:1 to Exit). Strings require double quotes: ')
 
     cmd_dict = json.loads(cmd)
 

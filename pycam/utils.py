@@ -4,6 +4,7 @@
 import os
 import cv2
 import numpy as np
+import subprocess
 
 
 def check_filename(filename, ext):
@@ -100,7 +101,7 @@ def read_file(filename, separator='=', ignore='#'):
                 continue
 
             # Add attribute to dictionary, first removing any unwanted information at the end of the line
-            # (including whitespace)
+            # (including whitespace and #)
             data[key] = attr.split(ignore)[0].strip('\n').strip()
 
     return data
@@ -119,3 +120,17 @@ def format_time(time_obj, fmt):
     #
     # # Return string format
     # return time_obj.isoformat().replace(':', '')
+
+
+def kill_process(process='pycam_camera'):
+    """Kills process on raspberry pi machine
+
+    Parameters
+    ----------
+    process: str
+        String for process to be killed, this may kill any process containing this as a substring, so use with caution
+    """
+    cmd = ['ps axg | grep {}'.format(process)]
+    p = subprocess.check_output(cmd, shell=True)
+    print(p)
+    subprocess.call(['kill', p.split()[0]])

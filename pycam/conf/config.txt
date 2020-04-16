@@ -10,8 +10,8 @@ port_comm=12345                     # Communication port
 port_transfer=12346                 # Image/spectra transfer port
 port_ext=12347                      # External communication port (laptop etc)
 
-remote_scripts=     # List of scripts to be run on remote pi, separated by commas
-local_scripts=      #
+remote_scripts=python3 /home/pi/pycam/scripts/kill_process.py     # List of scripts to be run on remote pi, separated by commas
+local_scripts=python3 ./kill_process.py      #
 cam_script=python3 /home/pi/pycam/scripts/pycam_camera.py
 spec_script=./pycam_spectrometer.py
 
