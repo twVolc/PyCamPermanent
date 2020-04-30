@@ -18,6 +18,7 @@ import queue
 import threading
 import pickle
 import subprocess
+import sys
 
 
 def read_network_file(filename):
@@ -115,164 +116,128 @@ class CommsFuncs(SendRecvSpecs):
 
     """ All of the following functions accept the same input arguments. Some are used and others aren't, but each 
     accepts the same number to allow external function calls without knowing which function is being called"""
-    def comms_img_cmd(self, cmd_dict, socks, config):
-        """Sends the command and associated value to both remote pis
-
-        Parameters
-        ----------
-        cmd_dict: dict
-            Dictionary containing commands
-        socks: dict
-            Dictionary of all sockets currently open, for forwarding commands
-        config: dict
-            Dictionary of any other configuration parameters which may be required
-        """
-        # Loops through ips for external pis (these are the two camera pis)
-        for ip in config['pi_ip'].split(','):
-            # Get the retrieve the correct connection to send to
-            conn = socks['comm'].get_connection(ip=ip)
-
-            # Send command to function for sending over socket
-            cmd = socks['comm'].encode_comms(cmd_dict)
-            socks['comm'].send_comms(conn, cmd)
-
-    def comms_spec_cmd(self, cmd_dict, socks, config):
-        """Sends the command and associated value to both remote pis
-
-        Parameters
-        ----------
-        cmd_dict: dict
-            Dictionary containing commands
-        socks: dict
-            Dictionary of all sockets currently open, for forwarding commands
-        config: dict
-            Dictionary of any other configuration parameters which may be required
-        """
-        # Retrieve the correct connection to send to
-        conn = socks['comm'].get_connection(ip=config[ConfigInfo.host_ip])
-
-        # Send command to function for sending over socket
-        cmd = socks['comm'].encode_comms(cmd_dict)
-        socks['comm'].send_comms(conn, cmd)
+    # def comms_img_cmd(self, cmd_dict, socks, config):
+    #     """Sends the command and associated value to both remote pis
+    #
+    #     Parameters
+    #     ----------
+    #     cmd_dict: dict
+    #         Dictionary containing commands
+    #     socks: dict
+    #         Dictionary of all sockets currently open, for forwarding commands
+    #     config: dict
+    #         Dictionary of any other configuration parameters which may be required
+    #     """
+    #     # Loops through ips for external pis (these are the two camera pis)
+    #     for ip in config['pi_ip'].split(','):
+    #         # Get the retrieve the correct connection to send to
+    #         conn = socks['comm'].get_connection(ip=ip)
+    #
+    #         # Send command to function for sending over socket
+    #         cmd = socks['comm'].encode_comms(cmd_dict)
+    #         socks['comm'].send_comms(conn, cmd)
+    #
+    # def comms_spec_cmd(self, cmd_dict, socks, config):
+    #     """Sends the command and associated value to both remote pis
+    #
+    #     Parameters
+    #     ----------
+    #     cmd_dict: dict
+    #         Dictionary containing commands
+    #     socks: dict
+    #         Dictionary of all sockets currently open, for forwarding commands
+    #     config: dict
+    #         Dictionary of any other configuration parameters which may be required
+    #     """
+    #     # Retrieve the correct connection to send to
+    #     conn = socks['comm'].get_connection(ip=config[ConfigInfo.host_ip])
+    #
+    #     # Send command to function for sending over socket
+    #     cmd = socks['comm'].encode_comms(cmd_dict)
+    #     socks['comm'].send_comms(conn, cmd)
 
     def IDN(self, value, connection, socks, config):
         """Not sure I need to do anything here, but I've included the method just in case"""
         pass
 
-    def SSC(self, value, connection, socks, config):
-        """Acts on SSC command"""
-        self.comms_img_cmd({'SSC': value}, socks, config)
 
-    def SSS(self, value, connection, socks, config):
-        """Acts on SSS command"""
-        self.comms_spec_cmd({'SSS': value}, socks, config)
+class MasterComms(CommsFuncs):
+    """Class containing methods for acting on comms received by the masterpi. These methods only include those
+    explicitly acted on by the masterpi - all comms are forwarded to other devices automatically for them to do
+    whatever work is needed by them
 
-    def FRC(self, value, connection, socks, config):
-        """Acts on FRC command"""
-        self.comms_img_cmd({'FRC': value}, socks, config)
+    Parameters
+    ----------
+    config: dict
+        Dictionary containing a number of critical configuration parameters
+    sockets: dict
+        Dictionary containing all SocketServer objects
+    comm_connections: CommConnection
+        Dictionary holding CommConnection objects
+    save_connections: SpecRecvConnection, ImgRecvConnection
+        Dictinoary containing these objects
+    ext_connections: CommConnection:
+        List containing these objects"""
 
-    def FRS(self, value, connection, socks, config):
-        """Acts on FRS command"""
-        self.comms_spec_cmd({'FRS': value}, socks, config)
+    def __init__(self, config, sockets, comm_connections, save_connections, ext_connections):
+        super().__init__()
 
-    def AUT(self, value, connection, socks, config):
-        """Acts on AUT command"""
-        self.comms_img_cmd({'AUT': value}, socks, config)
+        self.config = config
+        self.sockets = sockets
+        self.comm_connections = comm_connections
+        self.save_connections = save_connections
+        self.ext_connections = ext_connections
 
-    def SMN(self, value, connection, socks, config):
-        """Acts on SMN command"""
-        self.comms_img_cmd({'SMN': value}, socks, config)
-
-    def SMX(self, value, connection, socks, config):
-        """Acts on SMX command"""
-        self.comms_img_cmd({'SMX': value}, socks, config)
-
-    def WMN(self, value, connection, socks, config):
-        """Acts on WMN command"""
-        self.comms_spec_cmd({'WMN': value}, socks, config)
-
-    def WMX(self, value, connection, socks, config):
-        """Acts on WMX command"""
-        self.comms_spec_cmd({'WMX': value}, socks, config)
-
-    def SNS(self, value, connection, socks, config):
-        """Acts on SNS command"""
-        self.comms_spec_cmd({'SNS': value}, socks, config)
-
-    def SXS(self, value, connection, socks, config):
-        """Acts on SXS command"""
-        self.comms_spec_cmd({'SXS': value}, socks, config)
-
-    def TPC(self, value, connection, socks, config):
-        """Acts on TPC command"""
-        self.comms_img_cmd({'TPC': value}, socks, config)
-
-    def TPS(self, value, connection, socks, config):
-        """Acts on TPS command"""
-        self.comms_spec_cmd({'TPS': value}, socks, config)
-
-    def DKC(self, value, connection, socks, config):
-        """Acts on DKC command"""
-        self.comms_img_cmd({'DKC': value}, socks, config)
-
-    def DKS(self, value, connection, socks, config):
-        """Acts on DKS command"""
-        self.comms_img_cmd({'DKS': value}, socks, config)
-
-    def SPC(self, value, connection, socks, config):
-        """Acts on STP command, stopping acquisitions on cameras"""
-        self.comms_img_cmd({'SPC': value}, socks, config)
-
-    def STC(self, value, connection, socks, config):
-        """Acts on STT command, starting acquisitions on cameras"""
-        self.comms_img_cmd({'STC': value}, socks, config)
-
-    def SPS(self, value, connection, socks, config):
-        """Acts on SPS command, stopping acquisitions on spectrometer"""
-        self.comms_spec_cmd({'SPS': value}, socks, config)
-
-    def STS(self, value, connection, socks, config):
-        """Acts on STS command, starting acquisitions on spectrometer"""
-        self.comms_spec_cmd({'STS': value}, socks, config)
-
-    def EXT(self, value, connection, socks, config):
+    def EXT(self, value):
         """Acts on EXT command, closing everything down"""
-        if value:
-            # Send exit command to raspberry pis
-            self.comms_img_cmd({'EXT': 1}, socks, config)
+        time.sleep(3)
 
-            # Send exit command to spectrometer script (at local ip address)
-            self.comms_spec_cmd({'EXT': 1}, socks, config)
+        # Loop though each server closing connections and sockets
+        for server in self.sockets:
+            for conn in server.connections[:]:
+                server.close_connection(connection=conn[0])
+            server.close_socket()
 
-    def RST(self, value, connection, socks, config):
+        # Wait for all threads to finish (closing sockets should cause this)
+        for conn in self.ext_connections:
+            while self.ext_connections[conn].working or self.ext_connections[conn].accepting:
+                pass
+
+        for conn in self.save_connections:
+            while self.save_connections[conn].working or self.save_connections[conn].accepting:
+                pass
+
+        for conn in self.comms_connections:
+            while self.comms_connections[conn].working or self.comms_connections[conn].accepting:
+                pass
+
+        sys.exit(0)
+
+    def RST(self, value):
         """Acts on RST command, restarts entire system"""
         pass
 
-    def RSS(self, value, connection, socks, config):
+    def RSS(self, value):
         """Acts on RSS command, restarts pycam_spectrometer.py script"""
-        # Pass the EXT command, as this is essentially the same process. But the script then needs starting again here
-        self.comms_spec_cmd({'EXT': value}, socks, config)
+        # Wait some time for spectrometer to close itself down
+        time.sleep(2)
 
         # After we have closed the previous spectrometer script we open up a new one
         # MORE MAY BE NEEDED HERE AS I NEED TO REDO ALL SOCKET CONNECTIONS IN THIS CASE?
-        subprocess.run(['python3', config[ConfigInfo.spec_script], '&'])
+        subprocess.run(['python3', self.config[ConfigInfo.spec_script], '&'])
 
 
-    def RSC(self, value, connection, socks, config):
+    def RSC(self, value):
         """Acts on STP command, restarts pycam_camera.py script"""
-        # Pass the EXT command, as this is essentially the same process. But the script then needs starting again here
-        self.comms_img_cmd({'EXT': value}, socks, config)
 
         # Start the script again on the remote system
-        pi_ips = config[ConfigInfo.pi_ip].split(',')
+        pi_ips = self.config[ConfigInfo.pi_ip].split(',')
 
         # MORE MAY BE NEEDED HERE AS I NEED TO REDO ALL SOCKET CONNECTIONS IN THIS CASE?
         for ip in pi_ips:
             conn = open_ssh(ip)
-            ssh_cmd(conn, config[ConfigInfo.cam_script])
+            ssh_cmd(conn, self.config[ConfigInfo.cam_script])
             close_ssh(conn)
-
-
 
     def LOG(self, value, connection, socks, config):
         """Acts on LOG command, sending the specified log back to the connection"""
@@ -603,7 +568,7 @@ class PiSocketCamComms(SocketClient):
 
         self.camera = camera        # Camera object for interface/control
 
-    def SSC_comm(self, value):
+    def SSC(self, value):
         """Acts on SSC command
 
         Parameters
@@ -624,7 +589,7 @@ class PiSocketCamComms(SocketClient):
         # Send return communication
         self.send_comms(self.sock, comm)
 
-    def FRC_comm(self, value):
+    def FRC(self, value):
         """Acts on FRC command
 
         Parameters
@@ -640,7 +605,7 @@ class PiSocketCamComms(SocketClient):
         finally:
             self.send_comms(self.sock, comm)
 
-    def AUT_comm(self, value):
+    def AUT(self, value):
         """Acts on AUT command"""
         # Set auto_ss and return an error response if it can't be set
         try:
@@ -655,7 +620,7 @@ class PiSocketCamComms(SocketClient):
         # Send response message
         self.send_comms(self.sock, comm)
 
-    def SMN_comm(self, value):
+    def SMN(self, value):
         """Acts on SMN command"""
         if value < self.camera.max_saturation:
             self.camera.min_saturation = value
@@ -666,7 +631,7 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def SMX_comm(self, value):
+    def SMX(self, value):
         """Acts on SMX command"""
         if value > self.camera.min_saturation:
             self.camera.max_saturation = value
@@ -677,7 +642,7 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def TPC_comm(self, value):
+    def TPC(self, value):
         """Acts on TPC command, requesting this type of image from the camera"""
         try:
             self.camera.capture_q.put({'type': value})
@@ -688,7 +653,7 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def DKC_comm(self, value):
+    def DKC(self, value):
         """Acts on DKC command, stopping continuous capture if necessary then instigating dark sequence"""
         try:
             if value:
@@ -709,7 +674,7 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def SPC_comm(self, value):
+    def SPC(self, value):
         """Acts on SPC command by adding a stop command dictionary to the camera's capture queue"""
         if value:
             self.camera.capture_q.put({'exit_cont': True})
@@ -720,7 +685,7 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def STC_comm(self, value):
+    def STC(self, value):
         """Acts on STC command by adding a stop command dictionary to the camera's capture queue"""
         if value:
             self.camera.capture_q.put({'start_cont': True})
@@ -731,14 +696,29 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def EXT_comm(self, value):
-        """Shuts down camera - shutdown of the camera script still needs to be performed"""
+    def RSC(self, value):
+        """Implements restart of spectrometer script (restart is controlled externally by pycam_masterpi.py"""
         if value:
             self.camera.capture_q.put({'exit_cont': True})
             self.camera.capture_q.put({'exit': True})
-            comm = self.encode_comms({'EXT': 1})
+            comm = self.encode_comms({'RSC': 1})
         else:
             comm = self.encode_comms({'ERR': 'STC'})
+
+        # Send response
+        self.send_comms(self.sock, comm)
+
+    def EXT(self, value):
+        """Shuts down camera - shutdown of the camera script still needs to be performed"""
+        try:
+            if value:
+                self.camera.capture_q.put({'exit_cont': True})
+                self.camera.capture_q.put({'exit': True})
+                comm = self.encode_comms({'EXT': True})
+            else:
+                comm = self.encode_comms({'ERR': 'EXT'})
+        except:
+            comm = self.encode_comms({'ERR': 'EXT'})
 
         # Send response
         self.send_comms(self.sock, comm)
@@ -757,7 +737,7 @@ class PiSocketSpecComms(SocketClient):
 
         self.spectrometer = spectrometer  # Spectrometer object for interface/control
 
-    def SSS_comm(self, value):
+    def SSS(self, value):
         """Acts on SSS command
 
         Parameters
@@ -777,7 +757,7 @@ class PiSocketSpecComms(SocketClient):
 
         self.send_comms(self.sock, comm)
 
-    def FRS_comm(self, value):
+    def FRS(self, value):
         """Acts on FRS command
 
         Parameters
@@ -793,7 +773,7 @@ class PiSocketSpecComms(SocketClient):
         finally:
             self.send_comms(self.sock, comm)
 
-    def WMN_comm(self, value):
+    def WMN(self, value):
         """Acts on WMN command
 
         Parameters
@@ -810,7 +790,7 @@ class PiSocketSpecComms(SocketClient):
         # Return communication to say whether the work has been done or not
         self.send_comms(self.sock, comm)
 
-    def WMX_comm(self, value):
+    def WMX(self, value):
         """Acts on WMX command"""
         # Check the new value is more than the minimum in the saturation range window
         if value > self.spectrometer.saturation_range[0]:
@@ -822,7 +802,7 @@ class PiSocketSpecComms(SocketClient):
         # Return communication to say whether the work has been done or not
         self.send_comms(self.sock, comm)
 
-    def SNS_comm(self, value):
+    def SNS(self, value):
         """Acts on SNS command"""
         # Try to set spectrometer max saturation value. If we encounter any kind of error, return error value
         try:
@@ -833,7 +813,7 @@ class PiSocketSpecComms(SocketClient):
         finally:
             self.send_comms(self.sock, comm)
 
-    def SXS_comm(self, value):
+    def SXS(self, value):
         """Acts on SXS command"""
         # Try to set spectrometer max saturation value. If we encounter any kind of error, return error value
         try:
@@ -844,7 +824,7 @@ class PiSocketSpecComms(SocketClient):
         finally:
             self.send_comms(self.sock, comm)
 
-    def AUT_comm(self, value):
+    def AUT(self, value):
         """Acts on AUT command"""
         try:
             if value:
@@ -858,11 +838,11 @@ class PiSocketSpecComms(SocketClient):
         finally:
             self.send_comms(self.sock, comm)
 
-    def TPS_comm(self, value):
+    def TPS(self, value):
         """Acts on TPS command, requesting this type of image from the spectrometer"""
         self.spectrometer.capture_q.put({'type': value})
 
-    def DKS_comm(self, value):
+    def DKS(self, value):
         """Acts on DKS command, stopping continuous capture if necessary then instigating dark sequence"""
         try:
             if value:
@@ -883,7 +863,7 @@ class PiSocketSpecComms(SocketClient):
         # Send response message
         self.send_comms(self.sock, comm)
 
-    def SPS_comm(self, value):
+    def SPS(self, value):
         """Acts on SPS command by adding a stop command dictionary to the spectrometer's capture queue"""
         try:
             if value:
@@ -897,7 +877,7 @@ class PiSocketSpecComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def STS_comm(self, value):
+    def STS(self, value):
         """Acts on STS command by adding a stop command dictionary to the spectrometer's capture queue"""
         try:
             if value:
@@ -911,7 +891,7 @@ class PiSocketSpecComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def RSS_comm(self, value):
+    def RSS(self, value):
         """Implements restart of spectrometer script (restart is controlled externally by pycam_masterpi.py"""
         try:
             if value:
@@ -926,7 +906,7 @@ class PiSocketSpecComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
-    def EXT_comm(self, value):
+    def EXT(self, value):
         """Shuts down camera - shutdown of the camera script still needs to be performed"""
         try:
             if value:

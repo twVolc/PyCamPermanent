@@ -9,7 +9,7 @@ import sys
 sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
-    acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection
+    acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
@@ -159,7 +159,15 @@ sock_serv_ext = SocketServer(host_ip, port_ext)
 sock_serv_ext.open_socket()
 
 # Create obects for accepting and controlling 2 new connections (one may be local computer conn, other may be wireless)
-ext_comms = [CommConnection(sock_serv_ext, acc_conn=True), CommConnection(sock_serv_ext, acc_conn=True)]
+ext_connections = {'1': CommConnection(sock_serv_ext, acc_conn=True), '2': CommConnection(sock_serv_ext, acc_conn=True)}
+# ----------------------------------
+
+# Set up socket dictionary - the classes are mutable so the dictionary should carry any changes to the servers made
+# through time
+sock_dict = {'tsfr': sock_serv_transfer, 'comm': sock_serv_comm, 'ext': sock_serv_ext}
+
+# Setup masterpi comms function implementer
+master_comms_funcs = MasterComms(config, sock_dict, comms_connections, save_connections, ext_connections)
 
 # Instantiate CommsFuncs object for controlling execution of external communication requests
 comms_funcs = CommsFuncs()
@@ -188,41 +196,45 @@ while True:
     # If a CommConnection object is neither waiting to accept a connection or recieving data from a connection, we
     # must have lost that connection, so we close that connection just to make sure, and then setup the object
     # to accept a new connection
-    for comm_connection in ext_comms:
-        if not comm_connection.working and not comm_connection.accepting:
+    for conn in ext_connections:
+        if not ext_connections[conn].working and not ext_connections[conn].accepting:
             # Connection has probably already been close, but try closing it anyway
             try:
-                sock_serv_ext.close_connection(ip=comm_connection.ip)
+                sock_serv_ext.close_connection(ip=ext_connections[conn].ip)
             except socket.error:
                 pass
 
             # Setup object to accept new connection
-            comm_connection.acc_connection()
+            ext_connections[conn].acc_connection()
 
     # Generate dictionary with latest connection object (may be obsolete redoing this each loop if the objects
     # auto-update within a dictionary? i.e. do they change when changed outside of the dictionary object?
     # Dictionary is used by all comms functions
-    sock_dict = {'tsfr': sock_serv_transfer, 'comm': sock_serv_comm, 'ext': sock_serv_ext}
+
 
     # Check message queue in each comm port
-    for comm_connection in ext_comms:
+    for conn in ext_connections:
         try:
             # Check message queue (taken from tuple at position [1])
-            comm_cmd = comm_connection.q.get(block=False)
+            comm_cmd = ext_connections[conn].q.get(block=False)
             print(comm_cmd)
             if comm_cmd:
 
                 # Forward command to all communication sockets (2 cameras and 1 spectrometer)
-                sock_serv_comm.send_to_all(comms_connections[key])
+                sock_serv_comm.send_to_all(comm_cmd)
 
                 """An easier way of doing this may be to just forward it all to all instruments and let them
                 decide how to act on it from there? It would mean not separating each message into individual
                 keys at this point"""
                 # Loop through each command code in the dictionary, carrying our the commands individually
                 for key in comm_cmd:
-                    if key is not 'ERR':
-                        # Call correct method determined by 3 character code from comms message
-                        getattr(comms_funcs, key)(comm_cmd[key], comm_connection.connection, sock_dict, config)
+                    # If MasterComms has the method we call it, passing it the value from comm_cmd
+                    if hasattr(master_comms_funcs, key):
+                        getattr(master_comms_funcs, key)(comm_cmd[key])
+
+                    # if key is not 'ERR':
+                    #     # Call correct method determined by 3 character code from comms message
+                    #     getattr(comms_funcs, key)(comm_cmd[key], ext_connections[conn].connection, sock_dict, config)
 
                 # If spectrometer restart is requested we need to reset all socket communications associated with
                 # the spectrometer and setup new ones
@@ -300,8 +312,8 @@ while True:
                         sock_serv_transfer.close_socket()
 
                         # Wait for all threads to finish (closing sockets should cause this)
-                        for comm_connection in ext_comms:
-                            while comm_connection.working or comm_connection.accepting:
+                        for conn in ext_connections:
+                            while ext_connections[conn].working or ext_connections[conn].accepting:
                                 pass
 
                         for connection in save_connections:
