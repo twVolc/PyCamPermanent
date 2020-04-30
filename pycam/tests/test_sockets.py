@@ -265,8 +265,14 @@ class TestSockets:
         acc_thread.daemon = True
         acc_thread.start()
 
+        acc_thread_1 = threading.Thread(target=sock_serv.acc_connection, args=())
+        acc_thread_1.daemon = True
+        acc_thread_1.start()
+
         time.sleep(2)
 
         sock_serv.close_socket()
         acc_thread.join()
+        acc_thread_1.join()
         assert not acc_thread.is_alive()
+        assert not acc_thread_1.is_alive()

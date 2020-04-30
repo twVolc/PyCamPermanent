@@ -11,7 +11,8 @@ import sys
 sys.path.append('/home/pi/')
 
 from pycam.controllers import Camera
-from pycam.networking.sockets import PiSocketCam, PiSocketCamComms, read_network_file, recv_comms, send_imgs
+from pycam.networking.sockets import PiSocketCam, PiSocketCamComms, read_network_file, recv_comms, send_imgs, \
+    CommConnection, ImgSendConnection
 from pycam.setupclasses import FileLocator
 from pycam.utils import read_file
 
@@ -30,9 +31,7 @@ cam = Camera(band=config['band'])
 cam.initialise_camera()
 
 # Setup thread for controlling camera capture
-capt_thread = threading.Thread(target=cam.interactive_capture, args=())
-capt_thread.daemon = True
-capt_thread.start()
+cam.interactive_capture()
 
 # Start up continuous capture straight away
 cam.capture_q.put({'start_cont': True})
@@ -46,10 +45,14 @@ sock_trf = PiSocketCam(serv_ip, port, camera=cam)
 sock_trf.connect_socket()
 
 # Start image sending thread
-trf_event = threading.Event()
-thread_trf = threading.Thread(target=send_imgs, args=(sock_trf, cam.img_q, trf_event,))
-thread_trf.daemon = True
-thread_trf.start()
+trf_conn = ImgSendConnection(sock_trf, cam.img_q, acc_conn=False)
+trf_conn.thread_func()
+
+
+# trf_event = threading.Event()
+# thread_trf = threading.Thread(target=send_imgs, args=(sock_trf, cam.img_q, trf_event,))
+# thread_trf.daemon = True
+# thread_trf.start()
 # ----------------------------------------------------------------
 
 # ----------------------------------------------------------------
@@ -57,13 +60,10 @@ thread_trf.start()
 serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketCamComms(serv_ip, port, camera=cam)
 sock_comms.connect_socket()
-q_comm = queue.Queue()              # Queue for putting received comms in
-comm_event = threading.Event()      # Event to shut thread down
 
-# Start comms receiving thread
-thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
-thread_comm.daemon = True
-thread_comm.start()
+comm_connection = CommConnection(sock_comms, acc_conn=False)
+comm_connection.connection = sock_comms.sock
+comm_connection.thread_func()
 # -----------------------------------------------------------------
 
 """Final loop where all processes are carried out - mainly comms"""
@@ -73,7 +73,7 @@ while True:
     # Receive comms message and act on it if we have something
     try:
         # Check message queue (taken from tuple at position [1])
-        comm_cmd = q_comm.get(block=False)
+        comm_cmd = comm_connection.q.get(block=False)
         if comm_cmd:
 
             # Loop through each command code in the dictionary, carrying our the commands individually
@@ -82,16 +82,22 @@ while True:
                 getattr(sock_comms, key + '_comm')(comm_cmd[key])
 
                 if key == 'EXT':
-                    # Close down all threads
-                    comm_event.set()
-                    trf_event.set()
-                    thread_comm.join()
-                    thread_trf.join()
-                    capt_thread.join()
+                    # time.sleep(10)
 
-                    # Close sockets
-                    sock_comms.close_socket()
-                    sock_trf.close_socket()
+                    # Ensure transfer thread closes down
+                    trf_conn.event.set()
+                    trf_conn.q.put(['close', 1])
+
+                    # Wait for comms connection to thread to close
+                    while comm_connection.working:
+                        pass
+
+                    # Wait for image transfer thread to close
+                    while trf_conn.working:
+                        pass
+
+                    # Wait for camera capture thread to close
+                    cam.capture_thread.join()
 
                     # Exit script by breaking loop
                     sys.exit()
@@ -101,11 +107,7 @@ while True:
     # ---------------------------------------------------------------------------------------------
 
     # If our comms thread has died we try to reset it
-    if not thread_comm.is_alive():
+    if not comm_connection.working:
         sock_comms.connect_socket()
-        comm_event = threading.Event()  # Event to shut thread down
-
-        # Start comms receiving thread
-        thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
-        thread_comm.daemon = True
-        thread_comm.start()
+        comm_connection.connection = sock_comms.sock
+        comm_connection.thread_func()

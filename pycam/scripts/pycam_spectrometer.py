@@ -11,12 +11,14 @@ import sys
 sys.path.append('/home/pi/')
 
 from pycam.controllers import Spectrometer, SpectrometerConnectionError
-from pycam.networking.sockets import PiSocketSpec, PiSocketSpecComms, read_network_file, recv_comms, send_spectra
+from pycam.networking.sockets import PiSocketSpec, PiSocketSpecComms, read_network_file, recv_comms, send_spectra, \
+    CommConnection, SpecSendConnection
 from pycam.setupclasses import FileLocator
 from pycam.utils import read_file
 
 import threading
 import queue
+import time
 
 # Read config file
 config = read_file(FileLocator.CONFIG_SPEC)
@@ -29,9 +31,7 @@ except SpectrometerConnectionError:
     sys.exit()
 
 # Setup thread for controlling spectrometer capture
-capt_thread = threading.Thread(target=spec.interactive_capture, args=())
-capt_thread.daemon = True
-capt_thread.start()
+spec.interactive_capture()
 
 # Start up continuous capture straight away
 spec.capture_q.put({'start_cont': True})
@@ -42,11 +42,15 @@ serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
 sock_trf = PiSocketSpec(serv_ip, port, spectrometer=spec)
 sock_trf.connect_socket()
 
-# Start spectra sending thread
-trf_event = threading.Event()
-thread_trf = threading.Thread(target=send_spectra, args=(sock_trf, spec.spec_q, trf_event,))
-thread_trf.daemon = True
-thread_trf.start()
+# Create spectra sending object and start spectra sending thread
+trf_conn = SpecSendConnection(sock_trf, spec.spec_q, acc_conn=False)
+trf_conn.thread_func()
+
+#
+# trf_event = threading.Event()
+# thread_trf = threading.Thread(target=send_spectra, args=(sock_trf, spec.spec_q, trf_event,))
+# thread_trf.daemon = True
+# thread_trf.start()
 # ----------------------------------------------------------------
 
 # ----------------------------------------------------------------
@@ -54,13 +58,11 @@ thread_trf.start()
 serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketSpecComms(serv_ip, port, spectrometer=spec)
 sock_comms.connect_socket()
-q_comm = queue.Queue()              # Queue for putting received comms in
-comm_event = threading.Event()      # Event to shut thread down
 
-# Start comms receiving thread
-thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
-thread_comm.daemon = True
-thread_comm.start()
+# Setup CommConnection object
+comm_connection = CommConnection(sock=sock_comms, acc_conn=False)
+comm_connection.connection = sock_comms.sock
+comm_connection.thread_func()
 # -----------------------------------------------------------------
 
 """Final loop where all processes are carried out - mainly comms, spectrometer is doing work in background"""
@@ -70,7 +72,7 @@ while True:
     # Receive comms message and act on it if we have something
     try:
         # Check message queue (taken from tuple at position [1])
-        comm_cmd = q_comm.get(block=False)
+        comm_cmd = comm_connection.q.get(block=False)
         if comm_cmd:
 
             # Loop through each command code in the dictionary, carrying our the commands individually
@@ -88,17 +90,26 @@ while True:
                 # Call correct method determined by 3 character code from comms message
                 getattr(sock_comms, key + '_comm')(comm_cmd[key])
 
-                if key == 'EXT':
-                    # Close down all threads
-                    comm_event.set()
-                    trf_event.set()
-                    thread_comm.join()
-                    thread_trf.join()
-                    capt_thread.join()
+                with open('/home/pi/{}'.format(key),'a') as f:
+                    f.write('{}\n'.format(comm_cmd[key]))
 
-                    # Close sockets
-                    sock_comms.close_socket()
-                    sock_trf.close_socket()
+                if key == 'EXT':
+                    # time.sleep(10)
+
+                    # Ensure transfer thread closes down
+                    trf_conn.event.set()
+                    trf_conn.q.put(['close', 1])
+
+                    # Wait for comm connections receiving thread to close
+                    while comm_connection.working:
+                        pass
+
+                    # Wait for spectrum transfer thread to close
+                    while trf_conn.working:
+                        pass
+
+                    # Wait for spectrometer capture thread to close
+                    spec.capture_thread.join()
 
                     # Exit script by breaking loop
                     sys.exit()
@@ -108,11 +119,7 @@ while True:
     # ---------------------------------------------------------------------------------------------
 
     # If our comms thread has died we try to reset it
-    if not thread_comm.is_alive():
+    if not comm_connection.working:
         sock_comms.connect_socket()
-        comm_event = threading.Event()  # Event to shut thread down
-
-        # Start comms receiving thread
-        thread_comm = threading.Thread(target=recv_comms, args=(sock_comms, sock_comms.sock, q_comm, comm_event,))
-        thread_comm.daemon = True
-        thread_comm.start()
+        comm_connection.connection = sock_comms.sock
+        comm_connection.thread_func()

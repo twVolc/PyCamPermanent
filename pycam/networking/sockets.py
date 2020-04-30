@@ -251,11 +251,11 @@ class CommsFuncs(SendRecvSpecs):
     def RSS(self, value, connection, socks, config):
         """Acts on RSS command, restarts pycam_spectrometer.py script"""
         # Pass the EXT command, as this is essentially the same process. But the script then needs starting again here
-        self.comms_spec_cmd({'EXT': value}, socks. config)
+        self.comms_spec_cmd({'EXT': value}, socks, config)
 
         # After we have closed the previous spectrometer script we open up a new one
         # MORE MAY BE NEEDED HERE AS I NEED TO REDO ALL SOCKET CONNECTIONS IN THIS CASE?
-        subprocess.run([ConfigInfo.spec_script])
+        subprocess.run(['python3', config[ConfigInfo.spec_script], '&'])
 
 
     def RSC(self, value, connection, socks, config):
@@ -418,6 +418,10 @@ class SocketMeths(CommsFuncs):
                 # Receive data and add to buffer
                 data_buff += connection.recv(1)
 
+                # Sockets are blocking, so if we receive no data it means the socket has been closed - so raise error
+                if len(data_buff) == 0:
+                    raise socket.error
+
             except:
                 raise
 
@@ -465,7 +469,7 @@ class SocketClient(SocketMeths):
     def close_socket(self):
         """Closes socket by disconnecting from host"""
         self.sock.close()
-        print('Closed socket {}'.format(self.server_addr))
+        print('Closed client socket {}'.format(self.server_addr))
         self.connect_stat = False
 
     def generate_header(self, msg_size):
@@ -907,6 +911,21 @@ class PiSocketSpecComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
+    def RSS_comm(self, value):
+        """Implements restart of spectrometer script (restart is controlled externally by pycam_masterpi.py"""
+        try:
+            if value:
+                self.spectrometer.capture_q.put({'exit_cont': True})
+                self.spectrometer.capture_q.put({'exit': True})
+                comm = self.encode_comms({'RSS': True})
+            else:
+                comm = self.encode_comms({'ERR': 'RSS'})
+        except:
+            comm = self.encode_comms({'ERR': 'RSS'})
+
+        # Send response
+        self.send_comms(self.sock, comm)
+
     def EXT_comm(self, value):
         """Shuts down camera - shutdown of the camera script still needs to be performed"""
         try:
@@ -942,6 +961,7 @@ class SocketServer(SocketMeths):
         self.connections = []               # List holding connections
         self.num_conns = 0                  # Number of connections
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   # Socket object
+        # self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Make socket reuseable quickly
 
         self.camera = CameraSpecs()         # Camera specifications
         self.spectrometer = SpecSpecs()     # Spectrometer specifications
@@ -963,8 +983,9 @@ class SocketServer(SocketMeths):
 
     def close_socket(self):
         """Closes socket"""
-        print('Closed socket {}'.format(self.server_addr))
+        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
+        print('Closed socket {}'.format(self.server_addr))
 
     def acc_connection(self):
         """Accept connection and add to listen"""
@@ -974,7 +995,7 @@ class SocketServer(SocketMeths):
             connection = self.sock.accept()
             self.connections.append(connection)
             self.num_conns += 1
-        except OSError:
+        except:
             print('Error in accepting socket connection, it is likely that the socket was closed during accepting')
             connection = None
 
@@ -1048,6 +1069,8 @@ class SocketServer(SocketMeths):
                     # Get ip of connection, just closing print statement
                     ip = self.get_ip(connection=connection)
 
+
+                    connection.shutdown(socket.SHUT_RDWR)
                     # Close the connection
                     connection.close()
 
@@ -1057,6 +1080,9 @@ class SocketServer(SocketMeths):
                     # Update the number of connections we have
                     self.num_conns -= 1
 
+                    # Only want to close one connection at a time. And this prevents hitting index errors
+                    break
+
         # Search for ip address in connections list
         elif isinstance(ip, str):
             for i in range(self.num_conns):
@@ -1064,6 +1090,8 @@ class SocketServer(SocketMeths):
                 if ip in self.connections[i][1]:
                     conn_num = i
                     conn = self.connections[conn_num][0]
+                    conn.shutdown(socket.SHUT_RDWR)
+
                     conn.close()
 
                     # Remove connection from list
@@ -1072,18 +1100,22 @@ class SocketServer(SocketMeths):
                     # Update the number of connections we have
                     self.num_conns -= 1
 
+                    # Only want to close one connection at a time. And this prevents hitting index errors
+                    break
+
         # If explicitly passed the connection number we can just close that number directly
         else:
             if isinstance(conn_num, int):
                 ip = self.get_ip(conn_num=conn_num)
                 conn = self.connections[conn_num][0]
+                conn.shutdown(socket.SHUT_RDWR)
                 conn.close()
                 del self.connections[conn_num]
 
                 # Update the number of connections we have
                 self.num_conns -= 1
 
-        print('Closed connection: {}'.format(ip))
+        print('Closed connection: {}, {}'.format(ip, self.port))
 
     def recv_data(self, connection=None):
         """Receives and decodes header, then receives the rest of message
@@ -1096,6 +1128,11 @@ class SocketServer(SocketMeths):
         # Receive header and decode
         try:
             header = connection.recv(self.header_size)
+
+            # If we get no data, raise error, as the socket is blocking, so should not return none
+            if len(header) == 0:
+                raise socket.error
+
         except:     # Catch socket errors and re-raise
             raise
         header_txt = header.decode()
@@ -1112,6 +1149,11 @@ class SocketServer(SocketMeths):
         while len(data_buff) < bytes_to_recv:
             try:
                 data_buff += connection.recv(bytes_to_recv - len(data_buff))
+
+                # If we get no data, raise error
+                if len(data_buff) == 0:
+                    raise socket.error
+
             except:
                 raise
 
@@ -1142,6 +1184,7 @@ class SocketServer(SocketMeths):
         # Receive image data
         try:
             data_buff = self.recv_data(connection)
+
         except:
             raise
 
@@ -1240,8 +1283,8 @@ class Connection:
 
     Parameters
     ----------
-    sock: SocketServer
-        Object of server where external comms connection is  held
+    sock: SocketServer, PiSocketCam, PiSocketSpec
+        Object of one of above classes, which contain certain necessary methods
     """
     def __init__(self, sock, acc_conn=False):
         self.sock = sock
@@ -1251,11 +1294,11 @@ class Connection:
 
         self.q = queue.Queue()              # Queue for accessing information
         self.event = threading.Event()      # Event to close receiving function
-        self.recv_thread = None             # Thread for receiving communication data
+        self.func_thread = None             # Thread for receiving communication data
         self.acc_thread = None
 
         self.accepting = False              # Flag to show if object is still running acc_connection()
-        self.receiving = False
+        self.working = False
 
         if acc_conn:
             self.acc_connection()
@@ -1269,7 +1312,9 @@ class Connection:
     def connection(self, connection):
         """Setting new connection and updates new ip address too so everything is correct"""
         self._connection = connection
-        self.ip = self.sock.get_ip(connection=connection)
+
+        if isinstance(self.sock, SocketServer):
+            self.ip = self.sock.get_ip(connection=connection)
 
     def acc_connection(self):
         """Public access thread starter for _acc_connection"""
@@ -1283,23 +1328,29 @@ class Connection:
         """Accepts new connection"""
         # Accept new connection
         self.connection_tuple = self.sock.acc_connection()
+
+        # If accept returns None (probably due to closed socket, stop accepting and leave thread)
+        if self.connection_tuple is None:
+            self.accepting = False
+            return
+
         self.connection = self.connection_tuple[0]
 
         # Start thread for receiving communications from external instruments
-        self.recv_func()
+        self.thread_func()
 
         # Flag that we are no longer accepting a connection (placed here so that recv flag is True before this is False)
         self.accepting = False
 
-    def recv_func(self):
-        """Public access thread starter for recv_func"""
-        self.recv_thread = threading.Thread(target=self._recv_func,
-                                            args=(self,))
-        self.recv_thread.daemon = True
-        self.recv_thread.start()
-        self.receiving = True
+    def thread_func(self):
+        """Public access thread starter for thread_func"""
+        self.func_thread = threading.Thread(target=self._thread_func,
+                                            args=())
+        self.func_thread.daemon = True
+        self.func_thread.start()
+        self.working = True
 
-    def _recv_func(self):
+    def _thread_func(self):
         """Function to be overwritten by child classes"""
         pass
 
@@ -1316,7 +1367,7 @@ class CommConnection(Connection):
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def _recv_func(self, ):
+    def _thread_func(self):
         """ Continually loops through receiving communications and passing them to a queue"""
         while not self.event.is_set():
             try:
@@ -1329,24 +1380,28 @@ class CommConnection(Connection):
                 # Add message to queue to be processed
                 self.q.put(dec_mess)
 
-                if 'EXT' in dec_mess:
-                    if dec_mess['EXT']:
-                        self.receiving_comms = False
-                        return
+                # if 'EXT' in dec_mess:
+                #     if dec_mess['EXT']:
+                #         print('EXT command, closing CommConnection thread: {}'.format(self.ip))
+                #         self.receiving = False
+                #         return
 
             # If connection has been closed, return
             except socket.error:
-                self.receiving_comms = False
-                print('Socket Error, socket was closed, aborting thread.')
+                self.working = False
+                print('Socket Error, socket was closed, aborting CommConnection thread: {}, {}'.format(self.ip,
+                                                                                                       self.sock.port))
                 return
 
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
 
-class ImgConnection(Connection):
-    """Class for image transfer connection"""
+class ImgRecvConnection(Connection):
+    """Class for image receiving connection"""
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def _recv_func(self):
+    def _thread_func(self):
         """Image receiving and saving function"""
         while not self.event.is_set():
             try:
@@ -1359,16 +1414,20 @@ class ImgConnection(Connection):
             # Return if socket error is thrown (should signify that the connection has been closed)
             # Return if the header was not decodable, probably because of the socket being closed
             except (socket.error, HeaderMessageError):
-                self.receiving = False
+                self.working = False
+                print('Socket Error, socket was closed, aborting ImgConnection thread.')
                 return
 
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
 
-class SpecConnection(Connection):
-    """Class for image transfer connection"""
+
+class SpecRecvConnection(Connection):
+    """Class for spectrum receiving connection"""
     def __init__(self, sock, acc_conn=False):
         super().__init__(sock, acc_conn)
 
-    def _recv_func(self):
+    def _thread_func(self):
         """Spectra receiving and saving function"""
         while not self.event.is_set():
             try:
@@ -1381,15 +1440,101 @@ class SpecConnection(Connection):
             # Return if socket error is thrown (should signify that the connection has been closed)
             # Return if the header was not decodable, probably because of the socket being closed
             except (socket.error, HeaderMessageError):
-                self.receiving = False
+                self.working = False
+                print('Socket Error, socket was closed, aborting SpecConnection thread.')
                 return
+
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
+
+
+class ImgSendConnection(Connection):
+    """Class for image sending connection
+
+    Parameters
+    ----------
+    sock: PiSocketCam
+        Socket for image transfer
+    q: queue.Queue
+        Queue where images are placed
+    """
+
+    def __init__(self, sock, q=queue.Queue(), acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+        self.q = q
+
+    def _thread_func(self):
+        """Image sending function"""
+        while not self.event.is_set():
+            try:
+                # Retreive image from queue
+                [filename, image] = self.q.get()
+
+                # Can close this thread by adding ['close', 1] to the queue - this is a work around the queue being
+                # blocking, so prevents us from getting stuck in the queue waiting to receive if the camera has
+                # already stopped acquiring
+                if filename == 'close':
+                    break
+
+                # Send image over socket
+                self.sock.send_img(filename, image)
+
+            # Return if socket error is thrown (should signify that the connection has been closed)
+            except socket.error:
+                self.working = False
+                return
+
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
+
+
+class SpecSendConnection(Connection):
+    """Class for spectrum sending connection
+
+    Parameters
+    ----------
+    sock: PiSocketSpec
+        Socket for image transfer
+    q: queue.Queue
+        Queue where images are placed
+    """
+
+    def __init__(self, sock, q=queue.Queue(), acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+        self.q = q
+
+    def _thread_func(self):
+        """Image sending function"""
+        while not self.event.is_set():
+            try:
+                # Retrieve image from queue
+                [filename, spectrum] = self.q.get()
+
+                # Can close this thread by adding ['close', 1] to the queue - this is a work around the queue being
+                # blocking, so prevents us from getting stuck in the queue waiting to receive if the spectrometer has
+                # already stopped acquiring
+                if filename == 'close':
+                    break
+
+                # Send image over socket (wavelengths are retrieved from spectrometer object, so not passed to function here
+                self.sock.send_spectrum(filename=filename, spectrum=spectrum)
+
+            # Return if socket error is thrown (should signify that the connection has been closed)
+            except socket.error:
+                self.working = False
+                return
+
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
+
+
 # =================================================================================================================
 
 
-
-
 def acc_connection(sock, func):
-    """Accepts a socket, connection and function and starts a thread to run function after accepting connection
+    """Accepts a socket and function and starts a thread to run function after accepting connection
     Assumes the accepted connection is the most recent, so can use -1 indexing
 
     Parameters

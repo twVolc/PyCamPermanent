@@ -13,6 +13,7 @@ import time
 import datetime
 import numpy as np
 import cv2
+import threading
 
 from .setupclasses import CameraSpecs, SpecSpecs
 from .utils import format_time
@@ -36,6 +37,8 @@ class Camera(CameraSpecs):
         self.band = band                    # 'on' or 'off' band camera
         self.capture_q = queue.Queue()      # Queue for requesting images
         self.img_q = queue.Queue()          # Queue where images are put for extraction
+        self.capture_thread = None          # Thread for running interactive capture
+
         self.cam = picamera.PiCamera()      # picamera object for control of camera acquisitions
 
         self.cam_init = False               # Flags whether the camera has been initialised
@@ -216,6 +219,12 @@ class Camera(CameraSpecs):
         os.remove(lock)
 
     def interactive_capture(self, img_q=None, capt_q=None):
+        """Public access thread starter for _interactive_capture()"""
+        self.capture_thread = threading.Thread(target=self._interactive_capture, args=(img_q, capt_q,))
+        self.capture_thread.daemon = True
+        self.capture_thread.start()
+
+    def _interactive_capture(self, img_q=None, capt_q=None):
         """Interactive capturing by requesting captures through capt_q
 
         Parameters
@@ -414,6 +423,7 @@ class Spectrometer(SpecSpecs):
 
         self.capture_q = queue.Queue()      # Queue for requesting spectra
         self.spec_q = queue.Queue()         # Queue to put spectra in for access elsewhere
+        self.capture_thread = None          # Thread for interactive capture
 
         # Discover spectrometer devices
         self.devices = None  # List of detected spectrometers
@@ -529,7 +539,7 @@ class Spectrometer(SpecSpecs):
         time_str: str
             Time string containing date and time
         """
-        return time_str + '_' + self.file_ss.format(self.int_time) + '_' \
+        return time_str + '_' + self.file_ss.format(int(self.int_time)) + '_' \
                + str(self.coadd) + 'coadd_' + spec_type + self.file_ext
 
     def get_spec(self):
@@ -594,6 +604,12 @@ class Spectrometer(SpecSpecs):
             return 0
 
     def interactive_capture(self, spec_q=None, capt_q=None):
+        """Public access thread starter for _interactive_capture()"""
+        self.capture_thread = threading.Thread(target=self._interactive_capture, args=(spec_q, capt_q,))
+        self.capture_thread.daemon = True
+        self.capture_thread.start()
+
+    def _interactive_capture(self, spec_q=None, capt_q=None):
         """Interactive capturing by requesting captures through capt_q
 
         Parameters
