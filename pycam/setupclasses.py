@@ -108,19 +108,23 @@ class CameraSpecs:
         self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
-        self.ss_list = np.concatenate((np.arange(10**3, 10**4, 10**3),
-                                       np.arange(10**4, 10**5, 10**4),
-                                       np.arange(10**5, 10**6, 5 * 10**4),
-                                       np.arange(10**6, 6 * 10**6, 5 * 10**5),
-                                       np.array([6 * 10**5])))
+        self.ss_list = np.concatenate((np.arange(1000, 5000, 500),
+                                       np.arange(5000, 10000, 1000),
+                                       np.arange(10000, 50000, 5000),
+                                       np.arange(50000, 100000, 10000),
+                                       np.arange(100000, 500000, 50000),
+                                       np.arange(500000, 1000000, 100000),
+                                       np.arange(1000000, 6000000, 500000), [6000]))
 
         # Acquisition settings
-        self.shutter_speed = 50000  # Camera shutter speeds (us)
+        self.shutter_speed = 10000  # Camera shutter speeds (us)
         self.framerate = 0.25       # Camera framerate (Hz)
         self.analog_gain = 1        # Camera analog gain
         self.auto_ss = True         # Bool for requesting automated shutter speed adjustment
-        self.min_saturation = 0.4   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.min_saturation = 0.7   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.saturation_pixels = 100  # Number of pixels checked for saturation
+        self.saturation_rows = self.pix_num_y / 2   # rows to extract for saturation check (don't want to check lower rows as snow may be present
 
     @property
     def bit_depth(self):
@@ -324,7 +328,7 @@ class SpecSpecs:
         # Acquisition settings
         self.start_int_time = 100       # Starting integration time
         self.start_coadd = 1            # Number of spectra to coadd
-        self.framerate = 1              # Framerate of acquisitions (Hz)
+        self.framerate = 1            # Framerate of acquisitions (Hz)
         self.wavelengths = None         # Wavelengths (nm)
         self.spectrum = None            # Spectrum
         self.spectrum_filename = None   # Filename for spectrum
@@ -333,9 +337,13 @@ class SpecSpecs:
         self.min_saturation = 0.4   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.saturation_range = [300, 330]  # Range of wavelengths used in checking integration time
+        self.saturation_pixels = 2  # Number of pixels to check
 
         # Predefined list of integration times for automatic exposure adjustment
-        self.int_list = np.concatenate((np.arange(1, 10, 1),
+        self.int_list = np.concatenate((np.arange(0.1, 0.5, 0.05),
+                                        np.arange(0.5, 1, 0.1),
+                                        np.arange(1, 5, 0.5),
+                                        np.arange(5, 10, 1),
                                         np.arange(10, 50, 5),
                                         np.arange(50, 100, 10),
                                         np.arange(100, 500, 50),

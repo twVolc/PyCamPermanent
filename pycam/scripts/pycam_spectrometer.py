@@ -63,6 +63,10 @@ sock_comms.connect_socket()
 comm_connection = CommConnection(sock=sock_comms, acc_conn=False)
 comm_connection.connection = sock_comms.sock
 comm_connection.thread_func()
+
+# Pass tsfr and conn connection objects to comms socket object
+sock_comms.transfer_connection = trf_conn
+sock_comms.comm_connection = comm_connection
 # -----------------------------------------------------------------
 
 """Final loop where all processes are carried out - mainly comms, spectrometer is doing work in background"""
@@ -86,33 +90,39 @@ while True:
                 # in bits and pieces.
                 # I probably need an organising function which groups everything and returns the final command to pass
                 # to the camera capture queue
+                #
+                # with open('/home/pi/{}'.format(key), 'a') as f:
+                #     f.write('{}\n'.format(comm_cmd[key]))
 
-                # Call correct method determined by 3 character code from comms message
-                getattr(sock_comms, key + '_comm')(comm_cmd[key])
+                # Call correct method determined by 3 character code from comms message. If that message doesn't apply
+                # to the spectrometer, we simply catch the error and continue
+                try:
+                    getattr(sock_comms, key)(comm_cmd[key])
+                except AttributeError:
+                    continue
 
-                with open('/home/pi/{}'.format(key),'a') as f:
-                    f.write('{}\n'.format(comm_cmd[key]))
 
-                if key == 'EXT':
-                    # time.sleep(10)
 
-                    # Ensure transfer thread closes down
-                    trf_conn.event.set()
-                    trf_conn.q.put(['close', 1])
-
-                    # Wait for comm connections receiving thread to close
-                    while comm_connection.working:
-                        pass
-
-                    # Wait for spectrum transfer thread to close
-                    while trf_conn.working:
-                        pass
-
-                    # Wait for spectrometer capture thread to close
-                    spec.capture_thread.join()
-
-                    # Exit script by breaking loop
-                    sys.exit()
+                # if key == 'EXT':
+                #     # time.sleep(10)
+                #
+                #     # Ensure transfer thread closes down
+                #     trf_conn.event.set()
+                #     trf_conn.q.put(['close', 1])
+                #
+                #     # Wait for comm connections receiving thread to close
+                #     while comm_connection.working:
+                #         pass
+                #
+                #     # Wait for spectrum transfer thread to close
+                #     while trf_conn.working:
+                #         pass
+                #
+                #     # Wait for spectrometer capture thread to close
+                #     spec.capture_thread.join()
+                #
+                #     # Exit script by breaking loop
+                #     sys.exit()
 
     except queue.Empty:
         pass

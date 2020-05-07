@@ -46,6 +46,7 @@ class Camera(CameraSpecs):
         self._analog_gain = 1
         self.exposure_speed = None          # True camera exposure speed retrieved from picamera object
         self.lock = False                   # A lock to make sure that the camera is not being accessed somewhere
+        self.in_interactive_capture = False # Bool to flag when in interactive capture
         self.continuous_capture = False     # Bool to flag when in continuous capture mode
 
         # Get default specs from parent class and any other attributes
@@ -108,7 +109,7 @@ class Camera(CameraSpecs):
         Parameters
         ----------
         ss: int
-            Shutter speed (in micro-seconds)"""
+            Shutter speed (in microseconds)"""
         self.shutter_speed = ss
 
         # Set framerate as this affects shutter speed
@@ -142,13 +143,28 @@ class Camera(CameraSpecs):
         return '{}'.format(self.cam.exposure_speed)
 
     def check_saturation(self):
-        """Check image saturation
+        """
+        Check image saturation of average of self.saturation_pixels largest values. It is recommended that saturation
+        isn't checked on a single (max) pixel, as broken pixels may cause incorrect readings.
         return -1: if saturation exceeds the maximum allowed
         return 1:  if saturation is below minimum allowed
-        return 0:  otherwise"""
-        if np.amax(self.image) / self._max_DN > self.max_saturation:
+        return 0:  otherwise
+        """
+        # Extract rows to be checked - lower rows may not want to be checked if snow is present
+        sub_img = self.image[:self.saturation_rows + 1, :]
+
+        # Convert into 1D array
+        sub_img = sub_img.ravel()
+
+        # Get indices of 10 largest numbers
+        indices = sub_img.argsort()
+
+        # Get DN value of top X values
+        av_DN = np.mean(sub_img[indices[-self.saturation_pixels:]])
+
+        if av_DN / self._max_DN > self.max_saturation:
             return -1
-        elif np.amax(self.image) / self._max_DN < self.min_saturation:
+        elif av_DN / self._max_DN < self.min_saturation:
             return 1
         else:
             return 0
@@ -234,6 +250,9 @@ class Camera(CameraSpecs):
         capt_q: Queue-like object
             Capture commands are passed to this object using its put() method
         """
+        # Flag that we are in interactive capture mode
+        self.in_interactive_capture = True
+
         # Initialise camera if not already done
         if not self.cam_init:
             self.initialise_camera()
@@ -250,6 +269,7 @@ class Camera(CameraSpecs):
             if 'exit' in command:
                 # return if commanded to exit
                 if command['exit']:
+                    self.in_interactive_capture = False
                     return
 
             # # Extract img queue
@@ -359,7 +379,7 @@ class Camera(CameraSpecs):
             time_obj = datetime.datetime.now()
 
             # Only capture an image if we are at the right time
-            if time_obj.second % frame_rep == 0 and time_obj != prev_sec:
+            if time_obj.second % frame_rep == 0 and time_obj.second != prev_sec:
 
                 # Generate time string
                 time_str = format_time(time_obj, self.file_datestr)
@@ -441,6 +461,7 @@ class Spectrometer(SpecSpecs):
         self._coadd = None  # Controls coadding of spectra
         self.coadd = self.start_coadd
 
+        self.in_interactive_capture = False
         self.continuous_capture = False     # Bool set to true when camera is in continuous capture mode
 
     def find_device(self):
@@ -513,10 +534,9 @@ class Spectrometer(SpecSpecs):
 
     @int_time_idx.setter
     def int_time_idx(self, value):
-        """Update integration time to value in int_list defined by int_time_idx when int_time_idx is changed
-        Accesses hidden variable _int_time directly to avoid causing property method being called"""
+        """Update integration time to value in int_list defined by int_time_idx when int_time_idx is changed"""
         self._int_time_idx = value
-        self._int_time = self.int_list[self.int_time_idx]
+        self.int_time = self.int_list[self.int_time_idx]
 
     @property
     def coadd(self):
@@ -596,9 +616,15 @@ class Spectrometer(SpecSpecs):
         # Extract spectrum in specific wavelength range to be checked
         wavelengths, spectrum = self.extract_subspec(self.saturation_range)
 
-        if np.amax(spectrum) / self._max_DN > self.max_saturation:
+        # Get indices of 10 largest numbers
+        indices = spectrum.argsort()
+
+        # Get DN value of top X values
+        av_DN = np.mean(spectrum[indices[-self.saturation_pixels:]])
+
+        if av_DN / self._max_DN > self.max_saturation:
             return -1
-        elif np.amax(spectrum) / self._max_DN < self.min_saturation:
+        elif av_DN / self._max_DN < self.min_saturation:
             return 1
         else:
             return 0
@@ -619,6 +645,8 @@ class Spectrometer(SpecSpecs):
         capt_q: Queue-like object
             Capture commands are passed to this object using its put() method
         """
+        # Set in_interactive flag
+        self.in_interactive_capture = True
 
         # Setup queue
         capt_q = self._q_check(capt_q, q_type='capt')
@@ -632,6 +660,7 @@ class Spectrometer(SpecSpecs):
             if 'exit' in command:
                 # return if commanded to exit
                 if command['exit']:
+                    self.in_interactive_capture = False
                     return
 
             if 'int_time' in command:
@@ -705,20 +734,20 @@ class Spectrometer(SpecSpecs):
                         self.continuous_capture = False
                         return
 
-                if 'auto_ss' in mess:
-                    # If auto_ss is changed we need to readjust all parameters
-                    if not mess['auto_ss']:
-                        self.auto_ss = False
+                if 'auto_int' in mess:
+                    # If auto_int is changed we need to readjust all parameters
+                    if not mess['auto_int']:
+                        self.auto_int = False
                     else:
-                        self.auto_ss = True
+                        self.auto_int = True
 
-                    # If we aren't using auto_ss, check for ss in message to set shutter speed
-                if not self.auto_ss:
-                    if 'ss' in mess:
-                        self.int_time = mess['ss']
+                    # If we aren't using auto_int, check for ss in message to set shutter speed
+                if not self.auto_int:
+                    if 'int_time' in mess:
+                        self.int_time = mess['int_time']
 
                 if 'framerate' in mess:
-                    # We readjust to requested framerate regardless of if auto_ss is True or False
+                    # We readjust to requested framerate regardless of if auto_int is True or False
                     frame_rep = round(1 / mess['framerate'])
 
             except queue.Empty:
@@ -729,7 +758,7 @@ class Spectrometer(SpecSpecs):
             time_obj = datetime.datetime.now()
 
             # Only capture an image if we are at the right time
-            if time_obj.second % frame_rep == 0 and time_obj != prev_sec:
+            if time_obj.second % frame_rep == 0 and time_obj.second != prev_sec:
 
                 # Generate time string
                 time_str = format_time(time_obj, self.file_datestr)
@@ -750,8 +779,8 @@ class Spectrometer(SpecSpecs):
                         # Adjust ss_idx, but if we have gone beyond the indices available in ss_list it will throw an
                         # idx error, so we catch this and continue with same int if there are no higher/lower options
                         try:
-                            self.int_time_idx += adj_saturation
-                            self.int_time = self.int_list[self.int_time_idx]
+                            self.int_time_idx += adj_saturation # Adjusting this property automatically updates self.int_time
+                            # self.int_time = self.int_list[self.int_time_idx]
                         except IndexError:
                             pass
 

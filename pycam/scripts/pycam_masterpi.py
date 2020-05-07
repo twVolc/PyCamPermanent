@@ -9,7 +9,7 @@ import sys
 sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
-    acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms
+    acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms, SocketNames
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
@@ -164,7 +164,7 @@ ext_connections = {'1': CommConnection(sock_serv_ext, acc_conn=True), '2': CommC
 
 # Set up socket dictionary - the classes are mutable so the dictionary should carry any changes to the servers made
 # through time
-sock_dict = {'tsfr': sock_serv_transfer, 'comm': sock_serv_comm, 'ext': sock_serv_ext}
+sock_dict = {SocketNames.transfer: sock_serv_transfer, SocketNames.comm: sock_serv_comm, SocketNames.ext: sock_serv_ext}
 
 # Setup masterpi comms function implementer
 master_comms_funcs = MasterComms(config, sock_dict, comms_connections, save_connections, ext_connections)
@@ -217,7 +217,7 @@ while True:
         try:
             # Check message queue (taken from tuple at position [1])
             comm_cmd = ext_connections[conn].q.get(block=False)
-            print(comm_cmd)
+            print('Printing command from {} queue: {}'.format(ext_connections[conn].ip, comm_cmd))
             if comm_cmd:
 
                 # Forward command to all communication sockets (2 cameras and 1 spectrometer)
@@ -228,122 +228,132 @@ while True:
                 keys at this point"""
                 # Loop through each command code in the dictionary, carrying our the commands individually
                 for key in comm_cmd:
+
+                    # If we have an error key, return it to ext connection
+                    if key == 'ERR':
+                        err_dict = {'ERR': comm_cmd[key]}
+                        err_mess = sock_serv_ext.encode_comms(err_dict)
+                        sock_serv_ext.send_comms(ext_connections[conn].connection, err_mess)
+                        continue
+
                     # If MasterComms has the method we call it, passing it the value from comm_cmd
-                    if hasattr(master_comms_funcs, key):
+                    try:
                         getattr(master_comms_funcs, key)(comm_cmd[key])
+                    except AttributeError:
+                        print('Attribute error raised in command {}'.format(key))
+                        continue
 
-                    # if key is not 'ERR':
-                    #     # Call correct method determined by 3 character code from comms message
-                    #     getattr(comms_funcs, key)(comm_cmd[key], ext_connections[conn].connection, sock_dict, config)
 
-                # If spectrometer restart is requested we need to reset all socket communications associated with
-                # the spectrometer and setup new ones
-                # Restarting the program itself is handled by the pycam_spectrometer script, so we don't need to do this
-                if 'RSS' in comm_cmd.keys():
-                    if comm_cmd['RSS']:
 
-                        # Always do transfer socket first and then comms socket (so scripts don't hang trying to
-                        # connect for something when the socket isn't listening - may not be necessary as the
-                        # socket listen command can listen without accepting)
-                        # Close old transfer socket
-                        sock_serv_transfer.close_connection(ip=host_ip)
-
-                        # Wait until receiving function has finished, which should be immediately after the
-                        # connection is closed
-                        while save_connections[host_ip].working:
-                            pass
-
-                        # Accept new spectrum transfer connection and begin receiving loop automatically
-                        save_connections[host_ip].acc_connection()
-
-                        # First remove previous spectrometer connection
-                        sock_serv_comm.close_connection(ip=host_ip)
-
-                        # Wait for receiving function to close
-                        while comms_connections[host_ip].working:
-                            pass
-
-                        # Accept new connection and start receiving comms
-                        comms_connections[host_ip].acc_connection()
-
-                # As with spectrometer we need to do the same with the cameras if restart is requested
-                # Restarting the program itself is handled by the pycam_camera script, so we don't need to do this
-                if 'RSC' in comm_cmd.keys():
-                    if comm_cmd['RSC']:
-                        for ip in pi_ip:
-                            # Close image transfer connection at defined ip address
-                            sock_serv_transfer.close_connection(ip=ip)
-
-                            # Wait for save thread to finish
-                            while save_connections[ip].working:
-                                pass
-
-                            # Setup new transfer connection and begin receiving automatically
-                            save_connections[ip].acc_connection()
-
-                            # Close/remove previous comms connection for ip address
-                            sock_serv_comm.close_connection(ip=ip)
-
-                            # Wait for comm thread to finish
-                            while comms_connections[ip].working:
-                                pass
-
-                            # Accept new connection and start receiving comms
-                            comms_connections[ip].acc_connection()
-
-                # ------------------------------------------------------------------------------------
-                # Close everything if requested
-                if 'EXT' in comm_cmd.keys():
-                    if comm_cmd['EXT']:
-                        # Let EXT comms be extended to other RPis by sleeping briefly
-                        time.sleep(3)
-
-                        # Close all sockets (must close connections before socket)
-                        for conn in sock_serv_ext.connections[:]:
-                            sock_serv_ext.close_connection(connection=conn[0])
-                        sock_serv_ext.close_socket()
-
-                        for conn in sock_serv_comm.connections[:]:
-                            sock_serv_comm.close_connection(connection=conn[0])
-                        sock_serv_comm.close_socket()
-
-                        for conn in sock_serv_transfer.connections[:]:
-                            sock_serv_transfer.close_connection(connection=conn[0])
-                        sock_serv_transfer.close_socket()
-
-                        # Wait for all threads to finish (closing sockets should cause this)
-                        for conn in ext_connections:
-                            while ext_connections[conn].working or ext_connections[conn].accepting:
-                                pass
-
-                        for connection in save_connections:
-                            while save_connections[connection].working or save_connections[connection].accepting:
-                                pass
-
-                        for connection in comms_connections:
-                            while comms_connections[connection].working or comms_connections[connection].accepting:
-                                pass
-
-                        sys.exit(0)
+                # # If spectrometer restart is requested we need to reset all socket communications associated with
+                # # the spectrometer and setup new ones
+                # # Restarting the program itself is handled by the pycam_spectrometer script, so we don't need to do this
+                # if 'RSS' in comm_cmd.keys():
+                #     if comm_cmd['RSS']:
+                #
+                #         # Always do transfer socket first and then comms socket (so scripts don't hang trying to
+                #         # connect for something when the socket isn't listening - may not be necessary as the
+                #         # socket listen command can listen without accepting)
+                #         # Close old transfer socket
+                #         sock_serv_transfer.close_connection(ip=host_ip)
+                #
+                #         # Wait until receiving function has finished, which should be immediately after the
+                #         # connection is closed
+                #         while save_connections[host_ip].working:
+                #             pass
+                #
+                #         # Accept new spectrum transfer connection and begin receiving loop automatically
+                #         save_connections[host_ip].acc_connection()
+                #
+                #         # First remove previous spectrometer connection
+                #         sock_serv_comm.close_connection(ip=host_ip)
+                #
+                #         # Wait for receiving function to close
+                #         while comms_connections[host_ip].working:
+                #             pass
+                #
+                #         # Accept new connection and start receiving comms
+                #         comms_connections[host_ip].acc_connection()
+                #
+                # # As with spectrometer we need to do the same with the cameras if restart is requested
+                # # Restarting the program itself is handled by the pycam_camera script, so we don't need to do this
+                # if 'RSC' in comm_cmd.keys():
+                #     if comm_cmd['RSC']:
+                #         for ip in pi_ip:
+                #             # Close image transfer connection at defined ip address
+                #             sock_serv_transfer.close_connection(ip=ip)
+                #
+                #             # Wait for save thread to finish
+                #             while save_connections[ip].working:
+                #                 pass
+                #
+                #             # Setup new transfer connection and begin receiving automatically
+                #             save_connections[ip].acc_connection()
+                #
+                #             # Close/remove previous comms connection for ip address
+                #             sock_serv_comm.close_connection(ip=ip)
+                #
+                #             # Wait for comm thread to finish
+                #             while comms_connections[ip].working:
+                #                 pass
+                #
+                #             # Accept new connection and start receiving comms
+                #             comms_connections[ip].acc_connection()
+                #
+                # # ------------------------------------------------------------------------------------
+                # # Close everything if requested
+                # if 'EXT' in comm_cmd.keys():
+                #     if comm_cmd['EXT']:
+                #         # Let EXT comms be extended to other RPis by sleeping briefly
+                #         time.sleep(3)
+                #
+                #         # Close all sockets (must close connections before socket)
+                #         for conn in sock_serv_ext.connections[:]:
+                #             sock_serv_ext.close_connection(connection=conn[0])
+                #         sock_serv_ext.close_socket()
+                #
+                #         for conn in sock_serv_comm.connections[:]:
+                #             sock_serv_comm.close_connection(connection=conn[0])
+                #         sock_serv_comm.close_socket()
+                #
+                #         for conn in sock_serv_transfer.connections[:]:
+                #             sock_serv_transfer.close_connection(connection=conn[0])
+                #         sock_serv_transfer.close_socket()
+                #
+                #         # Wait for all threads to finish (closing sockets should cause this)
+                #         for conn in ext_connections:
+                #             while ext_connections[conn].working or ext_connections[conn].accepting:
+                #                 pass
+                #
+                #         for connection in save_connections:
+                #             while save_connections[connection].working or save_connections[connection].accepting:
+                #                 pass
+                #
+                #         for connection in comms_connections:
+                #             while comms_connections[connection].working or comms_connections[connection].accepting:
+                #                 pass
+                #
+                #         sys.exit(0)
                 # --------------------------------------------------------------------------------------
 
         except queue.Empty:
             pass
 
     # Receive data from pis and simply forward them on to remote computers
-    for key in comms_connections:
-        comm = comms_connections[key].q
-
-        try:
-            # Get message from queue if there is one
-            comm_cmd = comm.get(block=False)
-            if comm_cmd:
-
-                # Forward message to all external comm ports
-                sock_serv_ext.send_to_all(comm_cmd)
-
-        except queue.Empty:
-            pass
+    # for key in comms_connections:
+    #     comm = comms_connections[key].q
+    #
+    #     try:
+    #         # Get message from queue if there is one
+    #         comm_cmd = comm.get(block=False)
+    #         if comm_cmd:
+    #
+    #             # Forward message to all external comm ports
+    #             sock_serv_ext.send_to_all(comm_cmd)
+    #
+    #     except queue.Empty:
+    #         pass
+    master_comms_funcs.recv_and_fwd_comms()
 
 
 

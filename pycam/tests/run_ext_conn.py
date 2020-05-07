@@ -6,9 +6,12 @@ pycam_masterpi.py needs to be running on external host pi"""
 import sys
 sys.path.append('C:\\Users\\tw9616\\Documents\\PostDock\\Permanent Camera\\PyCamPermanent\\')
 
-from pycam.networking.sockets import SocketClient
+from pycam.networking.sockets import SocketClient, recv_comms
 from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
+import threading
+import queue
+import time
 import json
 
 # Read configuration file which contains important information for various things
@@ -23,6 +26,12 @@ sock_ext = SocketClient(host_ip, port)
 sock_ext.connect_socket()
 print(sock_ext.connect_stat)
 
+mess_q = queue.Queue()
+event = threading.Event()
+recv_thread = threading.Thread(target=recv_comms, args=(sock_ext, sock_ext.sock, mess_q, event,))
+recv_thread.daemon = True
+recv_thread.start()
+
 while True:
     # Ask user for input
     cmd = input('Enter command dictionary to send to PyCam (Q:1 to Exit). Strings require double quotes: ')
@@ -36,12 +45,24 @@ while True:
         sock_ext.send_comms(sock_ext.sock, cmd_bytes)
 
         # Test closing socket
-        sock_ext.send_comms(sock_ext.sock, sock_ext.encode_comms({'EXT': 1}))
+        # sock_ext.send_comms(sock_ext.sock, sock_ext.encode_comms({'EXT': 1}))
+
+    # ret_comm = sock_ext.recv_comms(sock_ext.sock)
+    # ret_dict = sock_ext.decode_comms(ret_comm)
 
 
-    ret_comm = sock_ext.recv_comms(sock_ext.sock)
-    ret_dict = sock_ext.decode_comms(ret_comm)
+    # Check queue for all responses after a brief wait
+    time.sleep(5)
+    while True:
+        try:
+            ret_dict = mess_q.get(block=False)
+            print(ret_dict)
+        except queue.Empty:
+            break
 
-    print(ret_dict)
+    # If the receiving thread has exited we should exit
+    if not recv_thread.is_alive():
+        break
+
 
 
