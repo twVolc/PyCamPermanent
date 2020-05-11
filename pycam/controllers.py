@@ -39,7 +39,12 @@ class Camera(CameraSpecs):
         self.img_q = queue.Queue()          # Queue where images are put for extraction
         self.capture_thread = None          # Thread for running interactive capture
 
-        self.cam = picamera.PiCamera()      # picamera object for control of camera acquisitions
+        # Attempt to creat picamera object. If we can't we flag that no camera is active
+        try:
+            self.cam = picamera.PiCamera()      # picamera object for control of camera acquisitions
+            self.camera_active = True
+        except NameError:
+            self.camera_active = False
 
         self.cam_init = False               # Flags whether the camera has been initialised
         self.filename = None                                        # Image filename
@@ -65,7 +70,8 @@ class Camera(CameraSpecs):
         self._analog_gain = ag
         while self.lock:
             pass
-        self.cam.analog_gain = ag
+        if self.camera_active:
+            self.cam.analog_gain = ag
 
     def _q_check(self, q, q_type='capt'):
         """Checks type of queue object and returns queue (ret_q). Sets queue to default queue if none is provided"""
@@ -162,9 +168,11 @@ class Camera(CameraSpecs):
         # Get DN value of top X values
         av_DN = np.mean(sub_img[indices[-self.saturation_pixels:]])
 
-        if av_DN / self._max_DN > self.max_saturation:
+        saturation = av_DN / self._max_DN
+
+        if saturation > self.max_saturation:
             return -1
-        elif av_DN / self._max_DN < self.min_saturation:
+        elif saturation < self.min_saturation:
             return 1
         else:
             return 0
@@ -622,9 +630,11 @@ class Spectrometer(SpecSpecs):
         # Get DN value of top X values
         av_DN = np.mean(spectrum[indices[-self.saturation_pixels:]])
 
-        if av_DN / self._max_DN > self.max_saturation:
+        saturation = av_DN / self._max_DN
+
+        if saturation > self.max_saturation:
             return -1
-        elif av_DN / self._max_DN < self.min_saturation:
+        elif saturation < self.min_saturation:
             return 1
         else:
             return 0
