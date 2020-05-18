@@ -124,7 +124,7 @@ class CameraSpecs:
         self.min_saturation = 0.7   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.saturation_pixels = 100  # Number of pixels checked for saturation
-        self.saturation_rows = int(self.pix_num_y / 2)   # rows to extract for saturation check (don't want to check lower rows as snow may be present
+        self.saturation_rows = int(self.pix_num_y / 2)   # rows to extract for saturation check (don't want to check lower rows as snow may be present (if negative, rows start from bottom and work up, postive -top-down)
 
     @property
     def bit_depth(self):
@@ -334,9 +334,9 @@ class SpecSpecs:
         self.spectrum_filename = None   # Filename for spectrum
 
         self.auto_int = True        # Bool for requesting automated integration time adjustment
-        self.min_saturation = 0.4   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.min_saturation = 0.6   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
-        self.saturation_range = [300, 330]  # Range of wavelengths used in checking integration time
+        self.saturation_range = [300, 335]  # Range of wavelengths used in checking integration time
         self.saturation_pixels = 2  # Number of pixels to check
 
         # Predefined list of integration times for automatic exposure adjustment

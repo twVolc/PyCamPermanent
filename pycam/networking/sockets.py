@@ -1814,3 +1814,27 @@ def recv_comms(sock, connection, mess_q=None, event=threading.Event()):
             print('Socket Error, socket was closed, aborting thread.')
             return
 
+
+
+# # TOM P HELP
+# # Inside the function (first make sure you function accepts one argument, which is the queue
+# def name_of_function(q):
+#     #do all of your stuff
+#
+#     # Then put the data in the queue
+#     q.put(data)
+#
+#
+# # In your main script file
+# q = queue.Queue()
+# thread_1 = threading.Thread(target=name_of_function, args=(q,))
+# thread_1.daemon = True
+# thread_1.start()
+#
+# while True:
+#     try:
+#         data = q.get()
+#     # If there's nothing in the queue it will throw an error if we make the queue non-blocking, so just catch this error
+#     # and continue on with the loop!
+#     except queue.Empty:
+#         pass

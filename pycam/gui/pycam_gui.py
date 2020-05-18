@@ -22,7 +22,8 @@ class PyCam(ttk.Frame):
 
         # Setup style
         self.style = ThemedStyle(self.parent)
-        self.style.set_theme('equilux')
+        # self.style.set_theme('equilux')
+        self.style.set_theme('breeze')
 
         # Menu bar setup
         self.menu = PyMenu(self, self.parent)
