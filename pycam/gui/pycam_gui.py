@@ -4,6 +4,10 @@
 
 from pycam.gui.menu import PyMenu
 from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
+from pycam.networking.sockets import SocketClient
+from pycam.setupclasses import ConfigInfo, FileLocator
+from pycam.utils import read_file
+import pycam.gui.network_cfg as cfg
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -20,13 +24,23 @@ class PyCam(ttk.Frame):
         parent.title('PyCam')
         self.parent.protocol('WM_DELETE_WINDOW', self.exit_app)
 
+        # Initiate indicator widget
+        cfg.indicator.initiate_indicator()
+
+        # Load in configuration file(s)
+        self.config = read_file(FileLocator.CONFIG_WINDOWS)
+
+        # Setup socket
+        self.sock = SocketClient(host_ip=self.config[ConfigInfo.host_ip], port=int(self.config[ConfigInfo.port_ext]))
+
+
         # Setup style
         self.style = ThemedStyle(self.parent)
         # self.style.set_theme('equilux')
         self.style.set_theme('breeze')
 
         # Menu bar setup
-        self.menu = PyMenu(self, self.parent)
+        self.menu = PyMenu(self, self.parent, sock=self.sock)
         self.parent.config(menu=self.menu.frame)
 
         # -----------------------------------------------

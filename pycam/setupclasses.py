@@ -18,20 +18,24 @@ pycam_details = {
 
 class FileLocator:
     """Defines locations of important files"""
-    PYCAM_ROOT = '/home/pi/pycam'                               # Root to pycam on Pis from home directory
+    PYCAM_ROOT_PI = '/home/pi/pycam'                               # Root to pycam on Pis from home directory
+    PYCAM_ROOT_WINDOWS = 'C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam'  # Root to pycam on Windows machine
 
-    CONF_DIR = PYCAM_ROOT + '/conf/'                            # Directory holding configuration files
+    CONF_DIR = PYCAM_ROOT_PI + '/conf/'                         # Directory holding configuration files
+    CONF_DIR_WINDOWS = PYCAM_ROOT_WINDOWS + '/conf/'            # Directory holding configuration files on Windows
 
     CONFIG = CONF_DIR + 'config.txt'                            # Main configuration file
+    CONFIG_WINDOWS = CONF_DIR_WINDOWS + 'config.txt'            # Main configuration file on Windows machine
     CONFIG_CAM = CONF_DIR + 'cam_specs.txt'                     # Camera configuration file
     CONFIG_SPEC = CONF_DIR + 'spec_specs.txt'                   # Spectrometer configuration file
 
     NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
     NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data
 
-    IMG_SPEC_PATH = PYCAM_ROOT + '/Images/'                      # Image and spectra path on main Pi
+    IMG_SPEC_PATH = PYCAM_ROOT_PI + '/Images/'                  # Image and spectra path on main Pi
+    IMG_SPEC_PATH_WINDOWS = PYCAM_ROOT_WINDOWS + '/Images/'     # Image and spectra path on Windows machine
 
-    LOG_PATH = PYCAM_ROOT + '/logs/'
+    LOG_PATH = PYCAM_ROOT_PI + '/logs/'
 
 
 class ConfigInfo:

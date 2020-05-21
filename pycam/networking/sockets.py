@@ -100,6 +100,8 @@ class CommsFuncs(SendRecvSpecs):
             'ATS': (bool, [0, 1]),              # Auto-shutter speed for spectrometer [options]
             'SMN': (float, [0.0, 0.9]),         # Minimum saturation accepted before adjusting shutter speed
             'SMX': (float, [0.1, 1.0]),         # Maximum saturation accepted before adjusting shutter speed
+            'PXC': (int, [0, 10000]),           # Number of saturation pixels average
+            'RWC': (int, [-CameraSpecs().pix_num_y, CameraSpecs().pix_num_y]),  # Number of rows
             'WMN': (int, [300, 400]),           # Minimum wavelength of spectra to check saturation
             'WMX': (int, [300, 400]),           # Maximum wavelength of spectra to check saturation
             'SNS': (float, [0.0, 0.9]),         # Minimum saturation accepted for spectra before adjusting int. time
@@ -469,25 +471,63 @@ class SocketClient(SocketMeths):
         self.server_addr = (self.host_ip, self.port)    # Tuple packaging for later use
         self.connect_stat = False                       # Bool for defining if object has a connection
 
+        self.timeout = 5    # Timeout on attempting to connect socket
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   # Socket object
 
-        self.transfer_connection = None   # Transfer connection attribute, allows control of this from the comms object
-        self.comm_connection = None   # Comms connection attribute
+        self.transfer_connection = None # Transfer connection attribute, allows control of this from the comms object
+        self.comm_connection = None     # Comms connection attribute
 
-    def connect_socket(self):
+    def update_address(self, host_ip, port):
+        """Updates socket information (only to be used if this object does not currently have an active connection)"""
+        self.host_ip = host_ip
+        self.port = port
+        self.server_addr = (self.host_ip, self.port)
+
+    def connect_socket(self, event=threading.Event()):
         """Opens socket by attempting to make connection with host"""
         try:
-            while not self.connect_stat:
+            while not self.connect_stat and not event.is_set():
                 try:
-                    print('Connecting to {}'.format(self.server_addr))
+                    print('Client connecting to {}'.format(self.server_addr))
+                    # print(self.sock)
                     self.sock.connect(self.server_addr)  # Attempting to connect to the server
+                    print('Client connected')
                     self.connect_stat = True
-                except OSError:
+                except OSError as e:
+                    # If the socket was previously closed we may need to create a new socket object to connect
+                    if 'WinError 10038' in '{}'.format(e):
+                        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     continue
         except Exception as e:
             with open(FileLocator.LOG_PATH + 'client_socket_error.log', 'a') as f:
                 f.write('ERROR: ' + str(e) + '\n')
         return
+
+    def connect_socket_timeout(self, timeout=None):
+        """Attempts to connect to socket - threads connection attempt and will timeout after given time"""
+        if timeout is None:
+            timeout = self.timeout
+
+        # Setup thread to attempt connection
+        event = threading.Event()
+        connection_thread = threading.Thread(target=self.connect_socket, args=(event,))
+        connection_thread.daemon = True
+        start_time = time.time()
+        connection_thread.start()
+
+        # Keep checking connection status until the timeout period has elapsed
+        while time.time() - start_time <= timeout:
+            # If we have made a connection we return
+            if not connection_thread.is_alive() and self.connect_stat:
+                return
+
+        # Close thread is we have not had a connection yet
+        event.set()
+
+        # If we get to allotted time and no connection has been made we raise a connection error
+        raise ConnectionError
+
 
     def close_socket(self):
         """Closes socket by disconnecting from host"""
@@ -753,6 +793,26 @@ class PiSocketCamComms(SocketClient):
             comm = self.encode_comms({'EER': 'SMX'})
 
         # Send response
+        self.send_comms(self.sock, comm)
+
+    def PXC(self, value):
+        """Acts on PXC command, updating the pixel average for saturation"""
+        try:
+            self.camera.saturation_pixels = value
+            comm = self.encode_comms({'PXC': value})
+        except:
+            comm = self.encode_comms({'ERR': 'PXC'})
+
+        self.send_comms(self.sock, comm)
+
+    def RWC(self, value):
+        """Acts on RWC command, updating the pixel average for saturation"""
+        try:
+            self.camera.saturation_rows = value
+            comm = self.encode_comms({'RWC': value})
+        except:
+            comm = self.encode_comms({'ERR': 'RWC'})
+
         self.send_comms(self.sock, comm)
 
     def TPC(self, value):
@@ -1645,6 +1705,87 @@ class SpecSendConnection(Connection):
 
         # If event is set we need to exit thread and set receiving to False
         self.working = False
+
+
+class ExternalRecvConnection(Connection):
+    """Communication class
+    An object of this class will be created for each separate comms connection
+
+    Parameters
+    ----------
+    sock: SocketClient
+        Object of server where external comms connection is  held
+    """
+    def __init__(self, sock, acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+    def _thread_func(self):
+        """ Continually loops through receiving communications and passing them to a queue"""
+        while not self.event.is_set():
+            try:
+                # Receive socket data (this is a blocking process until a complete message is received)
+                message = self.sock.recv_comms(self.sock.sock)
+
+                # Decode the message into dictionary
+                dec_mess = self.sock.decode_comms(message)
+
+                # Add message to queue to be processed
+                self.q.put(dec_mess)
+
+                # if 'EXT' in dec_mess:
+                #     if dec_mess['EXT']:
+                #         print('EXT command, closing CommConnection thread: {}'.format(self.ip))
+                #         self.receiving = False
+                #         return
+
+            # If connection has been closed, return
+            except socket.error as e:
+                self.working = False
+                print(e)
+                print('Socket Error, socket was closed, aborting ExternalRecvConnection thread: {}, {}'.format(self.ip,
+                                                                                                       self.sock.port))
+                return
+
+        # If event is set we need to exit thread and set receiving to False
+        self.working = False
+
+
+class ExternalSendConnection(Connection):
+    """Class for containing an external connection to the PiCam insturment
+
+    Parameters
+    ----------
+    sock:
+        Socket for communications
+    q: queue.Queue
+        Queue where commands are placed
+    """
+
+    def __init__(self, sock, q=queue.Queue(), acc_conn=False):
+        super().__init__(sock, acc_conn)
+
+        self.q = q
+
+    def _thread_func(self):
+        """Image sending function"""
+        while not self.event.is_set():
+            try:
+                # Get command from queue
+                cmd = self.q.get(block=True)
+
+                # Encode command to bytes
+                cmd_bytes = self.sock.encode_comms(cmd)
+
+                # Send comms
+                self.sock.send_comms(self.sock, cmd_bytes)
+
+            # If connection has been closed, return
+            except socket.error as e:
+                self.working = False
+                print(e)
+                print('Socket Error, socket was closed, aborting CommConnection thread: {}, {}'.format(self.ip,
+                                                                                                       self.sock.port))
+                return
 
 
 # =================================================================================================================

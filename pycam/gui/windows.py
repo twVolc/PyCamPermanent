@@ -6,6 +6,8 @@ Each window forms a tab which can be accessed through the 'View' menu."""
 import tkinter as tk
 import tkinter.ttk as ttk
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
+from .misc import Indicator
+import pycam.gui.network_cfg as cfg
 
 
 class CameraWind:
@@ -25,11 +27,16 @@ class CameraWind:
         self.pady = 5
 
         self.frame = ttk.Frame(self.parent)
-        self.frame.columnconfigure(0, weight=1)
-        self.frame.rowconfigure(0, weight=1)
+        # self.frame.columnconfigure(0, weight=1)
+        # self.frame.rowconfigure(0, weight=1)
 
+        # Get indicator and place it in the top of the frame
+        cfg.indicator.generate_indicator(self.frame)
+        cfg.indicator.frames[-1].grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+
+        # Get acquisition settings frame and add it to window
         self.acq_settings = CameraSettingsWidget(self.frame)
-        self.acq_settings.frame.grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+        self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
 
 class SpecWind:
@@ -41,8 +48,13 @@ class SpecWind:
         self.pady = 5
         self.frame = ttk.Frame(self.parent)
 
+        # Get indicator and place it in the top of the frame
+        cfg.indicator.generate_indicator(self.frame)
+        cfg.indicator.frames[-1].grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+
+        # Get acquisition settings frame and add it to window
         self.acq_settings = SpectrometerSettingsWidget(self.frame)
-        self.acq_settings.frame.grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+        self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
 
 class AnalysisWind:

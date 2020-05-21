@@ -9,6 +9,9 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 
+import pycam.gui.network_cfg as cfg
+
+
 
 class TkVariables:
     """
@@ -277,6 +280,18 @@ class CameraSettingsWidget(TkVariables):
         # Setup camera defaults
         self.set_cam_defaults()
 
+        # Dictionary of all commands and associated attribute names in CameraSettings widget
+        self.cmd_dict = {'SSA': 'ss_A',
+                         'SSB': 'ss_B',
+                         'FRC': 'framerate',
+                         'ATA': 'auto_B',
+                         'ATB': 'auto_A',
+                         'SMN': 'min_saturation',
+                         'SMX': 'max_saturation',
+                         'PXC': 'saturation_pixels',
+                         'RWC': 'saturation_rows'
+                         }
+
         # --------------------------------------------------------------------------------------------------------------
         # GUI layout
         # --------------------------------------------------------------------------------------------------------------
@@ -406,6 +421,12 @@ class SpectrometerSettingsWidget(TkVariables):
         option_menu.grid(row=row, column=1, padx=5, pady=5, sticky='ew')
         row += 1
 
+        ttk.Label(self.frame, text='Coadd spectra:').grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        s = ttk.Spinbox(self.frame, width=4, textvariable=self._coadd, from_=0, to=20, increment=1)
+        s.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        s.set(self.coadd)  # Set intial value 
+        row += 1
+
         # Shutter speed
         self.ss_frame = ttk.LabelFrame(self.frame, text='Shutter speed (ms):')
         self.ss_frame.grid(row=row, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='nsew')
@@ -470,5 +491,29 @@ class SpectrometerSettingsWidget(TkVariables):
         e = ttk.Entry(self.spec_param_frame, textvariable=self._bit_depth, width=4)
         e.grid(row=2, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
+
+
+class CommHandler:
+    """
+    Handles communication backend between GUI settings and socket connection
+
+    Parameters
+    ----------
+    cam: CameraSettingsWidget
+        Frontend class for camera acquisition settings
+    spec: SpectrometerSettingsWidget
+        Frontend class for spectrometer acquisition settings
+    """
+    def __init__(self, cam, spec, frame):
+        self.cam = cam
+        self.spec = spec
+        self.frame = frame
+
+        self.acq_button = ttk.Button(self.frame, text='Update camera', command=self.acq_comm)
+
+    def acq_comm(self):
+        """Performs the acquire command, sending all relevant"""
+
+
 
 

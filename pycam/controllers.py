@@ -76,13 +76,13 @@ class Camera(CameraSpecs):
     def _q_check(self, q, q_type='capt'):
         """Checks type of queue object and returns queue (ret_q). Sets queue to default queue if none is provided"""
         if isinstance(q, multiprocessing.managers.BaseProxy):
-            print('Using multiprocessing queue')
+            # print('Using multiprocessing queue')
             ret_q = q
         elif isinstance(q, queue.Queue):
-            print('Using Queue queue')
+            # print('Using Queue queue')
             ret_q = q
         else:
-            print('Unrecognized queue object, reverting to default')
+            # print('Unrecognized queue object, reverting to default')
             if q_type == 'capt':
                 ret_q = self.capture_q
             elif q_type == 'img':
@@ -157,7 +157,10 @@ class Camera(CameraSpecs):
         return 0:  otherwise
         """
         # Extract rows to be checked - lower rows may not want to be checked if snow is present
-        sub_img = self.image[:self.saturation_rows + 1, :]
+        if self.saturation_rows > 0:
+            sub_img = self.image[:self.saturation_rows, :]
+        else:
+            sub_img = self.image[self.saturation_rows:, :]
 
         # Convert into 1D array
         sub_img = sub_img.ravel()
@@ -490,13 +493,13 @@ class Spectrometer(SpecSpecs):
     def _q_check(self, q, q_type='capt'):
         """Checks type of queue object and returns queue (ret_q). Sets queue to default queue if none is provided"""
         if isinstance(q, multiprocessing.managers.BaseProxy):
-            print('Using multiprocessing queue')
+            # print('Using multiprocessing queue')
             ret_q = q
         elif isinstance(q, queue.Queue):
-            print('Using Queue queue')
+            # print('Using Queue queue')
             ret_q = q
         else:
-            print('Unrecognized queue object, reverting to default')
+            # print('Unrecognized queue object, reverting to default')
             if q_type == 'capt':
                 ret_q = self.capture_q
             elif q_type == 'spec':
