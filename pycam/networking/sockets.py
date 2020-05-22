@@ -98,10 +98,12 @@ class CommsFuncs(SendRecvSpecs):
             'ATA': (bool, [0, 1]),              # Auto-shutter speed for camera A [options]
             'ATB': (bool, [0, 1]),              # Auto-shutter speed for camera B [options]
             'ATS': (bool, [0, 1]),              # Auto-shutter speed for spectrometer [options]
+            'CAD': (int, [0, 20]),              # Coadd number
             'SMN': (float, [0.0, 0.9]),         # Minimum saturation accepted before adjusting shutter speed
             'SMX': (float, [0.1, 1.0]),         # Maximum saturation accepted before adjusting shutter speed
             'PXC': (int, [0, 10000]),           # Number of saturation pixels average
             'RWC': (int, [-CameraSpecs().pix_num_y, CameraSpecs().pix_num_y]),  # Number of rows
+            'PXS': (int, [0, SpecSpecs().pix_num]),     # Number of pixels to average for determining saturation
             'WMN': (int, [300, 400]),           # Minimum wavelength of spectra to check saturation
             'WMX': (int, [300, 400]),           # Maximum wavelength of spectra to check saturation
             'SNS': (float, [0.0, 0.9]),         # Minimum saturation accepted for spectra before adjusting int. time
@@ -959,6 +961,16 @@ class PiSocketSpecComms(SocketClient):
             comm = self.encode_comms({'FRS': value})
         except:
             comm = self.encode_comms({'ERR': 'FRS'})
+        finally:
+            self.send_comms(self.sock, comm)
+
+    def CAD(self, value):
+        """Acts on CAD command"""
+        try:
+            self.spectrometer.coadd = value
+            comm = self.encode_comms({'CAD': value})
+        except:
+            comm = self.encode_comms({'ERR': 'CAD'})
         finally:
             self.send_comms(self.sock, comm)
 

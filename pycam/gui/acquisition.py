@@ -258,6 +258,7 @@ class TkVariables:
         self.saturation_pixels = spec.saturation_pixels
         self.fov_x = spec.fov
         self.bit_depth = spec.bit_depth
+        self.coadd = spec.start_coadd
 
 
 class CameraSettingsWidget(TkVariables):
@@ -284,8 +285,8 @@ class CameraSettingsWidget(TkVariables):
         self.cmd_dict = {'SSA': 'ss_A',
                          'SSB': 'ss_B',
                          'FRC': 'framerate',
-                         'ATA': 'auto_B',
-                         'ATB': 'auto_A',
+                         'ATA': 'auto_A',
+                         'ATB': 'auto_B',
                          'SMN': 'min_saturation',
                          'SMX': 'max_saturation',
                          'PXC': 'saturation_pixels',
@@ -409,6 +410,19 @@ class SpectrometerSettingsWidget(TkVariables):
         # Setup camera defaults
         self.set_spec_defaults()
 
+        # Dictionary of all commands and associated attribute names in SpectrometerSettings widget
+        self.cmd_dict = {'SSS': 'ss_A',
+                         'ATS': 'auto_A',
+                         'FRS': 'framerate',
+                         'CAD': 'coadd',
+                         'PXS': 'saturation_pixels',
+                         'SNS': 'min_saturation',
+                         'SXS': 'max_saturation',
+                         'PXC': 'saturation_pixels',
+                         'RWC': 'saturation_rows',
+                         'WMN': 'wavelength_min',
+                         'WMX': 'wavelength_max'
+                         }
         # --------------------------------------------------------------------------------------------------------------
         # GUI layout
         # --------------------------------------------------------------------------------------------------------------
@@ -424,7 +438,7 @@ class SpectrometerSettingsWidget(TkVariables):
         ttk.Label(self.frame, text='Coadd spectra:').grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         s = ttk.Spinbox(self.frame, width=4, textvariable=self._coadd, from_=0, to=20, increment=1)
         s.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
-        s.set(self.coadd)  # Set intial value 
+        s.set(self.coadd)  # Set intial value
         row += 1
 
         # Shutter speed
@@ -513,6 +527,22 @@ class CommHandler:
 
     def acq_comm(self):
         """Performs the acquire command, sending all relevant"""
+        # Setup empty command dictionary
+        cmd_dict = dict()
+
+        # Loop through keys in camera command dictionary to extract all pertinent values to be sent to the instrument
+        for cmd in self.cam.cmd_dict:
+            cmd_dict[cmd] = getattr(self.cam, self.cam.cmd_dict[cmd])
+
+        # Do the same for the spectrometer
+        for cmd in self.spec.cmd_dict:
+            cmd_dict[cmd] = getattr(self.spec, self.spec.cmd_dict[cmd])
+
+        # Encode dictionary to bytes
+        cmd_bytes = cfg.sock.encode_comms(cmd_dict)
+
+        # Send command
+        cfg.sock.send_comms(cfg.sock.sock, cmd_bytes)
 
 
 
