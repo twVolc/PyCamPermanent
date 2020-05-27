@@ -220,12 +220,14 @@ class MasterComms(CommsFuncs):
 
     def RSS(self, value):
         """Acts on RSS command, restarts pycam_spectrometer.py script"""
+        print('Restarting spectrometer')
+
         # Wait some time for spectrometer to close itself down
         time.sleep(2)
 
         # After we have closed the previous spectrometer script we open up a new one
         # MORE MAY BE NEEDED HERE AS I NEED TO REDO ALL SOCKET CONNECTIONS IN THIS CASE?
-        subprocess.run(['python3', self.config[ConfigInfo.spec_script], '&'])
+        subprocess.Popen(['python3', self.config[ConfigInfo.spec_script], '&'])
 
         # Always do transfer socket first and then comms socket (so scripts don't hang trying to
         # connect for something when the socket isn't listening - may not be necessary as the
@@ -238,22 +240,25 @@ class MasterComms(CommsFuncs):
         while self.save_connections[self.config[ConfigInfo.host_ip]].working:
             pass
 
-        # Accept new spectrum transfer connection and begin receiving loop automatically
-        self.save_connections[self.config[ConfigInfo.host_ip]].acc_connection()
-
         # First remove previous spectrometer connection
         self.sockets[SocketNames.comm].close_connection(ip=self.config[ConfigInfo.host_ip])
 
         # Wait for receiving function to close
-        while self.comms_connections[self.config[ConfigInfo.host_ip]].working:
+        while self.comm_connections[self.config[ConfigInfo.host_ip]].working:
             pass
 
+        # Accept new spectrum transfer connection and begin receiving loop automatically
+        self.save_connections[self.config[ConfigInfo.host_ip]].acc_connection()
+
         # Accept new connection and start receiving comms
-        self.comms_connections[self.config[ConfigInfo.host_ip]].acc_connection()
+        self.comm_connections[self.config[ConfigInfo.host_ip]].acc_connection()
+
+        print('Spectrometer restart complete')
 
 
     def RSC(self, value):
-        """Acts on STP command, restarts pycam_camera.py script"""
+        """Acts on RSC command, restarts pycam_camera.py script"""
+        print('Restarting camera system')
 
         # Start the script again on the remote system
         pi_ips = self.config[ConfigInfo.pi_ip].split(',')
@@ -272,7 +277,7 @@ class MasterComms(CommsFuncs):
             self.sockets[SocketNames.comm].close_connection(ip=ip)
 
             # Wait for comm thread to finish
-            while self.comms_connections[ip].working:
+            while self.comm_connections[ip].working:
                 pass
 
             # Start new instance of camera script on remote pi
@@ -284,7 +289,9 @@ class MasterComms(CommsFuncs):
             self.save_connections[ip].acc_connection()
 
             # Accept new connection and start receiving comms
-            self.comms_connections[ip].acc_connection()
+            self.comm_connections[ip].acc_connection()
+
+        print('Restart complete')
 
     def LOG(self, value, connection, socks, config):
         """Acts on LOG command, sending the specified log back to the connection"""
@@ -1183,6 +1190,7 @@ class SocketServer(SocketMeths):
         try:
             connection = self.sock.accept()
             self.connections.append(connection)
+            print('Got connection from {}'.format(connection[1][0]))
             self.num_conns += 1
         except:
             print('Error in accepting socket connection, it is likely that the socket was closed during accepting')
@@ -1789,7 +1797,7 @@ class ExternalSendConnection(Connection):
                 cmd_bytes = self.sock.encode_comms(cmd)
 
                 # Send comms
-                self.sock.send_comms(self.sock, cmd_bytes)
+                self.sock.send_comms(self.sock.sock, cmd_bytes)
 
             # If connection has been closed, return
             except socket.error as e:

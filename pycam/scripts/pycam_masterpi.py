@@ -95,9 +95,7 @@ sock_serv_comm.open_socket()
 # ------------------
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
-    print('Getting connection')
     connection = sock_serv_transfer.acc_connection()
-    print('Got connection {}'.format(connection))
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
 save_connections = dict()
@@ -125,9 +123,7 @@ save_connections[host_ip].thread_func()
 # -----------------------
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
-    print('Getting connection')
     connection = sock_serv_comm.acc_connection()
-    print('Got connection {}'.format(connection))
 
 # Dictionary holding the connection for internal communications (not external comms)
 comms_connections = dict()
@@ -239,8 +235,9 @@ while True:
                     # If MasterComms has the method we call it, passing it the value from comm_cmd
                     try:
                         getattr(master_comms_funcs, key)(comm_cmd[key])
-                    except AttributeError:
+                    except AttributeError as e:
                         print('Attribute error raised in command {}'.format(key))
+                        print(e)
                         continue
 
 

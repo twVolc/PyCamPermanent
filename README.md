@@ -15,5 +15,9 @@ Turn a light green in the main window when we are connected to a camera
 
 Requirements for GUI:
 > numpy
+
 > opencv
-> ttkthemes (pip install ttkthemes) 
+
+> ttkthemes (pip install ttkthemes)
+
+> matplotlib 

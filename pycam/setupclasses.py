@@ -35,6 +35,8 @@ class FileLocator:
     IMG_SPEC_PATH = PYCAM_ROOT_PI + '/Images/'                  # Image and spectra path on main Pi
     IMG_SPEC_PATH_WINDOWS = PYCAM_ROOT_WINDOWS + '/Images/'     # Image and spectra path on Windows machine
 
+    SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
+
     LOG_PATH = PYCAM_ROOT_PI + '/logs/'
 
 

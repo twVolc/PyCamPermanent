@@ -13,6 +13,6 @@ port_ext=12347                      # External communication port (laptop etc)
 remote_scripts=python3 /home/pi/pycam/scripts/kill_process.py     # List of scripts to be run on remote pi, separated by commas
 local_scripts=python3 ./kill_process.py      #
 cam_script=python3 /home/pi/pycam/scripts/pycam_camera.py
-spec_script=./pycam_spectrometer.py
+spec_script=/home/pi/pycam/scripts/pycam_spectrometer.py
 
 cam_specs=.\\cam_specs.txt          # Location of camera specs file on master Pi

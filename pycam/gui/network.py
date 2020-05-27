@@ -3,11 +3,72 @@
 """Code to build interface between the GUI and the instrument"""
 
 import pycam.gui.network_cfg as cfg
+from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
+from pycam.setupclasses import FileLocator
 
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
 import subprocess
 import platform
+import time
+
+
+def run_pycam(ip):
+    """Runs main pycam script on remote machine"""
+    if messagebox.askyesno("Please confirm", "Are you sure you want to run pycam_masterpi.py?\n"
+                                             "Running this on a machine which already has the script running could cause issues"):
+        print('Running pycam_masterpi on {}'.format(ip))
+
+        # Path to executable
+        pycam_path = FileLocator.SCRIPTS + 'pycam_masterpi.py'
+
+        # Open ssh connection
+        connection = open_ssh(ip)
+
+        # Run ssh command
+        stderr, stdout = ssh_cmd(connection, 'python3 {}'.format(pycam_path), background=False)
+
+        # Close ssh connection
+        close_ssh(connection)
+
+
+def instrument_cmd(cmd):
+    """Checks if you wanted to shutdown the camera and then sends EXT command to instrument"""
+    timeout = 5  # Timeout for instrument shutting down on 'EXT' request
+
+    # Generate message depending on command
+    if cmd == 'EXT':
+        mess = "Are you sure you want to shutdown the instrument?"
+    elif cmd == 'RST':
+        mess = "Are you sure you want to restart the instrument?"
+    elif cmd == 'RSC':
+        mess = "Are you sure you want to restart the cameras?"
+    elif cmd == 'RSS':
+        mess = "Are you sure you want to restart the spectrometer?"
+
+    # Check if we have a connection to the instrument
+    if cfg.indicator.connected:
+
+        if messagebox.askyesno("Please confirm", mess):
+
+            # Add command to queue to shutdown instrument
+            cfg.send_comms.q.put({cmd: 1})
+
+            # If EXT: Wait for system to shutdown then indicate that we no longer are connected to it
+            if cmd == 'EXT':
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    if not cfg.recv_comms.working:
+                        cfg.indicator.indicator_off()
+                        break
+                else:
+                    messagebox.showerror('Command Error', 'Instrument appears to still be running')
+
+    # Raise instrument connection error
+    else:
+        messagebox.showerror('Connection error', 'No instrument connected')
+        # NoInstrumentConnected()
 
 
 class ConnectionGUI:

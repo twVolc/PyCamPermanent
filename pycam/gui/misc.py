@@ -23,6 +23,8 @@ class Indicator:
         self.buttons = []
         self.size = (40, 40)
 
+        self.connected = False
+
         self.sock = cfg.sock
 
         if initiate:
@@ -48,6 +50,9 @@ class Indicator:
 
     def indicator_on(self):
         """Changes all widgets to on state"""
+        # Bool flag for connection
+        self.connected = True
+
         x = 0
         for widget in self.indicators:
             widget.delete('IMG')
@@ -58,6 +63,9 @@ class Indicator:
 
     def indicator_off(self):
         """Changes all widgets to off state"""
+        # Bool flag for connection
+        self.connected = False
+
         x = 0
         for widget in self.indicators:
             widget.delete('IMG')
@@ -73,6 +81,10 @@ class Indicator:
 
     def connect_sock(self):
         """Attempts to connect to socket - threads connection attempt and will timeout after given time"""
+        if self.connected:
+            MessageWindow('Connection Error', ['Instrument already connected'])
+            return
+
         try:
             self.sock.connect_socket_timeout(timeout=5)
         except ConnectionError:
@@ -86,17 +98,60 @@ class Indicator:
         cfg.recv_comms.thread_func()
 
         # Setup function to send comms to socket
+        cfg.send_comms.thread_func()
 
     def disconnect_sock(self):
         """Closes socket if we are connected"""
+        if not self.connected:
+            MessageWindow('Connection Error', ['No connection was found to disconnect from'])
+
         self.sock.close_socket()
 
         # Set indicator to off
         self.indicator_off()
 
-        if cfg.recv_comms.working:
-            print('Recv function still working')
 
-        if cfg.recv_comms.func_thread.is_alive():
-            print('Thread is still alive')
+class NoInstrumentConnected:
+    """Class to create a tkinter frame containing the details of PyCam"""
+    def __init__(self):
+        self.frame = tk.Toplevel()
+        self.frame.title('Connect to instrument')
 
+        label = ttk.Label(self.frame, text='No instrument connected.')
+        label.pack(padx=5, pady=5)
+        label = ttk.Label(self.frame, text='Please first connect to instrument before attempting shutdown')
+        label.pack(padx=5, pady=5)
+
+        button = ttk.Button(self.frame, text='Ok', command=self.close)
+        button.pack(padx=5, pady=5)
+
+    def close(self):
+        """Closes widget"""
+        self.frame.destroy()
+
+
+class MessageWindow:
+    """Class to create a tkinter frame containing any message
+
+    Parameters
+    ----------
+    title: str
+        Title to be placed at the top of the frame
+    message: list
+        List of messages to be placed as labels within the frame
+    """
+
+    def __init__(self, title, message):
+        self.frame = tk.Toplevel()
+        self.frame.title(title)
+
+        for mess in message:
+            label = ttk.Label(self.frame, text=mess)
+            label.pack(padx=5, pady=5)
+
+        button = ttk.Button(self.frame, text='Ok', command=self.close)
+        button.pack(padx=5, pady=5)
+
+    def close(self):
+        """Closes widget"""
+        self.frame.destroy()

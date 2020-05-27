@@ -40,7 +40,7 @@ class PyCam(ttk.Frame):
         self.style.set_theme('breeze')
 
         # Menu bar setup
-        self.menu = PyMenu(self, self.parent, sock=self.sock)
+        self.menu = PyMenu(self, self.parent)
         self.parent.config(menu=self.menu.frame)
 
         # -----------------------------------------------

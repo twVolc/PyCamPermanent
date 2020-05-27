@@ -3,11 +3,14 @@
 """Holds classes for building a menu bar in tkinter"""
 
 from pycam.setupclasses import pycam_details
-from pycam.gui.network import ConnectionGUI
-from pycam.networking.sockets import SocketClient
+from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
+import pycam.gui.network_cfg as cfg
+from pycam.gui.misc import NoInstrumentConnected, MessageWindow
 
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
+import time
 
 
 class PyMenu:
@@ -21,10 +24,9 @@ class PyMenu:
         tkinter Frame object which PyMenu will take as its parent
     sock: SocketClient
         Socket used for connection to external instrument"""
-    def __init__(self, parent, frame, sock=SocketClient(host_ip=None, port=None)):
+    def __init__(self, parent, frame):
         self.parent = parent
         self.frame = tk.Menu(frame)
-        self.sock = sock
 
         # Setup dictionary to hold menu tabs and list to hold the menu tab names. Each menu tab is held in the
         # dictionary with the assocaited key stored in keys. This makes cascade setup easy by looping through keys
@@ -38,6 +40,27 @@ class PyMenu:
         self.menus[tab].add_command(label='Settings', command=Settings)
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Exit', command=self.parent.exit_app)
+
+        # ---------------------------------------------------------------------------------------------
+        # Instrument tab for interfacing with instrument
+        tab = 'Instrument'
+        keys.append(tab)
+        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        self.menus[tab].add_command(label='Connect', command=cfg.indicator.connect_sock)
+        self.menus[tab].add_command(label='Disconnect', command=cfg.indicator.disconnect_sock)
+
+        self.submenu_cmd = tk.Menu(self.frame, tearoff=0)
+        self.submenu_cmd.add_command(label='Shutdown', command=lambda: instrument_cmd('EXT'))
+        self.submenu_cmd.add_separator()
+        self.submenu_cmd.add_command(label='Restart', command=lambda: instrument_cmd('RST'))
+        self.submenu_cmd.add_command(label='Restart cameras', command=lambda: instrument_cmd('RSC'))
+        self.submenu_cmd.add_command(label='Restart spectrometer', command=lambda: instrument_cmd('RSS'))
+        self.submenu_cmd.add_separator()
+        self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
+
+        self.menus[tab].add_cascade(label='Commands', menu=self.submenu_cmd)
+        # -------------------------------------------------------------------------------------------------
 
         # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
         tab = 'View'
@@ -63,11 +86,9 @@ class PyMenu:
 class About:
     """Class to create a tkinter frame containing the details of PyCam"""
     def __init__(self):
-        self.frame = tk.Toplevel()
-        self.frame.title('About PyCam')
+        info = ['PyCam v{}'.format(pycam_details['version']), 'Built on {}'.format(pycam_details['date'])]
 
-        label = ttk.Label(self.frame, text='PyCam v{}'.format(pycam_details['version'])).pack(anchor='w')
-        label = ttk.Label(self.frame, text='Built on {}'.format(pycam_details['date'])).pack(anchor='w')
+        messagebox.showinfo('About Pycam', "\n".join(info))
 
 
 class Settings:

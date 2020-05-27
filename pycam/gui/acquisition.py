@@ -538,11 +538,8 @@ class CommHandler:
         for cmd in self.spec.cmd_dict:
             cmd_dict[cmd] = getattr(self.spec, self.spec.cmd_dict[cmd])
 
-        # Encode dictionary to bytes
-        cmd_bytes = cfg.sock.encode_comms(cmd_dict)
-
-        # Send command
-        cfg.sock.send_comms(cfg.sock.sock, cmd_bytes)
+        # Add dictionary command to queue to be sent
+        cfg.send_comms.q.put(cmd_dict)
 
 
 
