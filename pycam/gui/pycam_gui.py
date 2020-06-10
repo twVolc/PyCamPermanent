@@ -7,7 +7,7 @@ from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
-import pycam.gui.network_cfg as cfg
+import pycam.gui.cfg as cfg
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -15,14 +15,16 @@ from tkinter import messagebox
 from ttkthemes import ThemedStyle
 
 import sys
+import warnings
+warnings.simplefilter("ignore", UserWarning)    # Ignore UserWarnings, in particular tight_layout which is annoying
 
 
 class PyCam(ttk.Frame):
-    def __init__(self, parent, x_size, y_size):
-        ttk.Frame.__init__(self, parent)
-        self.parent = parent
-        parent.title('PyCam')
-        self.parent.protocol('WM_DELETE_WINDOW', self.exit_app)
+    def __init__(self, root, x_size, y_size):
+        ttk.Frame.__init__(self, root)
+        self.root = root
+        self.root.title('PyCam')
+        self.root.protocol('WM_DELETE_WINDOW', self.exit_app)
 
         # Initiate indicator widget
         cfg.indicator.initiate_indicator()
@@ -35,22 +37,22 @@ class PyCam(ttk.Frame):
 
 
         # Setup style
-        self.style = ThemedStyle(self.parent)
+        self.style = ThemedStyle(self.root)
         # self.style.set_theme('equilux')
         self.style.set_theme('breeze')
 
         # Menu bar setup
-        self.menu = PyMenu(self, self.parent)
-        self.parent.config(menu=self.menu.frame)
+        self.menu = PyMenu(self, self.root)
+        self.root.config(menu=self.menu.frame)
 
         # -----------------------------------------------
         # Windows setup
-        self.windows = ttk.Notebook(self.parent)
+        self.windows = ttk.Notebook(self.root)
         self.windows.pack(fill='both', expand=1)
 
         # Create object of each window
         self.cam_wind = CameraWind(self.windows)
-        self.spec_wind = SpecWind(self.windows)
+        self.spec_wind = SpecWind(self.root, self.windows)
         self.anal_wind = AnalysisWind(self.windows)
 
         # Add each window to Notebook
@@ -66,7 +68,7 @@ class PyCam(ttk.Frame):
         if messagebox.askokcancel("Quit", "Are you sure you want to quit?"):
 
             # Close main window and stop program
-            self.parent.destroy()
+            self.root.destroy()
             sys.exit()
 
 

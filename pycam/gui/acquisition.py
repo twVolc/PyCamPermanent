@@ -9,7 +9,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 
-import pycam.gui.network_cfg as cfg
+import pycam.gui.cfg as cfg
 
 
 

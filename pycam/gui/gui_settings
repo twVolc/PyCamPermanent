@@ -1,7 +1,0 @@
-# -*- coding: utf-8 -*-
-
-# File containing all GUI settings which are read in on startup and can be changed through the 'Settings' option in
-# the GUI
-
-font=helvetica
-font_size=12

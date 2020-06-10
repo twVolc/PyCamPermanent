@@ -4,8 +4,10 @@
 
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
-import pycam.gui.network_cfg as cfg
-from pycam.gui.misc import NoInstrumentConnected, MessageWindow
+import pycam.gui.cfg as cfg
+from pycam.gui.misc import About
+import pycam.gui.settings as settings
+from pycam.gui.figures_doas import CalibrationWindow
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -66,12 +68,21 @@ class PyMenu:
         tab = 'View'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        # More windows cascade
+        self.submenu_windows = tk.Menu(self.frame, tearoff=0)
+        self.submenu_windows.add_command(label="DOAS calibration", command=CalibrationWindow)
+        self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
+
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Camera window')
         self.menus[tab].add_command(label='DOAS window')
         self.menus[tab].add_command(label='Analysis window')
         self.menus[tab].add_separator()
 
+
+
+        # -------------------------------------------------------------------------------------------------------
         # Help tab
         tab = 'Help'
         keys.append(tab)
@@ -81,14 +92,6 @@ class PyMenu:
         # Loop through keys to setup cascading menus
         for key in keys:
             self.frame.add_cascade(label=key, menu=self.menus[key])
-
-
-class About:
-    """Class to create a tkinter frame containing the details of PyCam"""
-    def __init__(self):
-        info = ['PyCam v{}'.format(pycam_details['version']), 'Built on {}'.format(pycam_details['date'])]
-
-        messagebox.showinfo('About Pycam', "\n".join(info))
 
 
 class Settings:
@@ -107,8 +110,11 @@ class Settings:
 
         # Generate the frames for each tab
         self.connection_gui = ConnectionGUI(self.windows)
+        self.gui_settings = settings.SettingsFrame(self.windows, settings=cfg.gui_setts)
 
         # Add the frames for each tab to the notebook
         self.windows.add(self.connection_gui.frame, text=self.connection_gui.name)
+        self.windows.add(self.gui_settings.frame, text=self.gui_settings.name)
+
 
 

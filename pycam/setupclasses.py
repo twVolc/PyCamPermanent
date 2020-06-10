@@ -39,6 +39,10 @@ class FileLocator:
 
     LOG_PATH = PYCAM_ROOT_PI + '/logs/'
 
+    # GUI
+    GUI_SETTINGS = './gui_settings.txt'
+    GUI_SETTINGS_DEFAULT = './gui_settings_default.txt'
+
 
 class ConfigInfo:
     """Defines important attributes related to config files, allowing references to link to this file rather than being

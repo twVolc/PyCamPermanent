@@ -2,7 +2,7 @@
 
 """Code to build interface between the GUI and the instrument"""
 
-import pycam.gui.network_cfg as cfg
+import pycam.gui.cfg as cfg
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
 from pycam.setupclasses import FileLocator
 
