@@ -103,8 +103,8 @@ class ImageFigure:
                                           color=self._row_colour, lw=2)
         self.img_disp_col, = self.ax.plot([self._init_img_col, self._init_img_col], [0, self.specs.pix_num_y],
                                           color=self._col_colour, lw=2)
-        self.ax.set_xlim([0, self.specs.pix_num_x])
-        self.ax.set_ylim([self.specs.pix_num_y, 0])
+        self.ax.set_xlim([0, self.specs.pix_num_x - 1])
+        self.ax.set_ylim([self.specs.pix_num_y - 1, 0])
         self.ax.set_title('Test Image', color='white')
         self.ax.set_ylabel('Pixel', color='white')
 
