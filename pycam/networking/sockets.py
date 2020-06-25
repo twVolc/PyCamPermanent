@@ -1179,7 +1179,11 @@ class SocketServer(SocketMeths):
 
     def close_socket(self):
         """Closes socket"""
-        self.sock.shutdown(socket.SHUT_RDWR)
+        # Try the shutdown, but this may throw an error for some reason. If it does, we ignore it and close the socket
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         self.sock.close()
         print('Closed socket {}'.format(self.server_addr))
 

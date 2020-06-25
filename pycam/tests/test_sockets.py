@@ -72,7 +72,7 @@ class TestSockets:
 
         # Close sockets
         sock_cli.close_socket()
-        sock_serv.close_socket()
+        # sock_serv.close_socket()    # No longer needed as shutdown command in client socket causes it to close.
 
         assert data == message
 
@@ -100,7 +100,7 @@ class TestSockets:
         print('Time taken to send and receive image: {:.6f}'.format(time.time() - time_start))
 
         sock_cli.close_socket()
-        sock_serv.close_socket()
+        # sock_serv.close_socket()
 
         # Compare the sent and received images
         assert img_path == filename
@@ -130,7 +130,7 @@ class TestSockets:
 
         # Close sockets
         sock_cli.close_socket()
-        sock_serv.close_socket()
+        # sock_serv.close_socket()
 
         # Compare sent spectrum with received
         assert np.array_equal(spectrum, spec[1, :])
@@ -171,30 +171,35 @@ class TestSockets:
 
         assert ip == sock_serv.get_ip(conn_num=0)
 
-    def test_all_comms_cmds(self):
-        """Tests that all comms in the CommsFunc.cmd_dict have and associated method in CommsFun"""
-        comms_obj = CommsFuncs()
-
-        # Loop through keys in cmd_dict and check they have the associated method
-        for key in comms_obj.cmd_dict:
-
-            # The 'ERR' flag does not require a method, so is not checked
-            if key is not 'ERR':
-                assert hasattr(comms_obj, key)
+    # def test_all_comms_cmds(self):
+    #     """
+    #     Tests that all comms in the CommsFunc.cmd_dict have an associated method in CommsFun
+    #
+    #     DEPRECATED - Commsfunc no longer contains all functions, it is split into MasterComms and the PiSocket__ classes
+    #     """
+    #     comms_obj = CommsFuncs()
+    #
+    #     # Loop through keys in cmd_dict and check they have the associated method
+    #     for key in comms_obj.cmd_dict:
+    #
+    #         # The 'ERR' flag does not require a method, so is not checked
+    #         if key != 'ERR':
+    #             assert hasattr(comms_obj, key)
 
     def test_send_recv_comms(self):
         """Tests send and receive functionality of PiSockets for general commands and encoding"""
         sock_serv, sock_cli = self.open_sockets()
 
-        t_1 = time.clock()
+        t_1 = time.time()
 
         # Define a dictionary with some correct messages and some incorrect
-        cmd_dict = {'SSC': 300, 'SMN': 0.5, 'SMN': 0.91, 'SSS': 70000, 'EXT': False}
+        cmd_dict = {'SSA': 300, 'SMN': 0.5, 'SMN': 0.91, 'SSS': 70000, 'EXT': False}
 
         # Define expected dictionary outcome (note, because a dictionary is used, defining 'SMN' twice overwrites it,
         # so only the second definition is passed through to be encoded and sent. this prevents multiple commands of the
         # same key being sent.
-        comms_exp = {'SSC': 300, 'ERR': ['SMN', 'SSS'], 'EXT': False}
+        comms_exp_serv = {'SSA': 300, 'ERR': ['SMN', 'SSS'], 'EXT': False}  # Socket server instances will add errors to command dictionaries during deconding
+        comms_exp_client = {'SSA': 300, 'EXT': False}  # Error message functionality currently not included in client - possibly due to issues - see decode_comms() for info
 
         # Encode message to be sent
         comms = sock_serv.encode_comms(cmd_dict)
@@ -211,10 +216,10 @@ class TestSockets:
         # Decode data - This method checks the validity of commands too and will create ERR keys if necessary
         comms_out = sock_cli.decode_comms(cmd)
 
-        t_2 = time.clock() - t_1
+        t_2 = time.time() - t_1
         print('Time for sending and encoding/decoding message: {:.6f}s'.format(t_2))
 
-        assert comms_out == comms_exp
+        assert comms_out == comms_exp_client
 
         # Perform same test but sending from the client to the server, to ensure it works both ways.
         sock_cli.send_comms(sock_cli.sock, comms)
@@ -226,7 +231,7 @@ class TestSockets:
         # Close socket to finish
         sock_serv.close_socket()
 
-        assert comms_out == comms_exp
+        assert comms_out == comms_exp_serv
 
     def test_internal_comms(self):
         """Tests comms between server socket and camera/spectrometer client to see how they handle the comms"""

@@ -483,7 +483,13 @@ class CalibrationWindow:
     Generates top-level window containing calibration figures for DOAS instruments.
     """
     def __init__(self):
-        # Create new top-level frame with title
+        # Setup reference spectra objects
+        self.ref_frame = dict()
+        for spec in species:
+            species_id = 'ref_spec_{}'.format(spec)
+            self.ref_frame[spec] = RefPlot(ref_spec_path=species[spec], species=spec)
+
+    def generate_frame(self):
         self.frame = tk.Toplevel()
         self.frame.title('DOAS calibration')
         self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 1.2),
@@ -491,17 +497,14 @@ class CalibrationWindow:
                                                  int(self.frame.winfo_screenwidth() / 10),
                                                  int(self.frame.winfo_screenheight() / 10)))
 
-        # SO2 reference spectrum
-        self.ref_frame = dict()
-        for spec in species:
-            species_id = 'ref_spec_{}'.format(spec)
-            self.ref_frame[spec] = RefPlot(self.frame, ref_spec_path=species[spec], species=spec)
-            self.ref_frame[spec].frame.pack(side=tk.TOP, anchor='nw', padx=5, pady=5)
-
+        for frame in self.ref_frame:
+            self.ref_frame[frame].__setup_gui__(self.frame)
+            self.ref_frame[frame].frame.pack(side=tk.TOP, anchor='nw', expand=1, fill=tk.BOTH, padx=5, pady=5)
 
 class RefPlot:
     """
     Plots and allows interaction with the reference spectrum
+    If no frame is passed initially, the settings are still loaded up. The frame can then be generated later.
 
     Parameters
     ----------
@@ -516,7 +519,8 @@ class RefPlot:
     species: str
         Defines the species for reference spectrum
     """
-    def __init__(self, frame, doas_worker=DOASWorker(), init_dir='.\\', ref_spec_path=None, species='SO2'):
+    def __init__(self, frame=None, doas_worker=DOASWorker(), init_dir='.\\', ref_spec_path=None, species='SO2'):
+        self.frame = frame
         self.doas_worker = doas_worker  # DOAS processor
         self.species = species          # Gas species
         self.init_dir = init_dir        # Inital directory for loading dialog box
@@ -530,13 +534,14 @@ class RefPlot:
         self.min_wavelength = 250       # Minimum wavelength shown on plot
         self.max_wavelength = 350       # Maximum wavelength shown on plot
 
-        # Setup gui
-        self.__setup_gui__(frame)
-
         # If we have a pre-loaded reference spectrum plot it
         self.ref_spec_path = ref_spec_path
         if self.ref_spec_path is not None:
-            self.load_ref_spec()
+            self.load_ref_spec(init_load=True)
+
+        # Setup gui
+        if self.frame is not None:
+            self.__setup_gui__(self.frame)
 
     def __setup_gui__(self, frame):
         # -------------------------
@@ -550,7 +555,7 @@ class RefPlot:
         self.loadRefFrame.grid(row=0, column=0, sticky='w')
         label = ttk.Label(self.loadRefFrame, text='Filename:')
         label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy)
-        self.nameRef = ttk.Label(self.loadRefFrame, text='None Selected')
+        self.nameRef = ttk.Label(self.loadRefFrame, text=self.ref_spec_path)
         self.nameRef.grid(row=0, column=1, padx=self.pdx, pady=self.pdy)
         self.selectRef = ttk.Button(self.loadRefFrame, text='Load Spectrum', command=self.choose_ref_spec)
         self.selectRef.grid(row=0, column=2, padx=self.pdx, pady=self.pdy)
@@ -577,6 +582,9 @@ class RefPlot:
         self.refCanvas = FigureCanvasTkAgg(self.FigRef, master=self.frame)
         self.refCanvas.draw()
         self.refCanvas.get_tk_widget().grid(row=1, column=0, columnspan=2)
+
+        # Plot initial reference spectrum
+        self.plot_ref_spec()
         # --------------------------------------------------------------------------------------------------------------
 
     def choose_ref_spec(self):
@@ -586,24 +594,26 @@ class RefPlot:
                                                         filetypes=(("Text files", "*.txt"), ("All files", "*.*")))
         self.load_ref_spec()
 
-    def load_ref_spec(self):
+    def load_ref_spec(self, init_load=False):
         """Loads reference spectrum"""
         if not self.ref_spec_path:
             return
-        if len(self.ref_spec_path) > 53:
-            self.nameRef.configure(text='...' + self.ref_spec_path[-50:])
-        else:
-            self.nameRef.configure(text=self.ref_spec_path)
+        if not init_load:
+            if len(self.ref_spec_path) > 53:
+                self.nameRef.configure(text='...' + self.ref_spec_path[-50:])
+            else:
+                self.nameRef.configure(text=self.ref_spec_path)
         self.doas_worker.load_ref_spec(self.ref_spec_path, self.species)
 
         self.ref_spec_file = self.ref_spec_path.split('/')[-1]
 
-        # Set convolution plot to zero then update
-        self.ax_SO2.lines[1].set_data([self.doas_worker.ref_spec[self.species][0, 0],
-                                       self.doas_worker.ref_spec[self.species][-1,0]], [0,0])
+        if not init_load:
+            # Set convolution plot to zero then update
+            self.ax_SO2.lines[1].set_data([self.doas_worker.ref_spec[self.species][0, 0],
+                                           self.doas_worker.ref_spec[self.species][-1,0]], [0,0])
 
-        # Plot reference spectrum
-        self.plot_ref_spec()
+            # Plot reference spectrum
+            self.plot_ref_spec()
 
     def plot_ref_spec(self):
         """Plot up reference spectrum"""

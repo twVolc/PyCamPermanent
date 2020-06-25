@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 
 """Main GUI script to be run as main executable"""
+# Enables Basemap import by pointing to
+import os
+os.environ["PROJ_LIB"] = 'C:\\Users\\tw9616\Anaconda3\\envs\\py38\\Lib\\site-packages\\pyproj'
 
 from pycam.gui.menu import PyMenu
 from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
+from pycam.gui.cfg_menu_frames import geom_settings
 import pycam.gui.cfg as cfg
 
 import tkinter as tk
@@ -61,6 +65,12 @@ class PyCam(ttk.Frame):
         self.windows.add(self.anal_wind.frame, text=self.anal_wind.name)
         # -----------------------------------------------
 
+        # LOAD ALL DEFAULT INFO FROM OBJECTS WHICH REQUIRE THIS TO BE DONE AFTER INTIAL TK BUILD
+        self.info_load()
+
+    def info_load(self):
+        """Instantiates all frames which requrie some kind of start-up instantiation"""
+        geom_settings.initiate_variables()
 
 
     def exit_app(self):

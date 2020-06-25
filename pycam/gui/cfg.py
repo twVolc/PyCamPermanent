@@ -33,4 +33,3 @@ indicator = Indicator()
 # ==============================
 gui_setts = GUISettings(FileLocator.GUI_SETTINGS)
 
-

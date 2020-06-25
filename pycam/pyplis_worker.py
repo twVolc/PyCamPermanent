@@ -5,9 +5,12 @@
 Scripts are an edited version of the pyplis example scripts, adapted for use with the PiCam"""
 from __future__ import (absolute_import, division)
 
+from pycam.setupclasses import CameraSpecs
+
 import queue
 import threading
 import pyplis
+import numpy as np
 
 
 class PyplisWorker:
@@ -16,9 +19,77 @@ class PyplisWorker:
     """
     def __init__(self):
         self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
-        self.cam = create_picam_new_filters()   # Generate pyplis-picam object
+        self.cam = create_picam_new_filters({})   # Generate pyplis-picam object
+        self.meas = None                          # Pyplis MeasSetup object
+        self.img_dir = None
+        self._location = None                       # String for location e.g. lascar
+        self.source = None                          # Pyplis object of location
+
+        self.img_A = np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x])
+        self.img_B = np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x])
+        self.img_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
 
         self.process_thread = None  # Placeholder for threading object
+
+    @property
+    def location(self):
+        return self._location
+
+    @location.setter
+    def location(self, value):
+        self._location = value.lower()      # Make all lower case for ease of handling
+
+        # Get currently existing source ids
+        ids = pyplis.inout.get_source_ids()
+
+        # Make all ids lower case
+        ids_lower = [f.lower() for f in ids]
+
+        # If the ID is not in the list, we get it from online
+        if self.location not in ids_lower:
+            source = pyplis.inout.get_source_info_online(self.location)
+
+            # If download was successful the returned dictionary will have contain a name for the source
+            if self.location in source.keys():
+                pyplis.inout.save_default_source(source[self.location])
+            else:
+                raise UnrecognisedSourceError
+
+            # Set location id by extracting the name from the oredered dictionary
+            location_id = source[self.location]['name']
+
+        else:
+            # If the id already exists we extract the id using the lower case id list
+            location_id = ids[ids_lower.index(self.location)]
+
+        # Load the source
+        self.source = pyplis.setupclasses.Source(location_id)
+
+    def update_cam_geom(self, geom_info):
+        """Updates camera geometry info by creating a new object
+
+        Parameters
+        ----------
+        geom_info: dict
+            Dictionary containing geometry info for pyplis"""
+        self.cam = create_picam_new_filters(geom_info)
+
+    def measurement_setup(self, img_dir=None, start=None, stop=None, location=None, wind_info=None):
+        """Creates pyplis MeasSetup object"""
+        # Check the camera is correctly setup
+        if not isinstance(self.cam, pyplis.setupclasses.Camera):
+            print('Pyplis camera object not correctly setup, cannot create MeasSetup object')
+            return
+
+        if img_dir is not None:
+            self.img_dir = img_dir
+
+        if self.location is not None:
+            self.location = location
+
+        # Setup measurement object
+        self.meas = pyplis.setupclasses.MeasSetup(self.img_dir, start, stop, camera=self.cam,
+                                                  source=self.source, wind_info=wind_info)
 
     def start_processing(self):
         """Puclic access thread starter for _processing"""
@@ -35,15 +106,21 @@ class PyplisWorker:
             img_path_A, img_path_B = self.q.get(block=True)
 
             # Load in images
-            img_A = pyplis.image.Img(img_path_A)
-            img_B = pyplis.image.Img(img_path_B)
+            self.img_A = pyplis.image.Img(img_path_A)
+            self.img_B = pyplis.image.Img(img_path_B)
+
+            # Add Images to the image queue, to be loaded by the GUI
+            self.img_q.put({img_path_A: self.img_A, img_path_B: self.img_B})
 
 
 
 # ## SCRIPT FUNCTION DEFINITIONS
-def create_picam_new_filters():
+def create_picam_new_filters(geom_info):
+    # Picam camera specs (default)
+    cam_specs = CameraSpecs()
+
     # Start with creating an empty Camera object
-    cam = pyplis.setupclasses.Camera()
+    cam = pyplis.setupclasses.Camera(**geom_info)
 
     # Specify the camera filter setup
 
@@ -66,6 +143,7 @@ def create_picam_new_filters():
 
     cam.default_filters = filters
     cam.prepare_filter_setup()
+
 
     # Similar to the filter setup, access info for dark and offset images needs
     # to be specified. The ECII typically records 4 different dark images, two
@@ -137,14 +215,14 @@ def create_picam_new_filters():
     # camera focal length can be specified here (but does not need to be, in
     # case of the ECII cam, there is no "default" focal length, so this is left
     # empty)
-    cam.focal_length = ""
+    cam.focal_length = cam_specs.estimate_focal_length()
 
     # Detector geometry
     # Using PiCam binned values (binning 2592 x 1944 to 648 x 486)
-    cam.pix_height = 5.6e-6  # pixel height in m
-    cam.pix_width = 5.6e-6  # pixel width in m
-    cam.pixnum_x = 684
-    cam.pixnum_y = 486
+    cam.pix_height = cam_specs.pix_size_x  # pixel height in m
+    cam.pix_width = cam_specs.pix_size_y  # pixel width in m
+    cam.pixnum_x = cam_specs.pix_num_x
+    cam.pixnum_y = cam_specs.pix_size_y
 
     cam._init_access_substring_info()
 
@@ -157,3 +235,8 @@ def create_picam_new_filters():
     cam.image_import_method = pyplis.custom_image_import.load_picam_png
     # That's it...
     return cam
+
+
+class UnrecognisedSourceError(BaseException):
+    """Error raised for a source which cannot be found online"""
+    pass

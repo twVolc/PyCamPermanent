@@ -43,6 +43,9 @@ class FileLocator:
     GUI_SETTINGS = './gui_settings.txt'
     GUI_SETTINGS_DEFAULT = './gui_settings_default.txt'
 
+    CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
+    DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
+
 
 class ConfigInfo:
     """Defines important attributes related to config files, allowing references to link to this file rather than being
@@ -104,7 +107,7 @@ class CameraSpecs:
         self.pix_num_x = 648        # Number of pixels in horizontal
         self.pix_num_y = 486        # Number of pixels in vertical
         self.fov_x = 28             # Field of view in x
-        self.fov_y = 24             # FOV in y
+        self.fov_y = 22             # FOV in y
         self.bit_depth = 10         # Bit depth of images (set by property
 
         # Filename info
@@ -166,6 +169,22 @@ class CameraSpecs:
         Accesses hidden variable _shutter_speed directly to avoid causing property method being called"""
         self._ss_idx = value
         self._shutter_speed = self.ss_list[self.ss_idx]
+
+    def estimate_focal_length(self):
+        """
+        Calculates focal length from FOV and detector dimensions
+        Returns: focal length (m)
+        """
+        fl_x = ((self.pix_num_x * self.pix_size_x) / 2) / np.tan(np.deg2rad(self.fov_x / 2))
+        fl_y = ((self.pix_num_y * self.pix_size_y) / 2) / np.tan(np.deg2rad(self.fov_y / 2))
+
+        # Check focal lengths calculated from 2 dimensions are roughly equal (within 5%)
+        if fl_x < 0.95 * fl_y or fl_x > 1.05 * fl_y:
+            raise ValueError('Focal lengths calculated from x and y dimensions do not agree within a reasonable range')
+        else:
+            # Calculate average focal length and return
+            fl = np.mean([fl_x, fl_y])
+            return fl
 
     def extract_info(self, line):
         """Extracts information from line of text based on typical text format for picam files"""
@@ -323,8 +342,9 @@ class SpecSpecs:
         """Define spectrometer default specs > Flame-S"""
         # Spectrometer specs
         self.model = "Flame-S"      # Spectrometer model
-        self.fov = None             # Field of view fo spectrometer
+        self.fov = 1                # Field of view fo spectrometer
         self.ILS = None             # Number array holding instrument line shape (possibly don't hold this here?)
+        self.fiber_diameter = 1e-3  # Diameter of optical fiber
         self.pix_num = 2048         # Number of pixels
         self.bit_depth = 16         # Bit depth of spectrometer detector
 
@@ -360,6 +380,15 @@ class SpecSpecs:
                                         np.arange(500, 1000, 100),
                                         np.arange(10 ** 3, 10 ** 4, 500),
                                         np.array([10 ** 4])))
+
+    def estimate_focal_length(self):
+        """
+        Calculates focal length assuming a single round fiber of defined dimensions
+        Returns: focal length (m)
+        """
+        fl = (self.fiber_diameter / 2) / np.tan(np.deg2rad(self.fov / 2))
+
+        return fl
 
     def load_specs(self, filename):
         """Load spectrometer specifications from file

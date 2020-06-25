@@ -5,12 +5,13 @@ Module containing widgets for camera and spectrometer control, by connecting to 
 messages other comms
 """
 
+from pycam.setupclasses import CameraSpecs, SpecSpecs
+import pycam.gui.cfg as cfg
+from pycam.cfg import pyplis_worker
+
 import tkinter as tk
 import tkinter.ttk as ttk
-from pycam.setupclasses import CameraSpecs, SpecSpecs
-
-import pycam.gui.cfg as cfg
-
+import numpy as np
 
 
 class TkVariables:
@@ -21,8 +22,11 @@ class TkVariables:
     def __init__(self):
         self._pix_num_x = tk.IntVar()
         self._pix_num_y = tk.IntVar()
-        self._fov_x = tk.IntVar()
-        self._fov_y = tk.IntVar()
+        self._pix_size_x = tk.DoubleVar()
+        self._pix_size_y = tk.DoubleVar()
+        self._fov_x = tk.DoubleVar()
+        self._fov_y = tk.DoubleVar()
+        self._focal_length = tk.DoubleVar()
         self._bit_depth = tk.IntVar()
         self._ss_A = tk.IntVar()
         self._ss_B = tk.IntVar()
@@ -63,6 +67,26 @@ class TkVariables:
         self._pix_num_y.set(value)
 
     @property
+    def pix_size_x(self):
+        """Public access attribute to fetch pix_size_x from GUI"""
+        return self._pix_size_x.get()
+
+    @pix_size_x.setter
+    def pix_size_x(self, value):
+        """Public access attribute to fetch pix_size_x from GUI"""
+        self._pix_size_x.set(value)
+
+    @property
+    def pix_size_y(self):
+        """Public access attribute to fetch pix_size_y from GUI"""
+        return self._pix_size_y.get()
+
+    @pix_size_y.setter
+    def pix_size_y(self, value):
+        """Public access attribute to fetch pix_size_y from GUI"""
+        self._pix_size_y.set(value)
+
+    @property
     def fov_x(self):
         """Public access attribute to fetch fov_x from GUI"""
         return self._fov_x.get()
@@ -81,6 +105,19 @@ class TkVariables:
     def fov_y(self, value):
         """Public access attribute to fetch fov_y from GUI"""
         self._fov_y.set(value)
+
+    @property
+    def focal_length(self):
+        """Public access attribute to fetch focal length from GUI.
+        Focal length, which is held in mm for better visual, is first converted to m, since pyplis works in m"""
+        return self._focal_length.get() / 1000
+
+    @focal_length.setter
+    def focal_length(self, value):
+        """Public access attribute to fetch focal length from GUI and set it.
+        Focal length is accepted in mm for ease, since it is more commonly defined in mm than m"""
+        self._focal_length.set(value)
+
 
     @property
     def bit_depth(self):
@@ -241,9 +278,12 @@ class TkVariables:
         self.saturation_pixels = cam.saturation_pixels
         self.pix_num_x = cam.pix_num_x
         self.pix_num_y = cam.pix_num_y
+        self.pix_size_x = cam.pix_size_x
+        self.pix_size_y = cam.pix_size_y
         self.fov_x = cam.fov_x
         self.fov_y = cam.fov_y
         self.bit_depth = cam.bit_depth
+        self.focal_length = cam.estimate_focal_length() * 1000
 
     def set_spec_defaults(self):
         """Sets up camera default using SpecSpecs defaults"""
@@ -257,8 +297,14 @@ class TkVariables:
         self.wavelength_max = spec.saturation_range[1]
         self.saturation_pixels = spec.saturation_pixels
         self.fov_x = spec.fov
+        self.fov_y = self.fov_x
+        self.pix_num_x = 1          # Optical fiber is one pixel
+        self.pix_num_y = 1
+        self.pix_size_x = spec.fiber_diameter
+        self.pix_size_y = self.pix_size_x       # Assuming a circular entrance optic for DOAS
         self.bit_depth = spec.bit_depth
         self.coadd = spec.start_coadd
+        self.focal_length = spec.estimate_focal_length() * 1000
 
 
 class CameraSettingsWidget(TkVariables):
@@ -382,9 +428,14 @@ class CameraSettingsWidget(TkVariables):
         e.grid(row=1, column=4, sticky='e')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='Bit depth:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        ttk.Label(self.img_param_frame, text='Focal Length [mm]:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._focal_length, width=4)
+        e.grid(row=2, column=2, sticky='w')
+        e.configure(state=tk.DISABLED)
+
+        ttk.Label(self.img_param_frame, text='Bit depth:').grid(row=3, column=0, padx=5, pady=5, sticky='e')
         e = ttk.Entry(self.img_param_frame, textvariable=self._bit_depth, width=4)
-        e.grid(row=2, column=1, columnspan=2, sticky='ew', pady=5)
+        e.grid(row=3, column=1, columnspan=2, sticky='ew', pady=5)
         e.configure(state=tk.DISABLED)
 
         row += 1
@@ -501,9 +552,14 @@ class SpectrometerSettingsWidget(TkVariables):
         e.grid(row=1, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.spec_param_frame, text='Bit depth:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.spec_param_frame, textvariable=self._bit_depth, width=4)
+        ttk.Label(self.spec_param_frame, text='Focal Length [mm]:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._focal_length, width=4)
         e.grid(row=2, column=1, sticky='ew')
+        e.configure(state=tk.DISABLED)
+
+        ttk.Label(self.spec_param_frame, text='Bit depth:').grid(row=3, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._bit_depth, width=4)
+        e.grid(row=3, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
 
