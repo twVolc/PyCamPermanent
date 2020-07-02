@@ -7,7 +7,7 @@ Contains all classes associated with building figures for the analysis functions
 from pycam.gui.cfg import gui_setts
 from pycam.setupclasses import CameraSpecs, FileLocator
 from pycam.cfg import pyplis_worker
-from pycam.pyplis_worker import UnrecognisedSourceError
+from pycam.so2_camera_processor import UnrecognisedSourceError
 from pyplis import LineOnImage
 
 import tkinter as tk
@@ -374,6 +374,7 @@ class ImageSO2:
 
     def plt_opt_flow(self):
         """Plots optical flow onto figure"""
+        pass
 
 
 class GeomSettings:
@@ -476,6 +477,10 @@ class GeomSettings:
         button = ttk.Button(self.frame, text='Set as default', command=self.set_default_instrument_setup)
         button.grid(row=row, column=3, padx=2, pady=2, sticky='nsew')
 
+        row += 1
+        button = ttk.Button(self.frame, text='Draw geometry', command=self.draw_geometry)
+        button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
+
     @property
     def lat(self):
         return self._lat.get()
@@ -531,6 +536,10 @@ class GeomSettings:
 
     def update_geom(self):
         """Updates pyplis MeasGeom object with values from this frame"""
+        # Update geometry dictionary and pyplis worker camera object
+        self.gather_geom()
+        self.pyplis_worker.update_cam_geom(self.geom_dict)
+
         # Update measurement setup with location
         try:
             self.pyplis_worker.measurement_setup(location=self.volcano)
@@ -539,11 +548,6 @@ class GeomSettings:
                                  'The volcano source {} was not recognised. \n'
                                  'Please try a different source name or add '
                                  'source information manually.'.format(self.volcano))
-
-        # Update geometry dictionary and pyplis worker
-        self.gather_geom()
-        self.pyplis_worker.update_cam_geom(self.geom_dict)
-
 
     def save_instrument_setup(self):
         """Saves all of the current instrument geometry settings to a text file, so it can be loaded on start-up"""
@@ -597,3 +601,201 @@ class GeomSettings:
         # Update default
         with open(FileLocator.DEFAULT_GEOM, 'w') as f:
             f.write(self.filename)
+
+    def draw_geometry(self):
+        """Draws geometry through pyplis"""
+        self.update_geom()
+        self.pyplis_worker.show_geom()
+
+
+class ProcessSettings:
+    """
+    Object for holding the current processing settings, such as update plots iteratively, method of retrievals etc
+
+    To add a new variable:
+    1. Add it as a tk variable in initiate variables
+    2. Add it to the vars dictionary, along with its type
+    3. Add its associated widgets
+    4. Add its associated property with get and set options
+    5. Add its action to gather_vars()
+    6. Add its reset to close_window()
+    7. Add its default value to processing_setting_defaults.txt
+
+    :param parent: tk.Frame     Parent frame
+    :param generate_frame: bool   Defines whether the frame is generated on instantiation
+    """
+    def __init__(self, parent=None, generate_frame=False):
+        self.parent = parent
+        self.frame = None
+        self.pdx = 2
+        self.pdy = 2
+
+        # Generate GUI if requested
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame
+
+    def initiate_variables(self):
+        """
+        Initiates tk variables to startup values
+        :return:
+        """
+        # List of all variables to be read in and saved
+        self.vars = {'plot_iter': int,
+                     'dark_dir': str}
+
+        self._plot_iter = tk.IntVar()
+        self._dark_dir = tk.StringVar()
+
+        # Load defaults from file
+        self.load_defaults()
+
+    def generate_frame(self):
+        """
+        Builds tkinter frame for settings
+        :return:
+        """
+        self.frame = tk.Toplevel()
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
+
+        row = 0
+
+        # Dark directory
+        label = ttk.Label(self.frame, text='Dark image directory:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.dark_label = ttk.Label(self.frame, text=self.dark_dir_short, width=25)
+        self.dark_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_dir)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Plot iteratively checkbutton
+        self.plot_check = ttk.Checkbutton(self.frame, text='Update plots iteratively', variable=self._plot_iter)
+        self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Save/set buttons
+        butt = ttk.Button(self.frame, text='Cancel', command=self.close_window)
+        butt.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(self.frame, text='OK', command=self.save_close)
+        butt.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(self.frame, text='Apply', command=self.gather_vars)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(self.frame, text='Set As Defaults', command=self.set_defaults)
+        butt.grid(row=row, column=3, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+    @property
+    def plot_iter(self):
+        return self._plot_iter.get()
+
+    @plot_iter.setter
+    def plot_iter(self, value):
+        self._plot_iter.set(value)
+
+    @property
+    def dark_dir(self):
+        return self._dark_dir.get()
+
+    @dark_dir.setter
+    def dark_dir(self, value):
+        self._dark_dir.set(value)
+
+    @property
+    def dark_dir_short(self):
+        """Returns shorter label for dark directory"""
+        return '...' + self.dark_dir[-25:]
+
+    def get_dark_dir(self):
+        """Gives user options for retreiving dark directory"""
+        dark_dir = filedialog.askdirectory(initialdir=self.dark_dir)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        self.frame.lift()
+
+        if len(dark_dir) > 0:
+            self.dark_dir = dark_dir
+            self.dark_label.configure(text=self.dark_dir_short)
+
+    def gather_vars(self):
+        """
+        Gathers all variables and sets associated objects to the values
+        :return:
+        """
+        pyplis_worker.plot_iter = self.plot_iter
+        pyplis_worker.dark_dir = self.dark_dir
+
+    def load_defaults(self):
+        """Loads default settings"""
+        filename = FileLocator.PROCESS_DEFAULTS
+
+        with open(filename, 'r') as f:
+            for line in f:
+                if line[0] == '#':
+                    continue
+
+                # Try to split line into key and value, if it fails this line is not used
+                try:
+                    key, value = line.split('=')
+                except ValueError:
+                    continue
+
+                # If the value is one we edit, we extract the value
+                if key in self.vars.keys():
+                    if self.vars[key] is str:
+                        value = value.split('\'')[1]
+                    else:
+                        value = self.vars[key](value.split('\n')[0].split('#')[0])
+                    setattr(self, key, value)
+
+    def set_defaults(self):
+        """Sets current values as defaults"""
+        # First set this variables
+        self.gather_vars()
+
+        # Ask user to define filename for saving geometry settings
+        filename = FileLocator.PROCESS_DEFAULTS
+        filename_temp = filename.replace('.txt', '_temp.txt')
+
+        # Open file object and write all attributes to it
+        with open(filename_temp, 'w') as f_temp:
+            with open(filename, 'r') as f:
+                for line in f:
+                    if line[0] == '#':
+                        f_temp.write(line)
+                        continue
+
+                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
+                    try:
+                        key, value = line.split('=')
+                    except ValueError:
+                        f_temp.write(line)
+                        continue
+
+                    # If the value is one we edit, we extract the value
+                    if key in self.vars.keys():
+                        if self.vars[key] is str:   # If string we need to write the value within quotes
+                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
+                        else:
+                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
+                    else:
+                        f_temp.write(line)
+
+        # Finally, overwrite old default file with new file
+        os.replace(filename_temp, filename)
+
+    def save_close(self):
+        """Gathers all variables and then closes"""
+        self.gather_vars()
+        self.close_window()
+
+    def close_window(self):
+        """Closes window"""
+        # Reset values if cancel was pressed, by retrieving them from their associated places
+        self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
+        self.dark_dir = pyplis_worker.dark_dir
+        self.dark_label.configure(text=self.dark_dir_short)
+
+        self.frame.destroy()

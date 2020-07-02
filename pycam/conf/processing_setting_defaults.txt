@@ -1,0 +1,12 @@
+# -*- coding: utf-8 -*-
+
+# This file contains the settings for loading default pyplis worker objects for startup in the gui
+
+init_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\'
+dark_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\\Villarrica\Cal_1\'
+bg_img_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399829ss_Clear.png'
+bg_img_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png'
+bg_dark_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_Dark.png'
+bg_dark_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
+
+plot_iter=1

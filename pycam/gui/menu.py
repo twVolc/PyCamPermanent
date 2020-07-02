@@ -5,11 +5,12 @@
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
-from pycam.gui.cfg_menu_frames import geom_settings
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings
 from pycam.gui.misc import About
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg_menu_frames import calibration_wind
+from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -37,10 +38,12 @@ class PyMenu:
         self.menus = dict()
         keys = list()
 
+        # -----------------------------------------------------------------------------------------------
         # File tab
         tab = 'File'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
         self.menus[tab].add_command(label='Settings', command=Settings)
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Exit', command=self.parent.exit_app)
@@ -55,6 +58,7 @@ class PyMenu:
         self.menus[tab].add_command(label='Disconnect', command=cfg.indicator.disconnect_sock)
 
         self.submenu_cmd = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Commands', menu=self.submenu_cmd)
         self.submenu_cmd.add_command(label='Shutdown', command=lambda: instrument_cmd('EXT'))
         self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Restart', command=lambda: instrument_cmd('RST'))
@@ -62,13 +66,26 @@ class PyMenu:
         self.submenu_cmd.add_command(label='Restart spectrometer', command=lambda: instrument_cmd('RSS'))
         self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
-        self.menus[tab].add_cascade(label='Commands', menu=self.submenu_cmd)
-
         self.menus[tab].add_separator()
 
         # Geometry setup
         self.menus[tab].add_command(label='Geometry configuration', command=MeasGeomWind)
         # -------------------------------------------------------------------------------------------------
+
+        # File tab
+        tab = 'Processing'
+        keys.append(tab)
+        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        # Processing submenu
+        self.submenu_proc = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
+        self.submenu_proc.add_command(label='Load sequence', command=pyplis_worker.load_sequence)
+        self.submenu_proc.add_separator()
+        self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
+
+        self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
+        # ---------------------------------------------------------------------------------------------------------
 
         # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
         tab = 'View'

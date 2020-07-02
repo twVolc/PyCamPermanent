@@ -46,6 +46,8 @@ class FileLocator:
     CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
 
+    PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.txt'
+
 
 class ConfigInfo:
     """Defines important attributes related to config files, allowing references to link to this file rather than being
@@ -114,6 +116,7 @@ class CameraSpecs:
         self.save_path = '.\\Images\\'
         self.file_ext = '.png'                                  # File extension for images
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
+        self.file_date_loc = 0                                  # Location of date string in filename
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
         self.file_ag = '{}ag'                                   # Analog gain format spec
         self.file_ss = '{}ss'                                   # Shutter speed format spec

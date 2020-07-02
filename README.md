@@ -4,6 +4,7 @@ Software for permanent installation PiCam
 
 To install:
 > ./doas/cfg.py needs to be modified for absolute pathnames on local machine
+> ./conf/processing_setting_defaults.txt needs to be modified to load clear sky images for specific location
 
 Bug report:
 1. Disconnecting the ext_comm more than once leads to and index error in close_connection (from masterpi)
@@ -28,6 +29,8 @@ of the processing thread which will need to be running constantly.
 Requirements for GUI:
 > In pycam_gui.py must update os.environ[PROJ_LIB] to point to correct place. Only necessary if there are issues with importing basemap
 >
+> pyplis. pyplis.custom_image_import needs to be updated to contain load_picam_png() function
+>
 > seabreeze (conda install -c conda-forge seabreeze) for pi only
 >
 > pyserial
@@ -43,3 +46,5 @@ Requirements for GUI:
 > astropy
 >
 > scipy
+>
+> scikit-image

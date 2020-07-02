@@ -11,4 +11,3 @@ fig_doas=10.0,3.0
 fig_ref_spec=10.0,4.0
 fig_SO2=7.0,6.0
 
-geom_file=''

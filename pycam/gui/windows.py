@@ -43,11 +43,11 @@ class CameraWind:
         self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image A widget setup
-        self.img_A = ImageFigure(self.frame, name='Image A')
+        self.img_A = ImageFigure(self.frame, name='Image A', band='A')
         self.img_A.frame.grid(row=0, column=1, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image B widget setup
-        self.img_B = ImageFigure(self.frame, name='Image B')
+        self.img_B = ImageFigure(self.frame, name='Image B', band='B')
         self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
 

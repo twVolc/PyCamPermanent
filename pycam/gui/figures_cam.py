@@ -4,6 +4,7 @@
 
 from pycam.setupclasses import CameraSpecs
 import pycam.gui.cfg as cfg
+from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -17,17 +18,22 @@ import matplotlib.spines
 import matplotlib.cm as cm
 
 import numpy as np
+import threading
 
 
 class ImageFigure:
     """
     Class for plotting an image and associated widgets, such as cross-sectinal DNs
     """
-    def __init__(self, frame, name='Image', image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x])):
+    def __init__(self, frame, name='Image', band='A',
+                 image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x]),
+                 start_update_thread=True):
         self.parent = frame
         self.frame = ttk.LabelFrame(self.parent, text=name)
+        self.update_thread = None
 
         self.image = image
+        self.band = band
         self.specs = CameraSpecs()
 
         self.pdx = 2
@@ -53,6 +59,8 @@ class ImageFigure:
         self.xsect_frame.grid(row=0, column=0, padx=5, pady=5, sticky='w')
         self.fig_frame.grid(row=1, column=0, padx=5, pady=5)
 
+        if start_update_thread:
+            self.start_update_thread()
 
     @property
     def row(self):
@@ -185,3 +193,42 @@ class ImageFigure:
 
         # Redraw the canvas to update plot
         self.img_canvas.draw()
+
+    def update_plot(self, img, img_path):
+        """
+        Updates image figure and all associated subplots
+        :param img: np.ndarray  Image array
+        :param img_path: str    Image name to be set as title
+        :return:
+        """
+        self.image = img
+        filename = img_path.split('\\')[-1]     # Extract filename from full path
+
+        # Update main image display and title
+        self.img_disp.set_data(img)
+        self.ax.set_title(filename)
+
+        # Update subplots - this includes a call to draw() so the figure will be updated after this
+        self.x_sect_plot()
+
+    def start_update_thread(self):
+        """
+        Starts image update thread
+        :return:
+        """
+        self.update_thread = threading.Thread(target=self._img_update_thread, args=())
+        self.update_thread.daemon = True
+        self.update_thread.start()
+
+    def _img_update_thread(self):
+        """
+        Gets new images to be displayed in figure and displays them
+        :return:
+        """
+        while True:
+            # Get next image and its path (passed to queue as a 2-element list)
+            img_path, img_obj = getattr(pyplis_worker, 'img_{}_q'.format(self.band)).get(block=True)
+
+            # Get data from the pyplis.image.Img object
+            self.update_plot(img_obj.img, img_path)
+

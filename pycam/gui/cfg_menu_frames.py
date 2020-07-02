@@ -6,7 +6,7 @@ E.g. the data held within these objects links to the processing work, and needs 
 object's frame has been build in the menu
 """
 
-from pycam.gui.figures_analysis import GeomSettings
+from pycam.gui.figures_analysis import GeomSettings, ProcessSettings
 from pycam.gui.figures_doas import CalibrationWindow
 
 # Geometry settings
@@ -14,3 +14,6 @@ geom_settings = GeomSettings()
 
 # DOAS calibration window
 calibration_wind = CalibrationWindow()
+
+# Processing settings
+process_settings = ProcessSettings()

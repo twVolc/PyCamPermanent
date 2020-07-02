@@ -4,7 +4,6 @@
 
 from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.doas.doas_worker import DOASWorker
 from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
 from .settings import GUISettings

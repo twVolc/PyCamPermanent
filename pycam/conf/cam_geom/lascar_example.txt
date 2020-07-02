@@ -1,0 +1,7 @@
+# Geometry setup file
+volcano=lascar
+lat=-23.397492
+lon=-67.730666
+altitude=4920
+elev=10.0
+azim=5.0

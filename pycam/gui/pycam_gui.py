@@ -5,12 +5,15 @@
 import os
 os.environ["PROJ_LIB"] = 'C:\\Users\\tw9616\Anaconda3\\envs\\py38\\Lib\\site-packages\\pyproj'
 
+import sys
+sys.path.append("C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\")
+
 from pycam.gui.menu import PyMenu
 from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
-from pycam.gui.cfg_menu_frames import geom_settings
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings
 import pycam.gui.cfg as cfg
 
 import tkinter as tk
@@ -69,8 +72,9 @@ class PyCam(ttk.Frame):
         self.info_load()
 
     def info_load(self):
-        """Instantiates all frames which requrie some kind of start-up instantiation"""
+        """Instantiates all frames which require some kind of start-up instantiation"""
         geom_settings.initiate_variables()
+        process_settings.initiate_variables()
 
 
     def exit_app(self):
