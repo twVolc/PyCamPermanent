@@ -57,7 +57,7 @@ class ImageSO2:
         self.num_ica = 1
         self._current_ica = tk.IntVar()
         self.current_ica = 1
-        self.ica_lines_list = [None] * self.max_lines           # Pyplis line objects list
+        self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
         self.scat_ica_point = None
@@ -228,10 +228,10 @@ class ImageSO2:
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
-        for ica in self.ica_lines_list[self.num_ica:]:
+        for ica in self.PCS_lines_list[self.num_ica:]:
             if ica is not None:
                 self.del_ica(ica_num)
-                self.ica_lines_list[ica_num] = None
+                self.PCS_lines_list[ica_num] = None
             ica_num += 1
 
     def flip_ica_normal(self):
@@ -239,7 +239,7 @@ class ImageSO2:
         ica_idx = self.current_ica - 1
 
         # Get line currently being edited
-        line = self.ica_lines_list[ica_idx]
+        line = self.PCS_lines_list[ica_idx]
         lbl = "{}".format(ica_idx)
 
         # If current line is not none we find it's orientation and reverse it
@@ -247,18 +247,18 @@ class ImageSO2:
             self.del_ica(ica_idx)
 
             if line.normal_orientation == 'right':
-                self.ica_lines_list[ica_idx] = LineOnImage(x0=line.x0, y0=line.y0, x1=line.x1, y1=line.y1,
+                self.PCS_lines_list[ica_idx] = LineOnImage(x0=line.x0, y0=line.y0, x1=line.x1, y1=line.y1,
                                                            normal_orientation="left", color=self.line_colours[ica_idx],
                                                            line_id=lbl)
 
             elif line.normal_orientation == 'left':
-                self.ica_lines_list[ica_idx] = LineOnImage(x0=line.x0, y0=line.y0, x1=line.x1, y1=line.y1,
+                self.PCS_lines_list[ica_idx] = LineOnImage(x0=line.x0, y0=line.y0, x1=line.x1, y1=line.y1,
                                                            normal_orientation="right", color=self.line_colours[ica_idx],
                                                            line_id=lbl)
 
             # Plot pyplis object on figure
-            self.ica_lines_list[ica_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
-                                                               include_roi_rot=True, label=lbl)
+            self.PCS_lines_list[ica_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
+                                                           include_roi_rot=True, label=lbl)
 
             # Redraw canvas
             self.img_canvas.draw()
@@ -266,14 +266,14 @@ class ImageSO2:
     def ica_draw(self, event):
         """Collects points for ICA line and then draws it when a complete line is drawn"""
         # Python indices start at 0, so need to set the correct index for list indexing
-        ica_idx = self.current_ica - 1
+        PCS_idx = self.current_ica - 1
 
         if event.inaxes is self.ax:
             idx = len(self.ica_coords)
 
             # If we are about to overwrite an old line, we first check that the user wants this
             if idx == 1:
-                if self.ica_lines_list[ica_idx] is not None:
+                if self.PCS_lines_list[PCS_idx] is not None:
                     resp = messagebox.askokcancel('Overwriting line',
                                                   'You are about to overwrite an existing line.\n'
                                                   'This could affect processing results if it is currently running.')
@@ -306,21 +306,23 @@ class ImageSO2:
                     pass
 
                 # Delete previous line if it exists
-                if self.ica_lines_list[ica_idx] is not None:
-                    self.del_ica(ica_idx)
+                if self.PCS_lines_list[PCS_idx] is not None:
+                    self.del_ica(PCS_idx)
 
-                # Update pyplis line object
-                lbl = "{}".format(ica_idx)
-                self.ica_lines_list[ica_idx] = LineOnImage(x0=self.ica_coords[0][0],
-                                                                    y0=self.ica_coords[0][1],
-                                                                    x1=self.ica_coords[1][0],
-                                                                    y1=self.ica_coords[1][1],
-                                                                    normal_orientation="right",
-                                                                    color=self.line_colours[ica_idx],
-                                                                    line_id=lbl)
+                # Update pyplis line object and objects in pyplis_worker
+                lbl = "{}".format(PCS_idx)
+                self.PCS_lines_list[PCS_idx] = LineOnImage(x0=self.ica_coords[0][0],
+                                                           y0=self.ica_coords[0][1],
+                                                           x1=self.ica_coords[1][0],
+                                                           y1=self.ica_coords[1][1],
+                                                           normal_orientation="right",
+                                                           color=self.line_colours[PCS_idx],
+                                                           line_id=lbl)
+
+                pyplis_worker.PCS_lines = self.PCS_lines_list
 
                 # Plot pyplis object on figure
-                self.ica_lines_list[ica_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
+                self.PCS_lines_list[PCS_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
                                                                include_roi_rot=True, label=lbl)
 
                 # # Extract ICA values and plotting them
@@ -337,9 +339,9 @@ class ImageSO2:
         Parameters
         ----------
         line_num: int
-            Index of line in ica_lines_list"""
+            Index of line in PCS_lines_list"""
         # Get line
-        line = self.ica_lines_list[line_num]
+        line = self.PCS_lines_list[line_num]
 
         # Search for line and remove it when the correct one is found
         plt_lines = self.ax.get_lines()
@@ -359,7 +361,7 @@ class ImageSO2:
 
 
         # Once removed, set the line to None
-        self.ica_lines_list[line_num] = None
+        self.PCS_lines_list[line_num] = None
 
         # Redraw canvas
         self.img_canvas.draw()
@@ -630,6 +632,9 @@ class ProcessSettings:
         self.pdx = 2
         self.pdy = 2
 
+        self.path_str_length = 50
+        self.path_widg_length = self.path_str_length + 2
+
         # Generate GUI if requested
         if generate_frame:
             self.initiate_variables()
@@ -642,9 +647,13 @@ class ProcessSettings:
         """
         # List of all variables to be read in and saved
         self.vars = {'plot_iter': int,
+                     'bg_A': str,
+                     'bg_B': str,
                      'dark_dir': str}
 
         self._plot_iter = tk.IntVar()
+        self._bg_A = tk.StringVar()
+        self._bg_B = tk.StringVar()
         self._dark_dir = tk.StringVar()
 
         # Load defaults from file
@@ -660,10 +669,28 @@ class ProcessSettings:
 
         row = 0
 
+        # Background img A directory
+        label = ttk.Label(self.frame, text='On-band background:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.bg_A_label = ttk.Label(self.frame, text=self.bg_A_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose file', command=lambda: self.get_bg_file('A'))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Background img B directory
+        label = ttk.Label(self.frame, text='Off-band background:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.bg_A_label = ttk.Label(self.frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose file', command=lambda: self.get_bg_file('B'))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
         # Dark directory
         label = ttk.Label(self.frame, text='Dark image directory:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_label = ttk.Label(self.frame, text=self.dark_dir_short, width=25)
+        self.dark_label = ttk.Label(self.frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
         self.dark_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
@@ -674,18 +701,21 @@ class ProcessSettings:
         self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
+        self.butt_frame = ttk.Frame(self.frame)
+        self.butt_frame.grid(row=row, columnspan=4, sticky='nsew')
+
         # Save/set buttons
-        butt = ttk.Button(self.frame, text='Cancel', command=self.close_window)
-        butt.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.butt_frame, text='Cancel', command=self.close_window)
+        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.frame, text='OK', command=self.save_close)
-        butt.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.butt_frame, text='OK', command=self.save_close)
+        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.frame, text='Apply', command=self.gather_vars)
-        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.butt_frame, text='Apply', command=self.gather_vars)
+        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.frame, text='Set As Defaults', command=self.set_defaults)
-        butt.grid(row=row, column=3, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.butt_frame, text='Set As Defaults', command=self.set_defaults)
+        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
     @property
     def plot_iter(self):
@@ -706,7 +736,33 @@ class ProcessSettings:
     @property
     def dark_dir_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.dark_dir[-25:]
+        return '...' + self.dark_dir[-self.path_str_length:]
+
+    @property
+    def bg_A(self):
+        return self._bg_A.get()
+
+    @bg_A.setter
+    def bg_A(self, value):
+        self._bg_A.set(value)
+
+    @property
+    def bg_A_short(self):
+        """Returns shorter label for bg_A file"""
+        return '...' + self.bg_A[-self.path_str_length:]
+
+    @property
+    def bg_B(self):
+        return self._bg_B.get()
+
+    @bg_B.setter
+    def bg_B(self, value):
+        self._bg_B.set(value)
+
+    @property
+    def bg_B_short(self):
+        """Returns shorter label for bg_B file"""
+        return '...' + self.bg_B[-self.path_str_length:]
 
     def get_dark_dir(self):
         """Gives user options for retreiving dark directory"""
@@ -719,13 +775,26 @@ class ProcessSettings:
             self.dark_dir = dark_dir
             self.dark_label.configure(text=self.dark_dir_short)
 
+    def get_bg_file(self, band):
+        """Gives user options for retreiving dark directory"""
+        bg_file = filedialog.askopenfilename(initialdir=self.dark_dir)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        self.frame.lift()
+
+        if len(bg_file) > 0:
+            setattr(self, 'bg_{}'.format(band), bg_file)
+            getattr(self, 'bg_{}_label'.format(band)).configure(text=getattr(self, 'bg_{}_short'.format(band)))
+
     def gather_vars(self):
         """
         Gathers all variables and sets associated objects to the values
         :return:
         """
         pyplis_worker.plot_iter = self.plot_iter
-        pyplis_worker.dark_dir = self.dark_dir
+        pyplis_worker.dark_dir = self.dark_dir          # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.load_BG_img(self.bg_A, band='A')
+        pyplis_worker.load_BG_img(self.bg_B, band='B')
 
     def load_defaults(self):
         """Loads default settings"""
@@ -749,6 +818,9 @@ class ProcessSettings:
                     else:
                         value = self.vars[key](value.split('\n')[0].split('#')[0])
                     setattr(self, key, value)
+
+        # Update all objects finally
+        self.gather_vars()
 
     def set_defaults(self):
         """Sets current values as defaults"""
@@ -795,6 +867,8 @@ class ProcessSettings:
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
+        self.bg_A = pyplis_worker.bg_A_path
+        self.bg_B = pyplis_worker.bg_B_path
         self.dark_dir = pyplis_worker.dark_dir
         self.dark_label.configure(text=self.dark_dir_short)
 

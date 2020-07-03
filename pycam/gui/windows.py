@@ -3,15 +3,16 @@
 """Module containing the core classes to create each window frame of the GUI
 Each window forms a tab which can be accessed through the 'View' menu."""
 
-import tkinter as tk
-import tkinter.ttk as ttk
-
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
 from .misc import Indicator, ScrollWindow
 import pycam.gui.cfg as cfg
 from pycam.gui.figures_cam import ImageFigure
 from pycam.gui.figures_doas import SpectraPlot, DOASPlot
 from pycam.gui.figures_analysis import ImageSO2
+
+import tkinter as tk
+import tkinter.ttk as ttk
+import threading
 
 
 class CameraWind:
@@ -43,11 +44,12 @@ class CameraWind:
         self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image A widget setup
-        self.img_A = ImageFigure(self.frame, name='Image A', band='A')
+        draw_lock = threading.Lock()
+        self.img_A = ImageFigure(self.frame, lock=draw_lock, name='Image A', band='A')
         self.img_A.frame.grid(row=0, column=1, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image B widget setup
-        self.img_B = ImageFigure(self.frame, name='Image B', band='B')
+        self.img_B = ImageFigure(self.frame, lock=draw_lock, name='Image B', band='B')
         self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
 

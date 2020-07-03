@@ -23,7 +23,7 @@ from ttkthemes import ThemedStyle
 
 import sys
 import warnings
-warnings.simplefilter("ignore", UserWarning)    # Ignore UserWarnings, in particular tight_layout which is annoying
+# warnings.simplefilter("ignore", UserWarning)    # Ignore UserWarnings, in particular tight_layout which is annoying
 
 
 class PyCam(ttk.Frame):

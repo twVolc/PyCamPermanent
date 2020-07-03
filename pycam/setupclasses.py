@@ -120,6 +120,7 @@ class CameraSpecs:
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
         self.file_ag = '{}ag'                                   # Analog gain format spec
         self.file_ss = '{}ss'                                   # Shutter speed format spec
+        self.file_ss_loc = 3
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
         self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
 

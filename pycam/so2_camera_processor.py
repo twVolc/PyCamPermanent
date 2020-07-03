@@ -11,21 +11,21 @@ import queue
 import threading
 import pyplis
 from tkinter import filedialog, messagebox
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import cv2
 from skimage import transform as tf
 import warnings
+from math import log10, floor
 
 
 class PyplisWorker:
     """
     Main pyplis worker class
 
-    :param bg_img_A: dict  Containing bg_path and dark_path to background image, used for estimating background sky intensities
-    :param bg_img_B: dict  As above, but for img_B
     """
-    def __init__(self, img_dir=None, bg_img_A=None, bg_img_B=None):
+    def __init__(self, img_dir=None):
         self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
 
         # Pyplis object setup
@@ -34,7 +34,18 @@ class PyplisWorker:
         self.meas = pyplis.setupclasses.MeasSetup()     # Pyplis MeasSetup object (instantiated empty)
         self.img_reg = ImageRegistration()              # Image registration object
         self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
+        self.plume_bg.surface_fit_pyrlevel = 0
         self.cam_specs = CameraSpecs()
+        self.BG_CORR_MODES = [0,    # 2D poly surface fit (without sky radiance image)
+                              1,    # Scaling of sky radiance image
+                              4,    # Scaling + linear gradient correction in x & y direction
+                              6]    # Scaling + quadr. gradient correction in x & y direction
+        self.POLYFIT_2D_MASK_THRESH = 100
+        self.PCS_lines = []
+
+        # Figure objects
+        self.fig_A = None
+        self.fig_B = None
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},
@@ -53,15 +64,14 @@ class PyplisWorker:
         self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # SO2 calibrated image
 
         # Load background image if we are provided with one
-        if bg_img_A is not None:
-            self.load_BG_img(bg_img_A['bg_path'], bg_img_A['dark_path'], band='A')
-        else:
-            self.img_BG_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vign_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.bg_A_path = None
+
         # Load background image if we are provided with one
-        if bg_img_B is not None:
-            self.load_BG_img(bg_img_B['bg_path'], bg_img_B['dark_path'], band='B')
-        else:
-            self.img_BG_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.bg_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vign_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.bg_B_path = None
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -168,6 +178,10 @@ class PyplisWorker:
             # Append the image pair to img_list, if we have a pair
             img_list.append([img_A, img_B[0]])
 
+        if no_contemp > 0:
+            warnings.warn('Image sequence has {} incomplete pairs\n'
+                          'These images will not be used for processing.'.format(no_contemp))
+
         return img_list
 
 
@@ -183,30 +197,36 @@ class PyplisWorker:
             self.img_dir = img_dir
 
 
-    def load_BG_img(self, bg_path, dark_path=None, band='A'):
+    def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
 
         :param bg_path: Path to background sky image
-        :param dark_path: Path to dark image associated with background image
         :param band: Defines whether image is for on or off band (A or B)"""
         if not os.path.exists(bg_path):
             raise ValueError('File path specified for background image does not exist: {}'.format(bg_path))
         if band not in ['A', 'B']:
             raise ValueError('Unrecognised band for background image: {}. Must be either A or B.'.format(band))
 
-        # Set variable
-        setattr(self, 'bg_img_{}'.format(band), pyplis.image.Img(bg_path, self.load_img_func))
+        # Create image object
+        img = pyplis.image.Img(bg_path, self.load_img_func)
 
-        # If dark image path is provided, we can load the dark image and subtract it from the background image
-        if dark_path is not None:
-            if os.path.exists(dark_path):
-                dark_img = pyplis.image.Img(bg_path, self.load_img_func)
-                getattr(self, 'bg_img_{}'.format(band)).subtract_dark_image(dark_img)
-                return
+        # Dark subtraction - first extract ss then hunt for dark image
+        ss = str(int(img.texp * 10 ** 6))
+        dark_img = self.find_dark_img(self.dark_dir, band=band, ss=ss)
 
-        # If we don't return prior to this warnign we have not been able to subtract the dark image
-        warnings.warn('No dark image provided for background image.\n '
-                      'Background image has not been corrected for dark current.')
+        if dark_img is not None:
+            img.subtract_dark_image(dark_img)
+        else:
+            warnings.warn('No dark image provided for background image.\n '
+                          'Background image has not been corrected for dark current.')
+
+        # Generate vign image
+        vign = img.img / img.img.max()  # NOTE: potentially includes y & x gradients
+
+        # Set variables
+        setattr(self, 'bg_{}'.format(band), img)
+        setattr(self, 'vign_{}'.format(band), vign)
+        setattr(self, 'bg_{}_path'.format(band), bg_path)
 
     def load_img(self, img_path, band=None, plot=True):
         """
@@ -226,12 +246,8 @@ class PyplisWorker:
         # Get new image
         img = pyplis.image.Img(img_path, self.load_img_func)
 
-        # TODO Add the dark correction here - it might be a subtraction of dark image straight away, or need to load one,
-        # TODO depending on if dark is a str or img object
         # Dark subtraction - first extract ss then hunt for dark image
-        img_name = img_path.split('\\')[-1]
-        ss_id = self.cam_specs.file_ss.replace('{}', '')
-        ss = [f for f in img_name.split('_') if ss_id in f][0].replace(ss_id, '')
+        ss = str(int(img.texp * 10 ** 6))
         dark_img = self.find_dark_img(self.dark_dir, band=band, ss=ss)
 
         if dark_img is not None:
@@ -241,7 +257,8 @@ class PyplisWorker:
 
         # Add to plot queue if requested
         if plot:
-            getattr(self, 'img_{}_q'.format(band)).put([img_path, img])
+            # getattr(self, 'img_{}_q'.format(band)).put([img_path, img])
+            getattr(self, 'fig_{}'.format(band)).update_plot(np.array(img.img, dtype=np.uint16), img_path)
 
         # Finally set object attribute to the loaded pyplis image
         setattr(self, 'img_{}'.format(band), img)
@@ -258,9 +275,12 @@ class PyplisWorker:
         elif band == 'B':
             band = 'off'
 
-        # Fast dictionary look up for preloaded dark images
-        if ss in self.dark_dict[band].keys():
-            dark_img = self.dark_dict[band][ss]
+        # Round ss to 2 significant figures
+        ss_rounded = round(int(ss), -int(floor(log10(abs(int(ss))))) + 1)
+
+        # Fast dictionary look up for preloaded dark images (using rounded ss value)
+        if str(ss_rounded) in self.dark_dict[band].keys():
+            dark_img = self.dark_dict[band][str(ss_rounded)]
             return dark_img
 
         # List all dark images in directory
@@ -268,28 +288,34 @@ class PyplisWorker:
                      if self.cam_specs.file_img_type['dark'] in f and self.cam_specs.file_ext in f
                      and self.cam_specs.file_filterids[band] in f]
 
-        ss_images = [f for f in dark_list if '{}ss'.format(ss) in f]
+        # Extract ss from each image and round to 2 significant figures
+        ss_str = self.cam_specs.file_ss.replace('{}', '')
+        ss_images = [int(f.split('_')[self.cam_specs.file_ss_loc].replace(ss_str, '')) for f in dark_list]
+        ss_rounded_list = [round(f, -int(floor(log10(abs(f)))) + 1) for f in ss_images]
 
-        if len(ss) < 1:
+        ss_idx = [i for i, x in enumerate(ss_rounded_list) if x == ss_rounded]
+        ss_images = [dark_list[i] for i in ss_idx]
+
+        if len(ss_images) < 1:
             # messagebox.showerror('No dark images found', 'No dark images at a shutter speed of {} '
             #                                              'were found in the directory {}'.format(ss, img_dir))
             return None
 
         # If we have images, we loop through them to create a coadded image
         dark_full = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, len(ss_images)])
-        for i in range(len(ss_images)):
+        for i, ss_image in enumerate(ss_images):
             # Load image. Coadd.
-            dark_full[:, :, i], meta = pyplis.custom_image_import.load_picam_png(img_dir + ss_images[i])
+            dark_full[:, :, i], meta = pyplis.custom_image_import.load_picam_png(img_dir + ss_image)
 
         # Coadd images to creat single image
         dark_img = np.mean(dark_full, axis=2)
 
         # Update lookup dictionary for fast retrieval of dark image later
-        self.dark_dict[band][ss] = dark_img
+        self.dark_dict[band][str(ss_rounded)] = dark_img
 
         return dark_img
 
-    def generate_optical_depth(self, img_A, img_B):
+    def generate_optical_depth(self, img_A, img_B, plot=True):
         """
         Performs the full catalogue of image procesing on a single image pair to generate optical depth image
         Processing beyond this point is left ot another function, since it requires use of a second set of images
@@ -303,7 +329,60 @@ class PyplisWorker:
 
         # Register off-band image
 
+        # --------------------------------------------------------------------------------------------------------------
         # Calculate background
+        vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
+        vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
+
+        # Automatic reference sky areas - using on-band. These parameters whould then be useable for the off-band images
+        # too, hopefully (once registered)
+        auto_params = pyplis.plumebackground.find_sky_reference_areas(vigncorr_A)
+        self.plume_bg.update(**auto_params)
+
+        # Plot parameters (edited from pyplis example script)
+        if plot:
+            fig, axes = plt.subplots(1, 1, figsize=(16, 6))
+            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, auto_params, ax=axes)
+            axes.set_title("Automatically set parameters")
+            fig.show()
+
+            # list to store figures of tau plotted tau images
+            _tau_figs = []
+
+            if len(self.PCS_lines) < 1:
+                pcs_line = None
+            else:
+                pcs_line = self.PCS_lines[0]
+
+            # mask for corr mode 0 (i.e. 2D polyfit)
+            mask = np.ones(vigncorr_A.img.shape, dtype=np.float32)
+            mask[vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
+
+            # First method: retrieve tau image using poly surface fit
+            tau0 = self.plume_bg.get_tau_image(vigncorr_A,
+                                          mode=self.BG_CORR_MODES[0],
+                                          surface_fit_mask=mask,
+                                          surface_fit_polyorder=1)
+
+            # Plot the result and append the figure to _tau_figs
+            _tau_figs.append(self.plume_bg.plot_tau_result(tau0, PCS=pcs_line))
+
+            # Second method: scale background image to plume image in "scale" rect
+            tau1 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[1])
+            _tau_figs.append(self.plume_bg.plot_tau_result(tau1, PCS=pcs_line))
+
+            # Third method: Linear correction for radiance differences based on two
+            # rectangles (scale, ygrad)
+            tau2 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[2])
+            _tau_figs.append(self.plume_bg.plot_tau_result(tau2, PCS=pcs_line))
+
+            # 4th method: 2nd order polynomial fit along vertical profile line
+            # For this method, determine tau on tau off and AA image
+            tau3 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[3])
+            _tau_figs.append(self.plume_bg.plot_tau_result(tau3, PCS=pcs_line))
+
+            fig6 = plot_pcs_profiles_4_tau_images(tau0, tau1, tau2, tau3, pcs_line)
+            fig6.show()
 
         # return img_tau
 
@@ -322,7 +401,7 @@ class PyplisWorker:
         self.load_img(img_path_B, band='B', plot=plot)
 
         # Generate optical depth image
-        self.img_aa = self.generate_optical_depth(self.img_A, self.img_B)
+        self.img_aa = self.generate_optical_depth(self.img_A, self.img_B, plot=plot)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -574,6 +653,31 @@ def create_picam_new_filters(geom_info):
     cam.image_import_method = pyplis.custom_image_import.load_picam_png
     # That's it...
     return cam
+
+
+def plot_pcs_profiles_4_tau_images(tau0, tau1, tau2, tau3, pcs_line):
+    """Plot PCS profiles for all 4 methods."""
+    BG_CORR_MODES = [0,    # 2D poly surface fit (without sky radiance image)
+                     1,    # Scaling of sky radiance image
+                     4,    # Scaling + linear gradient correction in x & y direction
+                     6]    # Scaling + quadr. gradient correction in x & y direction
+
+    fig, ax = plt.subplots(1, 1)
+    tau_imgs = [tau0, tau1, tau2, tau3]
+
+    for k in range(4):
+        img = tau_imgs[k]
+        profile = pcs_line.get_line_profile(img)
+        ax.plot(profile, "-", label=r"Mode %d: $\phi=%.3f$"
+                % (BG_CORR_MODES[k], np.mean(profile)))
+
+    ax.grid()
+    ax.set_ylabel(r"$\tau_{on}$", fontsize=20)
+    ax.set_xlim([0, pcs_line.length()])
+    ax.set_xticklabels([])
+    ax.set_xlabel("PCS", fontsize=16)
+    ax.legend(loc="best", fancybox=True, framealpha=0.5, fontsize=12)
+    return fig
 
 
 class UnrecognisedSourceError(BaseException):

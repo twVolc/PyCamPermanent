@@ -19,18 +19,25 @@ import matplotlib.cm as cm
 
 import numpy as np
 import threading
+import time
 
 
 class ImageFigure:
     """
     Class for plotting an image and associated widgets, such as cross-sectinal DNs
     """
-    def __init__(self, frame, name='Image', band='A',
+    def __init__(self, frame, lock=threading.Lock(), name='Image', band='A',
                  image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x]),
-                 start_update_thread=True):
+                 start_update_thread=False):
         self.parent = frame
         self.frame = ttk.LabelFrame(self.parent, text=name)
+        self.lock = lock
         self.update_thread = None
+        self.draw_time = time.time()
+        self.plot_lag = 0.15        # Minimum time between successive draw() calls. Prevents GUI freezing
+
+        # Set self to pyplis worker figure object
+        setattr(pyplis_worker, 'fig_{}'.format(band), self)
 
         self.image = image
         self.band = band
@@ -45,7 +52,7 @@ class ImageFigure:
         self._row_colour = 'limegreen'  # Colour of cross-section plotting for row
         self._col_colour = 'red'        # Colour of cross-section plotting for column
         self._init_img_row = 50         # Starting row position
-        self._init_img_col = 50         # Startign column position
+        self._init_img_col = 50         # Starting column position
         self._row = tk.IntVar()
         self._col = tk.IntVar()
 
@@ -152,7 +159,8 @@ class ImageFigure:
 
         # -------------------------------------
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
-        self.img_canvas.draw()
+        with self.lock:
+            self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
 
     def _build_xsect_panel(self):
@@ -160,22 +168,24 @@ class ImageFigure:
         self.xsect_frame = ttk.LabelFrame(self.frame, text="Image cross-sectional DNs", relief=tk.GROOVE,
                                           borderwidth=2)
 
-        self.x_sect_butt = ttk.Button(self.xsect_frame, text="Update plot", command=self.x_sect_plot)
-        self.x_sect_butt.grid(row=0, column=4, padx=self.pdx, pady=self.pdy)
-
         # Row spinbox
         row_label = ttk.Label(self.xsect_frame, text="Row:")
         row_label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.row = self._init_img_row
-        self.img_row = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_y-1, width=4, textvariable=self._row)
+        self.img_row = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_y-1, width=4,
+                                   textvariable=self._row)
         self.img_row.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
 
         # Column spinbox
         row_col = ttk.Label(self.xsect_frame, text="Column:")
         row_col.grid(row=0, column=2, padx=self.pdx, pady=self.pdy, sticky='w')
         self.col = self._init_img_col
-        self.img_col = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_x-1, width=4, textvariable=self._col)
+        self.img_col = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_x-1, width=4,
+                                   textvariable=self._col)
         self.img_col.grid(row=0, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
+
+        self.x_sect_butt = ttk.Button(self.xsect_frame, text="Update plot", command=self.x_sect_plot)
+        self.x_sect_butt.grid(row=0, column=4, padx=self.pdx, pady=self.pdy)
 
     def x_sect_plot(self):
         """Updates cross-section plot"""
@@ -185,14 +195,18 @@ class ImageFigure:
 
         # Plot new values on subplots
         self.line_row.set_data(self.pix_row, row_DN)
-        self.line_row.set_data(col_DN, self.pix_col)
+        self.line_col.set_data(col_DN, self.pix_col)
 
         # Update main figure cross-section lines
         self.img_disp_row.set_data([0, self.specs.pix_num_x], [self.row, self.row])
         self.img_disp_col.set_data([self.col, self.col], [0, self.specs.pix_num_y])
 
         # Redraw the canvas to update plot
-        self.img_canvas.draw()
+        with self.lock:
+            # Check how long has passed. Only draw if > 0.5s has passed, to ensure that we don't freeze up the GUI
+            if time.time() - self.draw_time > self.plot_lag:
+                self.img_canvas.draw()
+                self.draw_time = time.time()
 
     def update_plot(self, img, img_path):
         """
@@ -229,6 +243,7 @@ class ImageFigure:
             # Get next image and its path (passed to queue as a 2-element list)
             img_path, img_obj = getattr(pyplis_worker, 'img_{}_q'.format(self.band)).get(block=True)
 
-            # Get data from the pyplis.image.Img object
-            self.update_plot(img_obj.img, img_path)
+            print(img_path)
 
+            # Get data from the pyplis.image.Img object
+            self.update_plot(np.array(img_obj.img, dtype=np.uint16), img_path)
