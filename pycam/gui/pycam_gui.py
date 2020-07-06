@@ -13,7 +13,7 @@ from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg
 import pycam.gui.cfg as cfg
 
 import tkinter as tk
@@ -75,7 +75,7 @@ class PyCam(ttk.Frame):
         """Instantiates all frames which require some kind of start-up instantiation"""
         geom_settings.initiate_variables()
         process_settings.initiate_variables()
-
+        plume_bg.initiate_variables()
 
     def exit_app(self):
         """Closes application"""

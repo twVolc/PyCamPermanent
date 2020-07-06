@@ -35,23 +35,31 @@ class PyplisWorker:
         self.img_reg = ImageRegistration()              # Image registration object
         self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
         self.plume_bg.surface_fit_pyrlevel = 0
+        self.plume_bg.mode = 4      # Plume background mode - default (4) is linear in x and y
         self.cam_specs = CameraSpecs()
         self.BG_CORR_MODES = [0,    # 2D poly surface fit (without sky radiance image)
                               1,    # Scaling of sky radiance image
+                              2,
+                              3,
                               4,    # Scaling + linear gradient correction in x & y direction
-                              6]    # Scaling + quadr. gradient correction in x & y direction
+                              5,
+                              6,    # Scaling + quadr. gradient correction in x & y direction
+                              99]
+        self.auto_param_bg = True   # Whether the line parameters for BG modelling are generated automatically
         self.POLYFIT_2D_MASK_THRESH = 100
         self.PCS_lines = []
 
         # Figure objects
         self.fig_A = None
         self.fig_B = None
+        self.fig_tau = None
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},
                           'off': {}}     # Dictionary containing all retrieved dark images with their ss as the key
         self.dark_dir = None
         self.img_list = None
+        self.num_img_pairs = 0
         self.first_image = True     # Flag for when in the first image of a sequence (wind speed can't be calculated)
         self._location = None       # String for location e.g. lascar
         self.source = None          # Pyplis object of location
@@ -182,8 +190,9 @@ class PyplisWorker:
             warnings.warn('Image sequence has {} incomplete pairs\n'
                           'These images will not be used for processing.'.format(no_contemp))
 
-        return img_list
+        self.num_img_pairs = len(img_list)
 
+        return img_list
 
     def load_sequence(self):
         """
@@ -196,6 +205,17 @@ class PyplisWorker:
         if len(img_dir) > 0:
             self.img_dir = img_dir
 
+        # Update first_image flag
+        self.first_image = True
+
+        # Update image list
+        self.img_list = self.get_img_list()
+
+        # Display first images of sequence
+        if len(self.img_list) > 0:
+            self.process_pair(self.img_dir + '\\' + self.img_list[0][0],
+                              self.img_dir + '\\' + self.img_list[0][1],
+                              plot=True)
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
@@ -315,6 +335,68 @@ class PyplisWorker:
 
         return dark_img
 
+    def model_background(self, mode=None, plot=True):
+        """
+        Models plume background for image provided.
+        """
+        vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
+        vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
+
+        if self.auto_param_bg:
+            # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
+            auto_params = pyplis.plumebackground.find_sky_reference_areas(vigncorr_A)
+            self.plume_bg.update(**auto_params)
+
+        if mode in self.BG_CORR_MODES:
+            self.plume_bg.mode = mode
+
+        # Get PCS line if we have one
+        if len(self.PCS_lines) < 1:
+            pcs_line = None
+        else:
+            pcs_line = self.PCS_lines[0]
+
+        # Get tau_A and tau_B
+        if self.plume_bg.mode == 0:
+            # mask for corr mode 0 (i.e. 2D polyfit)
+            mask = np.ones(vigncorr_A.img.shape, dtype=np.float32)
+            mask[vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
+
+            # First method: retrieve tau image using poly surface fit
+            tau_A = self.plume_bg.get_tau_image(vigncorr_A,
+                                                mode=self.BG_CORR_MODES[0],
+                                                surface_fit_mask=mask,
+                                                surface_fit_polyorder=1)
+            tau_B = self.plume_bg.get_tau_image(vigncorr_B,
+                                                mode=self.BG_CORR_MODES[0],
+                                                surface_fit_mask=mask,
+                                                surface_fit_polyorder=1)
+        else:
+            tau_A = self.plume_bg.get_tau_image(self.img_A, self.bg_A)
+            tau_B = self.plume_bg.get_tau_image(self.img_B, self.bg_B)
+
+        # Plots
+        if plot:
+            if pcs_line is not None:
+                fig_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
+                fig_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
+            else:
+                fig_A = self.plume_bg.plot_tau_result(tau_A)
+                fig_B = self.plume_bg.plot_tau_result(tau_B)
+            fig_A.show()
+            fig_B.show()
+
+            # Reference areas
+            fig, axes = plt.subplots(1, 1, figsize=(16, 6))
+            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, auto_params, ax=axes)
+            axes.set_title("Automatically set parameters")
+            fig.show()
+
+        self.tau_A = tau_A
+        self.tau_B = tau_B
+
+        return tau_A, tau_B, fig_A, fig_B
+
     def generate_optical_depth(self, img_A, img_B, plot=True):
         """
         Performs the full catalogue of image procesing on a single image pair to generate optical depth image
@@ -324,65 +406,15 @@ class PyplisWorker:
         :param img_B: pyplis.image.Img      Off-band image
         :returns img_aa:    Optical depth image
         """
-        pass
-        # Dark correct (MAYBE THIS IS ALREADY DONE, WHEN LOADING IN THE IMAGE)
+        # Model sky backgrounds
+        self.model_background(plot=plot)
 
-        # Register off-band image
+        # Register off-band image TODO - maybe I want to register first? As after modelling BG i will be in optical depth not intensity space
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Calculate background
-        vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
-        vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
-
-        # Automatic reference sky areas - using on-band. These parameters whould then be useable for the off-band images
-        # too, hopefully (once registered)
-        auto_params = pyplis.plumebackground.find_sky_reference_areas(vigncorr_A)
-        self.plume_bg.update(**auto_params)
-
-        # Plot parameters (edited from pyplis example script)
         if plot:
-            fig, axes = plt.subplots(1, 1, figsize=(16, 6))
-            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, auto_params, ax=axes)
-            axes.set_title("Automatically set parameters")
-            fig.show()
-
-            # list to store figures of tau plotted tau images
-            _tau_figs = []
-
-            if len(self.PCS_lines) < 1:
-                pcs_line = None
-            else:
-                pcs_line = self.PCS_lines[0]
-
-            # mask for corr mode 0 (i.e. 2D polyfit)
-            mask = np.ones(vigncorr_A.img.shape, dtype=np.float32)
-            mask[vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
-
-            # First method: retrieve tau image using poly surface fit
-            tau0 = self.plume_bg.get_tau_image(vigncorr_A,
-                                          mode=self.BG_CORR_MODES[0],
-                                          surface_fit_mask=mask,
-                                          surface_fit_polyorder=1)
-
-            # Plot the result and append the figure to _tau_figs
-            _tau_figs.append(self.plume_bg.plot_tau_result(tau0, PCS=pcs_line))
-
-            # Second method: scale background image to plume image in "scale" rect
-            tau1 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[1])
-            _tau_figs.append(self.plume_bg.plot_tau_result(tau1, PCS=pcs_line))
-
-            # Third method: Linear correction for radiance differences based on two
-            # rectangles (scale, ygrad)
-            tau2 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[2])
-            _tau_figs.append(self.plume_bg.plot_tau_result(tau2, PCS=pcs_line))
-
-            # 4th method: 2nd order polynomial fit along vertical profile line
-            # For this method, determine tau on tau off and AA image
-            tau3 = self.plume_bg.get_tau_image(self.img_A, self.bg_A, mode=self.BG_CORR_MODES[3])
-            _tau_figs.append(self.plume_bg.plot_tau_result(tau3, PCS=pcs_line))
-
-            fig6 = plot_pcs_profiles_4_tau_images(tau0, tau1, tau2, tau3, pcs_line)
-            fig6.show()
+            # TODO update optical depth image
+            # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
+            self.fig_tau.show()
 
         # return img_tau
 

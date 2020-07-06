@@ -5,7 +5,7 @@
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg
 from pycam.gui.misc import About
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
@@ -84,6 +84,7 @@ class PyMenu:
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
 
+        self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
         # ---------------------------------------------------------------------------------------------------------
 

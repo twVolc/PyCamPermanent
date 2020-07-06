@@ -23,6 +23,74 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
 
 
+class SequenceInfo:
+    """
+    Generates widget containing squence information, which is displayed at the top of the analysis frame
+    """
+    def __init__(self, parent, generate_widget=True):
+        self.parent = parent
+        self.frame = ttk.LabelFrame(self.parent, text='Sequence information')
+
+        self.path_str_length = 50
+
+        self.pdx = 2
+        self.pdy = 2
+
+        if generate_widget:
+            self.initiate_variables()
+            self.generate_widget()
+
+    def initiate_variables(self):
+        """Setup tk variables"""
+        self._img_dir = tk.StringVar()
+        self._num_imgs = tk.IntVar()
+
+        self.img_dir = pyplis_worker.img_dir
+        self.num_imgs = pyplis_worker.num_img_pairs
+
+    def generate_widget(self):
+        """Builds widget"""
+        row = 0
+        label = ttk.Label(self.frame, text='Sequence directory:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.img_dir_lab = ttk.Label(self.frame, text=self.img_dir_short)
+        self.img_dir_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row += 1
+        label = ttk.Label(self.frame, text='Image pairs:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.num_imgs_lab = ttk.Label(self.frame, text=str(self.num_imgs))
+        self.num_imgs_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+
+    @property
+    def img_dir(self):
+        return self._img_dir.get()
+
+    @img_dir.setter
+    def img_dir(self, value):
+        self._img_dir.set(value)
+
+    @property
+    def img_dir_short(self):
+        return '...' + self.img_dir[-self.path_str_length:]
+
+    @property
+    def num_imgs(self):
+        return self._num_imgs.get()
+
+    @num_imgs.setter
+    def num_imgs(self, value):
+        self._num_imgs.set(value)
+
+    def update_variables(self):
+        """Updates image list variables"""
+        self.img_dir = pyplis_worker.img_dir
+        self.num_imgs = pyplis_worker.num_img_pairs
+
+        self.img_dir_lab.configure(text=self.img_dir_short)
+        self.num_imgs_lab.configure(text=str(self.num_imgs))
+
+
 class ImageSO2:
     """
     Main class for generating an image of SO2. It may be calibated [ppm.m] or uncalibrated [apparent absorbance]
@@ -610,7 +678,181 @@ class GeomSettings:
         self.pyplis_worker.show_geom()
 
 
-class ProcessSettings:
+class LoadSaveProcessingSettings:
+    """Base Class for loading and saving processing settings methods"""
+
+    def __init__(self):
+        self.vars = {}  # Variables dictionary with kay-value pairs containing attribute name and variable type
+
+        self.pdx = 2
+        self.pdy = 2
+
+    def gather_vars(self):
+        """
+        Place holder for inheriting classes. It gathers all tk variables and sets associated variables to their
+        values
+        """
+        pass
+
+    def load_defaults(self):
+        """Loads default settings"""
+        filename = FileLocator.PROCESS_DEFAULTS
+
+        with open(filename, 'r') as f:
+            for line in f:
+                if line[0] == '#':
+                    continue
+
+                # Try to split line into key and value, if it fails this line is not used
+                try:
+                    key, value = line.split('=')
+                except ValueError:
+                    continue
+
+                # If the value is one we edit, we extract the value
+                if key in self.vars.keys():
+                    if self.vars[key] is str:
+                        value = value.split('\'')[1]
+                    else:
+                        value = self.vars[key](value.split('\n')[0].split('#')[0])
+                    setattr(self, key, value)
+
+        # Update all objects finally
+        self.gather_vars()
+
+    def set_defaults(self):
+        """Sets current values as defaults"""
+        # First set this variables
+        self.gather_vars()
+
+        # Ask user to define filename for saving geometry settings
+        filename = FileLocator.PROCESS_DEFAULTS
+        filename_temp = filename.replace('.txt', '_temp.txt')
+
+        # Open file object and write all attributes to it
+        with open(filename_temp, 'w') as f_temp:
+            with open(filename, 'r') as f:
+                for line in f:
+                    if line[0] == '#':
+                        f_temp.write(line)
+                        continue
+
+                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
+                    try:
+                        key, value = line.split('=')
+                    except ValueError:
+                        f_temp.write(line)
+                        continue
+
+                    # If the value is one we edit, we extract the value
+                    if key in self.vars.keys():
+                        if self.vars[key] is str:  # If string we need to write the value within quotes
+                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
+                        else:
+                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
+                    else:
+                        f_temp.write(line)
+
+        # Finally, overwrite old default file with new file
+        os.replace(filename_temp, filename)
+
+
+class PlumeBackground(LoadSaveProcessingSettings):
+    """
+    Generates plume background image figure and settings to adjust parameters
+    """
+    def __init__(self, generate_frame=False):
+        super().__init__()
+        self.frame = None
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """Prepares all tk variables"""
+        self.vars = {'bg_mode': int,
+                     'auto_param': int}
+
+        self._bg_mode = tk.IntVar()
+        self._auto_param = tk.IntVar()
+
+        self.load_defaults()
+
+    def generate_frame(self):
+        """Generates frame and associated widgets"""
+        self.frame = tk.Toplevel()
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
+        self.frame.title('Background intensity settings')
+
+        # Options widget
+        self.opt_frame = ttk.LabelFrame(self.frame, text='Settings')
+        self.opt_frame.pack(side=tk.LEFT)
+
+        # Mode option menu
+        row = 0
+        label = tk.Label(self.opt_frame, text='Pyplis background model:')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode,
+                                      pyplis_worker.plume_bg.mode, *pyplis_worker.BG_CORR_MODES)
+        self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+
+        # Automatic reference areas
+        row += 1
+        self.auto = ttk.Checkbutton(self.opt_frame, text='Automatic reference areas', variable=self._auto_param)
+        self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
+
+        # Buttons
+        butt_frame = ttk.Frame(self.opt_frame)
+        butt_frame.grid(row=row, column=0, columnspan=2)
+
+        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
+        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(butt_frame, text='Test', command=self.run_process)
+        butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Build figures for displaying bg modelling
+        # --------------------------------------------------------------------------------------------------------------
+        self.fig_A = plt.Figure()
+        self.fig_B = plt.Figure()
+        self.fig_PCS = plt.Figure()
+
+    @property
+    def bg_mode(self):
+        return self._bg_mode.get()
+
+    @bg_mode.setter
+    def bg_mode(self, value):
+        self._bg_mode.set(value)
+
+    @property
+    def auto_param(self):
+        return self._auto_param.get()
+
+    @auto_param.setter
+    def auto_param(self, value):
+        self._auto_param.set(value)
+
+    def gather_vars(self):
+        pyplis_worker.plume_bg.mode = self.bg_mode
+        pyplis_worker.auto_param_bg = self.auto_param
+
+    def run_process(self):
+        """Main processing for background modelling and displaying the results"""
+
+    def close_window(self):
+        """Restore current settings"""
+        self.bg_mode = pyplis_worker.plume_bg.mode
+        self.auto_param = pyplis_worker.auto_param_bg
+        self.frame.destroy()
+
+
+class ProcessSettings(LoadSaveProcessingSettings):
     """
     Object for holding the current processing settings, such as update plots iteratively, method of retrievals etc
 
@@ -627,10 +869,9 @@ class ProcessSettings:
     :param generate_frame: bool   Defines whether the frame is generated on instantiation
     """
     def __init__(self, parent=None, generate_frame=False):
+        super().__init__()
         self.parent = parent
         self.frame = None
-        self.pdx = 2
-        self.pdy = 2
 
         self.path_str_length = 50
         self.path_widg_length = self.path_str_length + 2
@@ -666,6 +907,7 @@ class ProcessSettings:
         """
         self.frame = tk.Toplevel()
         self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
+        self.frame.title('Post-processing settings')
 
         row = 0
 
@@ -796,68 +1038,6 @@ class ProcessSettings:
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
 
-    def load_defaults(self):
-        """Loads default settings"""
-        filename = FileLocator.PROCESS_DEFAULTS
-
-        with open(filename, 'r') as f:
-            for line in f:
-                if line[0] == '#':
-                    continue
-
-                # Try to split line into key and value, if it fails this line is not used
-                try:
-                    key, value = line.split('=')
-                except ValueError:
-                    continue
-
-                # If the value is one we edit, we extract the value
-                if key in self.vars.keys():
-                    if self.vars[key] is str:
-                        value = value.split('\'')[1]
-                    else:
-                        value = self.vars[key](value.split('\n')[0].split('#')[0])
-                    setattr(self, key, value)
-
-        # Update all objects finally
-        self.gather_vars()
-
-    def set_defaults(self):
-        """Sets current values as defaults"""
-        # First set this variables
-        self.gather_vars()
-
-        # Ask user to define filename for saving geometry settings
-        filename = FileLocator.PROCESS_DEFAULTS
-        filename_temp = filename.replace('.txt', '_temp.txt')
-
-        # Open file object and write all attributes to it
-        with open(filename_temp, 'w') as f_temp:
-            with open(filename, 'r') as f:
-                for line in f:
-                    if line[0] == '#':
-                        f_temp.write(line)
-                        continue
-
-                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
-                    try:
-                        key, value = line.split('=')
-                    except ValueError:
-                        f_temp.write(line)
-                        continue
-
-                    # If the value is one we edit, we extract the value
-                    if key in self.vars.keys():
-                        if self.vars[key] is str:   # If string we need to write the value within quotes
-                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
-                        else:
-                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
-                    else:
-                        f_temp.write(line)
-
-        # Finally, overwrite old default file with new file
-        os.replace(filename_temp, filename)
-
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
@@ -873,3 +1053,5 @@ class ProcessSettings:
         self.dark_label.configure(text=self.dark_dir_short)
 
         self.frame.destroy()
+
+

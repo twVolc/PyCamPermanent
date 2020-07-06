@@ -8,7 +8,7 @@ from .misc import Indicator, ScrollWindow
 import pycam.gui.cfg as cfg
 from pycam.gui.figures_cam import ImageFigure
 from pycam.gui.figures_doas import SpectraPlot, DOASPlot
-from pycam.gui.figures_analysis import ImageSO2
+from pycam.gui.figures_analysis import ImageSO2, SequenceInfo
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -101,6 +101,10 @@ class AnalysisWind:
         self.name = name
         self.frame = ttk.Frame(self.parent)
 
+        # Sequence info
+        self.seq_info = SequenceInfo(self.frame)
+        self.seq_info.frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
+
         # SO2 image frame
         self.so2_img = ImageSO2(self.frame)
-        self.so2_img.frame.grid(row=0, column=0, padx=5, pady=5)
+        self.so2_img.frame.grid(row=1, column=0, padx=5, pady=5)

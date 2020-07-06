@@ -247,3 +247,5 @@ class ImageFigure:
 
             # Get data from the pyplis.image.Img object
             self.update_plot(np.array(img_obj.img, dtype=np.uint16), img_path)
+
+
