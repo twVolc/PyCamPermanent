@@ -53,13 +53,17 @@ class PyplisWorker:
         self.fig_A = None
         self.fig_B = None
         self.fig_tau = None
+        self.fig_bg_A = None
+        self.fig_bg_B = None
+        self.fig_bg_ref = None
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},
                           'off': {}}     # Dictionary containing all retrieved dark images with their ss as the key
         self.dark_dir = None
         self.img_list = None
-        self.num_img_pairs = 0
+        self.num_img_pairs = 0      # Total number of plume pairs
+        self.num_img_tot = 0        # Total number of plume images
         self.first_image = True     # Flag for when in the first image of a sequence (wind speed can't be calculated)
         self._location = None       # String for location e.g. lascar
         self.source = None          # Pyplis object of location
@@ -162,6 +166,8 @@ class PyplisWorker:
         full_list = [f for f in os.listdir(self.img_dir)
                      if self.cam_specs.file_img_type['meas'] in f and self.cam_specs.file_ext in f]
 
+        self.num_img_tot = len(full_list)
+
         # Get A and B image lists (sort img_list_A as it will be the one we loop through, so needs to be in time order)
         img_list_A = [f for f in full_list if self.cam_specs.file_filterids['on'] in f]
         img_list_A.sort()
@@ -194,16 +200,19 @@ class PyplisWorker:
 
         return img_list
 
-    def load_sequence(self):
+    def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
         Loads image sequence which is defined by the user
         :param init_dir:
         :return:
         """
-        img_dir = filedialog.askdirectory(title='Select image sequence directory', initialdir=self.img_dir)
+        if img_dir is None:
+            img_dir = filedialog.askdirectory(title='Select image sequence directory', initialdir=self.img_dir)
 
-        if len(img_dir) > 0:
+        if len(img_dir) > 0 and os.path.exists(img_dir):
             self.img_dir = img_dir
+        else:
+            raise ValueError('Image directory not recognised: {}'.format(img_dir))
 
         # Update first_image flag
         self.first_image = True
@@ -215,7 +224,7 @@ class PyplisWorker:
         if len(self.img_list) > 0:
             self.process_pair(self.img_dir + '\\' + self.img_list[0][0],
                               self.img_dir + '\\' + self.img_list[0][1],
-                              plot=True)
+                              plot=True, plot_bg=plot_bg)
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
@@ -377,27 +386,40 @@ class PyplisWorker:
 
         # Plots
         if plot:
+            # Close old figures
+            try:
+                plt.close(self.fig_bg_A)
+                plt.close(self.fig_bg_B)
+                plt.close(self.fig_bg_ref)
+            except AttributeError:
+                pass
+
             if pcs_line is not None:
-                fig_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
-                fig_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
+                self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
+                self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
             else:
-                fig_A = self.plume_bg.plot_tau_result(tau_A)
-                fig_B = self.plume_bg.plot_tau_result(tau_B)
-            fig_A.show()
-            fig_B.show()
+                self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A)
+                self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B)
+
+            self.fig_bg_A.canvas.set_window_title('Background model: Image A')
+            self.fig_bg_B.canvas.set_window_title('Background model: Image B')
+
+            self.fig_bg_A.show()
+            self.fig_bg_B.show()
 
             # Reference areas
-            fig, axes = plt.subplots(1, 1, figsize=(16, 6))
+            self.fig_bg_ref, axes = plt.subplots(1, 1, figsize=(16, 6))
             pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, auto_params, ax=axes)
             axes.set_title("Automatically set parameters")
-            fig.show()
+            self.fig_bg_ref.canvas.set_window_title('Background model: Reference parameters')
+            self.fig_bg_ref.show()
 
         self.tau_A = tau_A
         self.tau_B = tau_B
 
-        return tau_A, tau_B, fig_A, fig_B
+        return tau_A, tau_B
 
-    def generate_optical_depth(self, img_A, img_B, plot=True):
+    def generate_optical_depth(self, img_A, img_B, plot=True, plot_bg=True):
         """
         Performs the full catalogue of image procesing on a single image pair to generate optical depth image
         Processing beyond this point is left ot another function, since it requires use of a second set of images
@@ -407,24 +429,25 @@ class PyplisWorker:
         :returns img_aa:    Optical depth image
         """
         # Model sky backgrounds
-        self.model_background(plot=plot)
+        self.model_background(plot=plot_bg)
 
         # Register off-band image TODO - maybe I want to register first? As after modelling BG i will be in optical depth not intensity space
 
         if plot:
             # TODO update optical depth image
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
-            self.fig_tau.show()
-
+            # self.fig_tau.show()
+            pass
         # return img_tau
 
-    def process_pair(self, img_path_A, img_path_B, plot=True):
+    def process_pair(self, img_path_A, img_path_B, plot=True, plot_bg=True):
         """
         Processes full image pair when passed images (need to think about how to deal with dark images)
 
         :param img_path_A: str  path to on-band image
         :param img_path_B: str  path to corresponding off-band image
         :param plot: bool       defines whether the loaded images are plotted
+        :param plot_bg: bool    defines whether the background models are plotted
         :return:
         """
 

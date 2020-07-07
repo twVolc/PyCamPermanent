@@ -43,10 +43,12 @@ class SequenceInfo:
     def initiate_variables(self):
         """Setup tk variables"""
         self._img_dir = tk.StringVar()
-        self._num_imgs = tk.IntVar()
+        self._num_img_pairs = tk.IntVar()
+        self._num_img_tot = tk.IntVar()
 
         self.img_dir = pyplis_worker.img_dir
-        self.num_imgs = pyplis_worker.num_img_pairs
+        self.num_img_tot = pyplis_worker.num_img_tot
+        self.num_img_pairs = pyplis_worker.num_img_pairs
 
     def generate_widget(self):
         """Builds widget"""
@@ -57,10 +59,16 @@ class SequenceInfo:
         self.img_dir_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
+        label = ttk.Label(self.frame, text='Total images:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.num_img_tot_lab = ttk.Label(self.frame, text=str(self.num_img_tot))
+        self.num_img_tot_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row += 1
         label = ttk.Label(self.frame, text='Image pairs:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.num_imgs_lab = ttk.Label(self.frame, text=str(self.num_imgs))
-        self.num_imgs_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.num_img_pairs_lab = ttk.Label(self.frame, text=str(self.num_img_pairs))
+        self.num_img_pairs_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
     @property
     def img_dir(self):
@@ -75,20 +83,30 @@ class SequenceInfo:
         return '...' + self.img_dir[-self.path_str_length:]
 
     @property
-    def num_imgs(self):
-        return self._num_imgs.get()
+    def num_img_pairs(self):
+        return self._num_img_pairs.get()
 
-    @num_imgs.setter
-    def num_imgs(self, value):
-        self._num_imgs.set(value)
+    @num_img_pairs.setter
+    def num_img_pairs(self, value):
+        self._num_img_pairs.set(value)
+
+    @property
+    def num_img_tot(self):
+        return self._num_img_tot.get()
+
+    @num_img_tot.setter
+    def num_img_tot(self, value):
+        self._num_img_tot.set(value)
 
     def update_variables(self):
         """Updates image list variables"""
         self.img_dir = pyplis_worker.img_dir
-        self.num_imgs = pyplis_worker.num_img_pairs
+        self.num_img_pairs = pyplis_worker.num_img_pairs
+        self.num_img_tot = pyplis_worker.num_img_tot
 
         self.img_dir_lab.configure(text=self.img_dir_short)
-        self.num_imgs_lab.configure(text=str(self.num_imgs))
+        self.num_img_pairs_lab.configure(text=str(self.num_img_pairs))
+        self.num_img_tot_lab.configure(text=str(self.num_img_tot))
 
 
 class ImageSO2:
@@ -803,6 +821,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Buttons
+        row += 1
         butt_frame = ttk.Frame(self.opt_frame)
         butt_frame.grid(row=row, column=0, columnspan=2)
 
@@ -812,15 +831,11 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
         butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Test', command=self.run_process)
+        butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Build figures for displaying bg modelling
-        # --------------------------------------------------------------------------------------------------------------
-        self.fig_A = plt.Figure()
-        self.fig_B = plt.Figure()
-        self.fig_PCS = plt.Figure()
+        # Run current background model to load up figures
+        self.run_process()
 
     @property
     def bg_mode(self):
@@ -844,6 +859,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def run_process(self):
         """Main processing for background modelling and displaying the results"""
+        self.gather_vars()
+        pyplis_worker.model_background()
 
     def close_window(self):
         """Restore current settings"""
@@ -879,7 +896,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Generate GUI if requested
         if generate_frame:
             self.initiate_variables()
-            self.generate_frame
+            self.generate_frame()
 
     def initiate_variables(self):
         """

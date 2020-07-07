@@ -15,6 +15,7 @@ from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg
 import pycam.gui.cfg as cfg
+from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -76,6 +77,9 @@ class PyCam(ttk.Frame):
         geom_settings.initiate_variables()
         process_settings.initiate_variables()
         plume_bg.initiate_variables()
+
+        # Load in initial sequence directory
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=True)
 
     def exit_app(self):
         """Closes application"""
