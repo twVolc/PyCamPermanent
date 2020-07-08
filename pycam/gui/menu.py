@@ -80,7 +80,7 @@ class PyMenu:
         # Processing submenu
         self.submenu_proc = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
-        self.submenu_proc.add_command(label='Load sequence', command=pyplis_worker.load_sequence)
+        self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
 
@@ -103,7 +103,6 @@ class PyMenu:
         self.menus[tab].add_command(label='DOAS window')
         self.menus[tab].add_command(label='Analysis window')
         self.menus[tab].add_separator()
-
 
 
         # -------------------------------------------------------------------------------------------------------

@@ -6,7 +6,7 @@ Each window forms a tab which can be accessed through the 'View' menu."""
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
 from .misc import Indicator, ScrollWindow
 import pycam.gui.cfg as cfg
-from pycam.gui.figures_cam import ImageFigure
+from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
 from pycam.gui.figures_doas import SpectraPlot, DOASPlot
 from pycam.gui.figures_analysis import ImageSO2, SequenceInfo
 
@@ -52,7 +52,9 @@ class CameraWind:
         self.img_B = ImageFigure(self.frame, lock=draw_lock, name='Image B', band='B')
         self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
-
+        # Image registration
+        self.img_reg_frame = ImageRegistrationFrame(self.frame)
+        self.img_reg_frame.frame.grid(row=0, column=3, rowspan=2, sticky='new', padx=self.padx, pady=self.pady)
 
 
 class SpecWind:

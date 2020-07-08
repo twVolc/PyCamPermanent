@@ -249,3 +249,105 @@ class ImageFigure:
             self.update_plot(np.array(img_obj.img, dtype=np.uint16), img_path)
 
 
+class ImageRegistrationFrame:
+    """
+    Class for generating a widget for image registration control
+    """
+    def __init__(self, parent, generate_frame=True):
+        self.parent = parent
+
+        self.pdx = 2
+        self.pdy = 2
+
+        self.img_reg = pyplis_worker.img_reg
+
+        # TK variables
+        self._reg_meth = tk.IntVar()
+        self.reg_meth = 0
+        self._num_it = tk.IntVar()
+        self.num_it = 500
+        self._term_eps = tk.DoubleVar()
+        self._term_eps.set(1)
+
+        if generate_frame:
+            self.generate_frame()
+
+    def generate_frame(self):
+        """Builds frame with widgets"""
+        self.frame = ttk.LabelFrame(self.parent, text='Image Registration:', relief=tk.RAISED)
+
+        # Registration method widgets
+        self.reg_none = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='No Registration', value=0,
+                                        command=lambda: self.img_reg_select(self.reg_meth))
+        self.reg_none.grid(row=0, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.reg_cp = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='Control Point', value=1,
+                                      command=lambda: self.img_reg_select(self.reg_meth))
+        self.reg_cp.grid(row=1, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
+
+        self.cv_frame = ttk.Frame(self.frame, relief=tk.GROOVE, borderwidth=2)
+        self.cv_frame.grid(row=2, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
+        self.reg_cv = ttk.Radiobutton(self.cv_frame, variable=self._reg_meth, text='OpenCV ECC', value=2,
+                                      command=lambda: self.img_reg_select(self.reg_meth))
+        self.reg_cv.grid(row=0, column=0, columnspan=2, pady=self.pdy, sticky='w')
+
+        # OpenCV options
+        label = ttk.Label(self.cv_frame, text='No. Iterations:')
+        label.grid(row=1, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._num_it, width=5)
+        self.num_it_ent.grid(row=1, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
+
+        label = ttk.Label(self.cv_frame, text='Termination EPS:')
+        label.grid(row=2, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._term_eps, width=5)
+        self.num_it_ent.grid(row=2, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
+        label = ttk.Label(self.cv_frame, text='e-10')
+        label.grid(row=2, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
+
+    @property
+    def reg_meth(self):
+        return self._reg_meth.get()
+
+    @reg_meth.setter
+    def reg_meth(self, value):
+        self._reg_meth.set(value)
+
+    @property
+    def num_it(self):
+        return self._num_it.get()
+
+    @num_it.setter
+    def num_it(self, value):
+        self._num_it.set(value)
+
+    @property
+    def term_eps(self):
+        return self._term_eps.get()
+
+    @term_eps.setter
+    def term_eps(self, value):
+        self._term_eps.set(value)
+
+    def img_reg_select(self, meth):
+        """Initiates ragistration depending on the method selected
+        -> updates absorbance image"""
+
+        # Removing warp
+        if meth == 0:
+            self.img_reg.warp_matrix_cv = False
+            self.img_reg.transformed_B = False
+            # TODO: Update plots to unwarped image
+
+        # CP warp
+        elif meth == 1:
+            self.img_reg.warp_matrix_cv = False
+            if len(self.saved_coordinates_A) > 1 and len(self.saved_coordinates_A) == len(self.saved_coordinates_B):
+                # TODO: Do warp and then display all result - images and abs_image
+                pass
+            else:
+                self.imgRegistration.transformed_B = False
+
+        # CV warp
+        elif meth == 2:
+            self.img_reg.warp_matrix_cv = False
+
+            # TODO: run opencv image registration and update all images

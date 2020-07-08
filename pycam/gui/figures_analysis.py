@@ -127,6 +127,7 @@ class ImageSO2:
     def __init__(self, parent, image=None, pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
         self.parent = parent
         self.image = image
+        setattr(pyplis_worker, 'fig_tau', self)
         self.pix_num_x = pix_dim[0]
         self.pix_num_y = pix_dim[1]
         self.dpi = gui_setts.dpi
@@ -418,7 +419,6 @@ class ImageSO2:
         else:
             self.messages('Clicked outside axes bounds but inside plot window')
 
-
     def del_ica(self, line_num):
         """Searches axis for line object relating to pyplis line object and removes it
 
@@ -463,6 +463,20 @@ class ImageSO2:
     def plt_opt_flow(self):
         """Plots optical flow onto figure"""
         pass
+
+    def update_plot(self, img):
+        """
+        Updates image figure and all associated subplots
+        :param img: np.ndarray  Image array
+        :return:
+        """
+        self.image = img
+
+        # Update main image display and title
+        self.img_disp.set_data(img)
+        self.img_disp.set_clim(vmin=0, vmax=np.percentile(img, 99.99))
+        self.cbar.draw_all()
+        self.img_canvas.draw()
 
 
 class GeomSettings:
@@ -836,6 +850,10 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Run current background model to load up figures
         self.run_process()
+
+        # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
+        # But a call to mainloop here prevents the crash
+        tk.mainloop()
 
     @property
     def bg_mode(self):

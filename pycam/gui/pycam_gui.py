@@ -79,7 +79,7 @@ class PyCam(ttk.Frame):
         plume_bg.initiate_variables()
 
         # Load in initial sequence directory
-        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=True)
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
 
     def exit_app(self):
         """Closes application"""

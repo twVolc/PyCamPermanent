@@ -78,11 +78,13 @@ class PyplisWorker:
         # Load background image if we are provided with one
         self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vign_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vigncorr_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_A_path = None
 
         # Load background image if we are provided with one
         self.bg_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vign_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -224,7 +226,7 @@ class PyplisWorker:
         if len(self.img_list) > 0:
             self.process_pair(self.img_dir + '\\' + self.img_list[0][0],
                               self.img_dir + '\\' + self.img_list[0][1],
-                              plot=True, plot_bg=plot_bg)
+                              plot=plot, plot_bg=plot_bg)
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
@@ -344,17 +346,17 @@ class PyplisWorker:
 
         return dark_img
 
-    def model_background(self, mode=None, plot=True):
+    def model_background(self, mode=None, params=None, plot=True):
         """
         Models plume background for image provided.
         """
-        vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
-        vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
+        self.vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
+        self.vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
 
-        if self.auto_param_bg:
+        if self.auto_param_bg and params is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
-            auto_params = pyplis.plumebackground.find_sky_reference_areas(vigncorr_A)
-            self.plume_bg.update(**auto_params)
+            params = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
+        self.plume_bg.update(**params)
 
         if mode in self.BG_CORR_MODES:
             self.plume_bg.mode = mode
@@ -368,17 +370,19 @@ class PyplisWorker:
         # Get tau_A and tau_B
         if self.plume_bg.mode == 0:
             # mask for corr mode 0 (i.e. 2D polyfit)
-            mask = np.ones(vigncorr_A.img.shape, dtype=np.float32)
-            mask[vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
+            mask_A = np.ones(self.vigncorr_A.img.shape, dtype=np.float32)
+            mask_A[self.vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
+            mask_B = np.ones(self.vigncorr_B.img.shape, dtype=np.float32)
+            mask_B[self.vigncorr_B.img < self.POLYFIT_2D_MASK_THRESH] = 0
 
             # First method: retrieve tau image using poly surface fit
-            tau_A = self.plume_bg.get_tau_image(vigncorr_A,
+            tau_A = self.plume_bg.get_tau_image(self.vigncorr_A,
                                                 mode=self.BG_CORR_MODES[0],
-                                                surface_fit_mask=mask,
+                                                surface_fit_mask=mask_A,
                                                 surface_fit_polyorder=1)
-            tau_B = self.plume_bg.get_tau_image(vigncorr_B,
+            tau_B = self.plume_bg.get_tau_image(self.vigncorr_B,
                                                 mode=self.BG_CORR_MODES[0],
-                                                surface_fit_mask=mask,
+                                                surface_fit_mask=mask_B,
                                                 surface_fit_polyorder=1)
         else:
             tau_A = self.plume_bg.get_tau_image(self.img_A, self.bg_A)
@@ -409,7 +413,7 @@ class PyplisWorker:
 
             # Reference areas
             self.fig_bg_ref, axes = plt.subplots(1, 1, figsize=(16, 6))
-            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, auto_params, ax=axes)
+            pyplis.plumebackground.plot_sky_reference_areas(self.vigncorr_A, params, ax=axes)
             axes.set_title("Automatically set parameters")
             self.fig_bg_ref.canvas.set_window_title('Background model: Reference parameters')
             self.fig_bg_ref.show()
@@ -432,12 +436,22 @@ class PyplisWorker:
         self.model_background(plot=plot_bg)
 
         # Register off-band image TODO - maybe I want to register first? As after modelling BG i will be in optical depth not intensity space
+        if self.img_reg.method is None:
+            self.tau_B_warp = self.tau_B
+        elif self.img_reg.method == 'cv':
+            self.img_reg.cv_generate_warp_matrix(self.vigncorr_A.img, self.vigncorr_B.img)
+            img = self.img_reg.cv_warp_img(self.tau_B.img)
+            self.tau_B_warp = pyplis.image.Img(img)
+
+        self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warp.img)
+        self.img_tau.edit_log["is_tau"] = True
+        self.img_tau.edit_log["is_aa"] = True
 
         if plot:
             # TODO update optical depth image
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
-            # self.fig_tau.show()
-            pass
+            getattr(self, 'fig_tau').update_plot(np.array(self.img_tau.img))
+
         # return img_tau
 
     def process_pair(self, img_path_A, img_path_B, plot=True, plot_bg=True):
@@ -456,7 +470,7 @@ class PyplisWorker:
         self.load_img(img_path_B, band='B', plot=plot)
 
         # Generate optical depth image
-        self.img_aa = self.generate_optical_depth(self.img_A, self.img_B, plot=plot)
+        self.img_aa = self.generate_optical_depth(self.img_A, self.img_B, plot=plot, plot_bg=plot_bg)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -513,7 +527,8 @@ class ImageRegistration:
     Image registration class for warping the off-band image to align with the on-band image
     """
     def __init__(self):
-        self.transformed_B = False  # Defines whether a the transform matrix has been generated yet
+        self.method = 'cv'
+        self.transformed_B = False  # Defines whether the transform matrix has been generated yet
 
         self.warp_matrix_cv = False
         self.warp_mode = cv2.MOTION_EUCLIDEAN
@@ -523,7 +538,7 @@ class ImageRegistration:
     # ======================================================
     # OPENCV IMAGE REGISTRATION
     # ======================================================
-    def generate_warp_matrix(self, img_A, img_B, numIt=500, term_eps=1e-10):
+    def cv_generate_warp_matrix(self, img_A, img_B, numIt=500, term_eps=1e-10):
         """Calculate the warp matrix 'warp_matrix_cv' in preparation for image registration"""
         img_A = np.array(img_A, dtype=np.float32)  # Converting image to a 32-bit float for processing (required by OpenCV)
         img_B = np.array(img_B, dtype=np.float32)  # Converting image to a 32-bit float for processing (required by OpenCV)
