@@ -27,6 +27,8 @@ class PyplisWorker:
     """
     def __init__(self, img_dir=None):
         self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
+        self.q_doas = queue.Queue()     # Queue where processed doas values are placed (time and column density)
+        self.cd_list = []               # Column density list [time, CD]
 
         # Pyplis object setup
         self.load_img_func = pyplis.custom_image_import.load_picam_png
@@ -276,6 +278,8 @@ class PyplisWorker:
 
         # Get new image
         img = pyplis.image.Img(img_path, self.load_img_func)
+        img.filename = img_path.split('\\')[-1].split('/')[-1]
+        img.pathname = img_path
 
         # Dark subtraction - first extract ss then hunt for dark image
         ss = str(int(img.texp * 10 ** 6))
@@ -286,13 +290,21 @@ class PyplisWorker:
         else:
             warnings.warn('No dark image found, image has been loaded without dark subtraction')
 
+        # Set object attribute to the loaded pyplis image
+        # (must be done prior to image registration as the function uses object attribute self.img_B)
+        setattr(self, 'img_{}'.format(band), img)
+
+        # Warp image using current setup if it is B
+        if band == 'B':
+            self.register_image()
+
         # Add to plot queue if requested
         if plot:
-            # getattr(self, 'img_{}_q'.format(band)).put([img_path, img])
-            getattr(self, 'fig_{}'.format(band)).update_plot(np.array(img.img, dtype=np.uint16), img_path)
-
-        # Finally set object attribute to the loaded pyplis image
-        setattr(self, 'img_{}'.format(band), img)
+            if band == 'B':
+                # Plot warped image if we are off-band
+                self.fig_B.update_plot(np.array(img.img_warped, dtype=np.uint16), img_path)
+            else:
+                self.fig_A.update_plot(np.array(img.img, dtype=np.uint16), img_path)
 
     def find_dark_img(self, img_dir=None, band='on', ss=None):
         """
@@ -345,6 +357,14 @@ class PyplisWorker:
         self.dark_dict[band][str(ss_rounded)] = dark_img
 
         return dark_img
+
+    def register_image(self, **kwargs):
+        """
+        Registers B image to A by passing them to the ImageRegistration object
+        kwargs: settings to be passed to image registartion object
+        :return:
+        """
+        self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
     def model_background(self, mode=None, params=None, plot=True):
         """
@@ -432,18 +452,14 @@ class PyplisWorker:
         :param img_B: pyplis.image.Img      Off-band image
         :returns img_aa:    Optical depth image
         """
-        # Model sky backgrounds
+        # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
 
         # Register off-band image TODO - maybe I want to register first? As after modelling BG i will be in optical depth not intensity space
-        if self.img_reg.method is None:
-            self.tau_B_warp = self.tau_B
-        elif self.img_reg.method == 'cv':
-            self.img_reg.cv_generate_warp_matrix(self.vigncorr_A.img, self.vigncorr_B.img)
-            img = self.img_reg.cv_warp_img(self.tau_B.img)
-            self.tau_B_warp = pyplis.image.Img(img)
+        img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
+        self.tau_B_warped = pyplis.image.Img(img)
 
-        self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warp.img)
+        self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
 
@@ -454,7 +470,7 @@ class PyplisWorker:
 
         # return img_tau
 
-    def process_pair(self, img_path_A, img_path_B, plot=True, plot_bg=True):
+    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=True):
         """
         Processes full image pair when passed images (need to think about how to deal with dark images)
 
@@ -465,9 +481,12 @@ class PyplisWorker:
         :return:
         """
 
-        # Load in images TODO think about what to do with providing dark images here -should they already be loaded?
-        self.load_img(img_path_A, band='A', plot=plot)
-        self.load_img(img_path_B, band='B', plot=plot)
+        # Can pass None to this function for img paths, and then the current images will be processed
+        if img_path_A is not None:
+            # Load in images TODO think about what to do with providing dark images here -should they already be loaded?
+            self.load_img(img_path_A, band='A', plot=plot)
+        if img_path_B is not None:
+            self.load_img(img_path_B, band='B', plot=plot)
 
         # Generate optical depth image
         self.img_aa = self.generate_optical_depth(self.img_A, self.img_B, plot=plot, plot_bg=plot_bg)
@@ -521,24 +540,34 @@ class PyplisWorker:
             # Process the pair
             self.process_pair(img_path_A, img_path_B)
 
+            # Attempt to get DOAS calibration point to add to list
+            try:
+                doas_point = self.q_doas.get()
+                self.cd_list.append(doas_point)
+            except queue.Empty:
+                pass
+
+
 
 class ImageRegistration:
     """
     Image registration class for warping the off-band image to align with the on-band image
     """
     def __init__(self):
-        self.method = 'cv'
-        self.transformed_B = False  # Defines whether the transform matrix has been generated yet
+        self.method = None
+        self.got_cv_transform = False  # Defines whether the transform matrix has been generated yet
+        self.got_cp_transform = False
 
         self.warp_matrix_cv = False
         self.warp_mode = cv2.MOTION_EUCLIDEAN
+        self.cv_opts = {'num_it': 500, 'term_eps': 1e-10}
 
         self.cp_tform = tf.SimilarityTransform()
 
     # ======================================================
     # OPENCV IMAGE REGISTRATION
     # ======================================================
-    def cv_generate_warp_matrix(self, img_A, img_B, numIt=500, term_eps=1e-10):
+    def cv_generate_warp_matrix(self, img_A, img_B):
         """Calculate the warp matrix 'warp_matrix_cv' in preparation for image registration"""
         img_A = np.array(img_A, dtype=np.float32)  # Converting image to a 32-bit float for processing (required by OpenCV)
         img_B = np.array(img_B, dtype=np.float32)  # Converting image to a 32-bit float for processing (required by OpenCV)
@@ -550,11 +579,11 @@ class ImageRegistration:
             warp_matrix = np.eye(2, 3, dtype=np.float32)
 
         # Specify the number of iterations.
-        number_of_iterations = numIt
+        number_of_iterations = self.cv_opts['num_it']
 
         # Specify the threshold of the increment
         # in the correlation coefficient between two iterations
-        termination_eps = term_eps
+        termination_eps = self.cv_opts['term_eps']
 
         # Define termination criteria
         criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations, termination_eps)
@@ -562,6 +591,7 @@ class ImageRegistration:
         # Run the ECC algorithm. The results are stored in warp_matrix.
         (cc, warp_matrix) = cv2.findTransformECC(img_A, img_B, warp_matrix, self.warp_mode, criteria)
 
+        self.got_cv_transform = True
         self.warp_matrix_cv = warp_matrix
 
     def cv_warp_img(self, img, warp_matrix=None):
@@ -592,14 +622,59 @@ class ImageRegistration:
     def cp_tform_gen(self, coord_A, coord_B):
         """Generate CP image registration transform object"""
         self.cp_tform.estimate(coord_A, coord_B)
+        self.got_cp_transform = True
 
     def cp_warp_img(self, img):
         """Perform CP image registration"""
+        # Perform warp
         img_warped = tf.warp(img, self.cp_tform, output_shape=img.shape)
+
+        # Scale image back - warp function can change the values in the image for some reason
         max_img = np.amax(img)
         img_warped *= max_img / np.amax(img_warped)
-        img_warped = np.uint16(img_warped)
+        img_warped = np.float32(img_warped)
         return img_warped
+
+    def register_image(self, img_A, img_B, **kwargs):
+        """
+        Performs image registration based on the current method set
+        :param img_A: np.ndarray        The reference image to be registered to (only used with CV registration)
+        :param img_B: np.ndarray        The image to be registered
+        :return: warped_B: np.ndarray   Registered image
+        """
+
+        if self.method is None:
+            # No registration
+            warped_B = img_B
+
+        elif self.method.lower() == 'cv':
+            if not self.got_cv_transform:
+                # Generate transform
+                self.cv_generate_warp_matrix(img_A, img_B)
+
+            # Warp image
+            warped_B = self.cv_warp_img(img_B)
+
+        elif self.method.lower() == 'cp':
+            if not self.got_cp_transform:       # TODO got_cp_transform should be set to false when reset CP button or save CP button is pressed in GUI
+                # Get coordinates from kwargs - if they are not present we need to return as we can't perform transform
+                cp_setts = [kwargs[key] for key in ['coord_A', 'coord_B'] if key in kwargs]
+
+                # If we don't have a transform and aren't provided the correct values to create one, we return the
+                # input image
+                if len(cp_setts) != 2:
+                    # print('coord_A and coord_B arguments are required to perform CP registration when transform is not already present')
+                    warped_B = img_B
+                # Else we generate the tform and warp the image
+                else:
+                    # Generate transform if we have more than one point for coordinates
+                    self.cp_tform_gen(*cp_setts)
+                    warped_B = self.cp_warp_img(img_B)
+            # If we already have a cp transform we are happy with, we can warp the image straight away
+            else:
+                warped_B = self.cp_warp_img(img_B)
+
+        return warped_B
 
 
 # ## SCRIPT FUNCTION DEFINITIONS

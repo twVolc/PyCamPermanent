@@ -134,8 +134,9 @@ class ImageSO2:
         self.fig_size = gui_setts.fig_SO2
 
         self.specs = CameraSpecs()
+        self.disp_cal = False       # Flag for if we are displaying the calibrated image of tau image
 
-        self.max_lines = 5
+        self.max_lines = 5  # Maximum number of ICA lines
         # ------------------------------------------------------------------------------------------
         # TK variables Setup
 
@@ -166,6 +167,14 @@ class ImageSO2:
                       'seismic']
         self._cmap = tk.StringVar()
         self.cmap = self.cmaps[0]
+        self._tau_max = tk.DoubleVar()      # Maximum value of tau for plotting colourbar (used in spinbox)
+        self.tau_max = 1
+        self._auto_tau = tk.IntVar()        # Variable for defining automatic plot tau levels
+        self.auto_tau = 1
+        self._ppmm_max = tk.IntVar()        # Maximum value of calibated ppmm for plotting colourbar (used in spinbox)
+        self.ppmm_max = 1000
+        self._auto_ppmm = tk.IntVar()       # Variable for defining automatic plot tau levels
+        self.auto_ppmm = 1
 
         # Optical flow plotting option
         self._plt_flow = tk.IntVar()
@@ -217,6 +226,38 @@ class ImageSO2:
     @cmap.setter
     def cmap(self, value):
         self._cmap.set(value)
+
+    @property
+    def tau_max(self):
+        return self._tau_max.get()
+
+    @tau_max.setter
+    def tau_max(self, value):
+        self._tau_max.set(value)
+
+    @property
+    def auto_tau(self):
+        return self._auto_tau.get()
+
+    @auto_tau.setter
+    def auto_tau(self, value):
+        self._auto_tau.set(value)
+
+    @property
+    def ppmm_max(self):
+        return self._ppmm_max.get()
+
+    @ppmm_max.setter
+    def ppmm_max(self, value):
+        self._ppmm_max.set(value)
+
+    @property
+    def auto_ppmm(self):
+        return self._auto_ppmm.get()
+
+    @auto_ppmm.setter
+    def auto_ppmm(self, value):
+        self._auto_ppmm.set(value)
 
     @property
     def plt_flow(self):
@@ -294,16 +335,42 @@ class ImageSO2:
         self.frame_opts = ttk.LabelFrame(self.frame, text='Figure options')
 
         # Colour maps
+        row = 0
         label = ttk.Label(self.frame_opts, text='Colour map:')
-        label.grid(row=0, column=0, padx=2, pady=2, sticky='w')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.opt_menu = ttk.OptionMenu(self.frame_opts, self._cmap, self._cmap.get(), *self.cmaps,
                                        command=self.change_cmap)
         self.opt_menu.config(width=8)
         self.opt_menu.grid(row=0, column=1, padx=2, pady=2, sticky='ew')
 
+        # Colour level tau
+        row += 1
+        label = ttk.Label(self.frame_opts, text='Tau max.:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=2, increment=0.01,
+                                    command=self.scale_img)
+        self.spin_max.set('{:.2f}'.format(self.tau_max))
+        self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.auto_tau_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_tau,
+                                              command=self.scale_img)
+        self.auto_tau_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
+
+        # Colour level ppmm
+        row += 1
+        label = ttk.Label(self.frame_opts, text='ppmm max.:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
+                                         increment=50, command=self.scale_img)
+        self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
+                                              command=self.scale_img)
+        self.auto_ppmm_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
+
+        # Optical flow checkbutton
+        row += 1
         self.plt_flow_check = ttk.Checkbutton(self.frame_opts, text='Display Optical Flow', variable=self._plt_flow,
                                               command=self.plt_opt_flow)
-        self.plt_flow_check.grid(row=1, column=0, columnspan=2, padx=2, pady=2, sticky='w')
+        self.plt_flow_check.grid(row=row, column=0, columnspan=2, padx=2, pady=2, sticky='w')
 
     def update_ica_num(self):
         """Makes necessary changes to update the number of ICA lines"""
@@ -460,6 +527,31 @@ class ImageSO2:
         # Update canvas
         self.img_canvas.draw()
 
+    def scale_img(self, draw=True):
+        """
+        Updates cmap scale
+        :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
+        :return:
+        """
+        if self.disp_cal:
+            # Get vmax either automatically or by defined spinbox value
+            if self.auto_ppmm:
+                vmax = np.percentile(self.image, 99.99)
+            else:
+                vmax = self.ppmm_max
+        else:
+            # Get vmax either automatically or by defined spinbox value
+            if self.auto_tau:
+                vmax = np.percentile(self.image, 99.99)
+            else:
+                vmax = self.tau_max
+
+        # Set new limits
+        self.img_disp.set_clim(vmin=0, vmax=vmax)
+
+        if draw:
+            self.img_canvas.draw()
+
     def plt_opt_flow(self):
         """Plots optical flow onto figure"""
         pass
@@ -474,7 +566,7 @@ class ImageSO2:
 
         # Update main image display and title
         self.img_disp.set_data(img)
-        self.img_disp.set_clim(vmin=0, vmax=np.percentile(img, 99.99))
+        self.scale_img(draw=False)
         self.cbar.draw_all()
         self.img_canvas.draw()
 

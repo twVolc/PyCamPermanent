@@ -25,12 +25,14 @@ import time
 class ImageFigure:
     """
     Class for plotting an image and associated widgets, such as cross-sectinal DNs
+    :param: img_reg     ImageRegistrationFrame
     """
-    def __init__(self, frame, lock=threading.Lock(), name='Image', band='A',
+    def __init__(self, frame, img_reg, lock=threading.Lock(), name='Image', band='A',
                  image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x]),
                  start_update_thread=False):
         self.parent = frame
         self.frame = ttk.LabelFrame(self.parent, text=name)
+        self.img_reg = img_reg
         self.lock = lock
         self.update_thread = None
         self.draw_time = time.time()
@@ -64,7 +66,12 @@ class ImageFigure:
 
         # Grid each frame
         self.xsect_frame.grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        self.fig_frame.grid(row=1, column=0, padx=5, pady=5)
+        self.fig_frame.grid(row=1, column=0, columnspan=3, padx=5, pady=5)
+
+        self.save_butt = ttk.Button(self.frame, text='Save\n Control Points', command=self.cp_update)
+        self.save_butt.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
+        self.reset_butt = ttk.Button(self.frame, text='Reset\n Control Points', command=self.cp_reset)
+        self.reset_butt.grid(row=0, column=2, padx=5, pady=5, sticky='nsew')
 
         if start_update_thread:
             self.start_update_thread()
@@ -163,6 +170,12 @@ class ImageFigure:
             self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
 
+        # Control point selection binding for GUI start-up state
+        self.cp_event_A = self.fig.canvas.mpl_connect('button_press_event', self.cp_select)
+        self.plt_CP = []        # List to hold all scattar points for CP plot
+        self.txt_CP = []        # List to hold all scatter point text markers for CP plot
+        self.num_cp_txt = 1     # Count for text on scatter point
+
     def _build_xsect_panel(self):
         """Builds control panel GUI for adjusting x-sections in image"""
         self.xsect_frame = ttk.LabelFrame(self.frame, text="Image cross-sectional DNs", relief=tk.GROOVE,
@@ -216,7 +229,7 @@ class ImageFigure:
         :return:
         """
         self.image = img
-        filename = img_path.split('\\')[-1]     # Extract filename from full path
+        filename = img_path.split('\\')[-1].split('/')[-1]     # Extract filename from full path
 
         # Update main image display and title
         self.img_disp.set_data(img)
@@ -224,6 +237,67 @@ class ImageFigure:
 
         # Update subplots - this includes a call to draw() so the figure will be updated after this
         self.x_sect_plot()
+
+    def cp_select(self, event):
+        """
+        Controls click events on figure for control point selection
+        :return:
+        """
+        # TODO make coordinates_A link to coordinates_{} of the ImageRegistrationFrame class - so need to pass that class to this
+        # TODO update the other attributes below which aren't yet linked to the current class (copied/pasted from old code)
+        if event.inaxes is self.ax:
+            # Set update coordinates
+            getattr(self.img_reg, 'coordinates_{}'.format(self.band)).append((event.xdata, event.ydata))
+
+            # Appending scatter point handle to plt_CP list
+            self.plt_CP.append(self.ax.scatter(event.xdata, event.ydata, s=100, marker='+', color='red', lw=2))
+            self.ax.set_xlim(0, self.specs.pix_num_x)
+            self.ax.set_ylim(self.specs.pix_num_y, 0)
+
+            # Appending text point handle to txt_CP list
+            self.txt_CP.append(self.ax.text(event.xdata, event.ydata - 10, str(self.num_cp_txt), color="red", fontsize=12))
+            self.num_cp_txt += 1
+            self.img_canvas.draw()
+        else:
+            print('Clicked outside axes bounds but inside plot window')
+
+    def cp_update(self):
+        """Save control points
+        ->
+        Attempt transform calculation if len(saved_coordinates_A) == len(saved_coordinates_B)"""
+
+        # Update saved coordinates in <ImageRegistartionFrame> object
+        setattr(self.img_reg, 'saved_coordinates_{}'.format(self.band),
+                np.array(getattr(self.img_reg, 'coordinates_{}'.format(self.band))))
+
+        # Invoke registration function which will perform registration if control point conditions are satisfied
+        if self.img_reg.reg_meth == 1:
+            self.img_reg.img_reg_select(1)      # The method is set to cp within this function
+
+    def cp_reset(self):
+        """
+        Reset control points
+        """
+        # Reset img_reg coordinates list
+        setattr(self.img_reg, 'coordinates_{}'.format(self.band), [])
+        setattr(self.img_reg, 'saved_coordinates_{}'.format(self.band), [])
+
+        # Removing scatter points form plot and resetting the lists
+        for i in range(len(self.plt_CP)):
+            self.plt_CP[i].remove()
+            self.txt_CP[i].remove()
+        self.plt_CP = []
+        self.txt_CP = []
+        self.num_cp_txt = 1
+
+        pyplis_worker.img_reg.got_cp_transform = False
+
+        # Invoke registration function which will perform registration if control point conditions are satisfied
+        if self.img_reg.reg_meth == 1:
+            self.img_reg.img_reg_select(1)
+        # Update plot image even if we aren't currently in control point mode
+        else:
+            self.img_canvas.draw()
 
     def start_update_thread(self):
         """
@@ -261,8 +335,14 @@ class ImageRegistrationFrame:
 
         self.img_reg = pyplis_worker.img_reg
 
+        # CP select
+        self.coordinates_A = []
+        self.coordinates_B = []
+        self.saved_coordinates_A = []
+        self.saved_coordinates_B = []
+
         # TK variables
-        self._reg_meth = tk.IntVar()
+        self._reg_meth = tk.IntVar()        # Vals [0 = None, 1 = CP, 2 = CV]
         self.reg_meth = 0
         self._num_it = tk.IntVar()
         self.num_it = 500
@@ -321,33 +401,50 @@ class ImageRegistrationFrame:
 
     @property
     def term_eps(self):
-        return self._term_eps.get()
+        return self._term_eps.get() * 10 ** -10
 
     @term_eps.setter
     def term_eps(self, value):
-        self._term_eps.set(value)
+        self._term_eps.set(value) / (10 ** -10)
 
     def img_reg_select(self, meth):
         """Initiates ragistration depending on the method selected
         -> updates absorbance image"""
+        kwargs = {}     # Dictionary for arguments for image registration settings (only used in CP I think)
 
         # Removing warp
         if meth == 0:
+            self.img_reg.method = None
             self.img_reg.warp_matrix_cv = False
-            self.img_reg.transformed_B = False
-            # TODO: Update plots to unwarped image
+            self.img_reg.got_cv_transform = False   # Reset cv transform
 
         # CP warp
         elif meth == 1:
+            self.img_reg.method = 'cp'
             self.img_reg.warp_matrix_cv = False
             if len(self.saved_coordinates_A) > 1 and len(self.saved_coordinates_A) == len(self.saved_coordinates_B):
-                # TODO: Do warp and then display all result - images and abs_image
-                pass
+                # Set cp transform to false, so that a new tform is generated
+                self.img_reg.got_cp_transform = False
+                kwargs['coord_A'] = np.array(self.saved_coordinates_A)
+                kwargs['coord_B'] = np.array(self.saved_coordinates_B)
             else:
-                self.imgRegistration.transformed_B = False
+                print('To update image registration select the same number of control points for each image, and save.')
 
         # CV warp
         elif meth == 2:
+            self.img_reg.method = 'cv'
             self.img_reg.warp_matrix_cv = False
 
-            # TODO: run opencv image registration and update all images
+            # Update opencv settings
+            for opt in self.img_reg.cv_opts:
+                self.img_reg.cv_opts[opt] = getattr(self, opt)
+
+        # Once ImageRegistration object has been set up we call the registration function
+        pyplis_worker.register_image(**kwargs)
+
+        # Now update off-band image
+        pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
+                                        pyplis_worker.img_B.pathname)
+
+        # Run processing with the new image warp - this will generate the absorbance image and update it
+        pyplis_worker.process_pair(img_path_A=None, img_path_B=None, plot=True, plot_bg=None)

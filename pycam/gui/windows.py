@@ -43,18 +43,18 @@ class CameraWind:
         self.acq_settings = CameraSettingsWidget(self.frame)
         self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
-        # Image A widget setup
-        draw_lock = threading.Lock()
-        self.img_A = ImageFigure(self.frame, lock=draw_lock, name='Image A', band='A')
-        self.img_A.frame.grid(row=0, column=1, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
-
-        # Image B widget setup
-        self.img_B = ImageFigure(self.frame, lock=draw_lock, name='Image B', band='B')
-        self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
-
         # Image registration
         self.img_reg_frame = ImageRegistrationFrame(self.frame)
         self.img_reg_frame.frame.grid(row=0, column=3, rowspan=2, sticky='new', padx=self.padx, pady=self.pady)
+
+        # Image A widget setup
+        draw_lock = threading.Lock()
+        self.img_A = ImageFigure(self.frame, self.img_reg_frame, lock=draw_lock, name='Image A', band='A')
+        self.img_A.frame.grid(row=0, column=1, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
+
+        # Image B widget setup
+        self.img_B = ImageFigure(self.frame, self.img_reg_frame, lock=draw_lock, name='Image B', band='B')
+        self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
 
 class SpecWind:
