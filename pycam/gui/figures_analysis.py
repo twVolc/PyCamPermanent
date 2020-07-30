@@ -124,9 +124,11 @@ class ImageSO2:
         [x_dimension, y_dimension] list of resolution for SO2 camera imagery
     """
 
-    def __init__(self, parent, image=None, pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
+    def __init__(self, parent, image_tau=None, image_cal=None,
+                 pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
         self.parent = parent
-        self.image = image
+        self.image_tau = image_tau
+        self.image_cal = image_cal
         setattr(pyplis_worker, 'fig_tau', self)
         self.pix_num_x = pix_dim[0]
         self.pix_num_y = pix_dim[1]
@@ -134,7 +136,7 @@ class ImageSO2:
         self.fig_size = gui_setts.fig_SO2
 
         self.specs = CameraSpecs()
-        self.disp_cal = False       # Flag for if we are displaying the calibrated image of tau image
+
 
         self.max_lines = 5  # Maximum number of ICA lines
         # ------------------------------------------------------------------------------------------
@@ -175,6 +177,8 @@ class ImageSO2:
         self.ppmm_max = 1000
         self._auto_ppmm = tk.IntVar()       # Variable for defining automatic plot tau levels
         self.auto_ppmm = 1
+        self._disp_cal = tk.IntVar()        # Flag for if we are displaying the calibrated image of tau image
+        self.disp_cal = 0
 
         # Optical flow plotting option
         self._plt_flow = tk.IntVar()
@@ -185,8 +189,8 @@ class ImageSO2:
         # Generate main frame for figure
         self.frame = ttk.Frame(self.parent)
 
-        if self.image is None:
-            self.image = np.random.random([self.pix_num_y, self.pix_num_x]) * self.specs._max_DN
+        if self.image_tau is None:
+            self.image_tau = np.random.random([self.pix_num_y, self.pix_num_x]) * self.specs._max_DN
 
         # Generate frame options
         self._build_options()
@@ -260,6 +264,14 @@ class ImageSO2:
         self._auto_ppmm.set(value)
 
     @property
+    def disp_cal(self):
+        return self._disp_cal.get()
+
+    @disp_cal.setter
+    def disp_cal(self, value):
+        self._disp_cal.set(value)
+
+    @property
     def plt_flow(self):
         return self._plt_flow.get()
 
@@ -285,7 +297,7 @@ class ImageSO2:
         self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
         # Image display
-        self.img_disp = self.ax.imshow(self.image, cmap=self.cmap, interpolation='none', vmin=0,
+        self.img_disp = self.ax.imshow(self.image_tau, cmap=self.cmap, interpolation='none', vmin=0,
                                        vmax=self.specs._max_DN, aspect='auto')
         self.ax.set_title('SO2 image', color='white')
 
@@ -343,9 +355,22 @@ class ImageSO2:
         self.opt_menu.config(width=8)
         self.opt_menu.grid(row=0, column=1, padx=2, pady=2, sticky='ew')
 
+        # Tau or calibrated display
+        row += 1
+        label = ttk.Label(self.frame_opts, text='Display:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        self.disp_tau_rad = ttk.Radiobutton(self.frame_opts, text='\u03C4', variable=self._disp_cal, value=0,
+                                            command=lambda: self.update_plot(self.image_tau, self.image_cal))
+        self.disp_tau_rad.grid(row=row, column=1, padx=2, pady=2, sticky='w')
+        self.disp_cal_rad = ttk.Radiobutton(self.frame_opts, text='ppm⋅m', variable=self._disp_cal, value=1,
+                                            command=lambda: self.update_plot(self.image_tau, self.image_cal))
+        self.disp_cal_rad.grid(row=row, column=2, padx=2, pady=2, sticky='w')
+        if self.image_cal is None:
+            self.disp_cal_rad.configure(state=tk.DISABLED)
+
         # Colour level tau
         row += 1
-        label = ttk.Label(self.frame_opts, text='Tau max.:')
+        label = ttk.Label(self.frame_opts, text='\u03C4 max.:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=2, increment=0.01,
                                     command=self.scale_img)
@@ -357,7 +382,7 @@ class ImageSO2:
 
         # Colour level ppmm
         row += 1
-        label = ttk.Label(self.frame_opts, text='ppmm max.:')
+        label = ttk.Label(self.frame_opts, text='ppm⋅m max.:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
                                          increment=50, command=self.scale_img)
@@ -536,13 +561,13 @@ class ImageSO2:
         if self.disp_cal:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
-                vmax = np.percentile(self.image, 99.99)
+                vmax = np.percentile(self.image_tau, 99.99)
             else:
                 vmax = self.ppmm_max
         else:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_tau:
-                vmax = np.percentile(self.image, 99.99)
+                vmax = np.percentile(self.image_tau, 99.99)
             else:
                 vmax = self.tau_max
 
@@ -556,16 +581,26 @@ class ImageSO2:
         """Plots optical flow onto figure"""
         pass
 
-    def update_plot(self, img):
+    def update_plot(self, img_tau, img_cal=None):
         """
         Updates image figure and all associated subplots
         :param img: np.ndarray  Image array
         :return:
         """
-        self.image = img
+        self.image_tau = img_tau
+        self.image_cal = img_cal
+
+        # Disable radiobutton if no calibrated image is present - we can't plot what isn't there...
+        if self.image_cal is None:
+            self.disp_cal_rad.configure(state=tk.DISABLED)
+        else:
+            self.disp_cal_rad.configure(state=tk.NORMAL)
 
         # Update main image display and title
-        self.img_disp.set_data(img)
+        if self.disp_cal and img_cal is not None:
+            self.img_disp.set_data(img_cal)
+        else:
+            self.img_disp.set_data(img_tau)
         self.scale_img(draw=False)
         self.cbar.draw_all()
         self.img_canvas.draw()

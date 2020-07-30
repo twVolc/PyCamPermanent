@@ -5,6 +5,7 @@ Contains some simple functions for saving data
 """
 
 from .setupclasses import SpecSpecs
+from .utils import check_filename
 import numpy as np
 import cv2
 import os
@@ -50,5 +51,18 @@ def save_spectrum(wavelengths, spectrum, filename):
 
     # Remove lock
     os.remove(lock)
+
+
+def load_spectrum(filename):
+    """Essentially a wrapper to numpy load function, with added filename check
+    :param  filename:   str     Full path of spectrum to be loaded"""
+    try:
+        check_filename(filename, SpecSpecs().file_ext)
+    except:
+        raise
+    spec_array = np.load(filename)
+    wavelengths = spec_array[0, :]
+    spectrum = spec_array[1, :]
+    return wavelengths, spectrum
 
 

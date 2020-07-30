@@ -27,7 +27,7 @@ class PyplisWorker:
     """
     def __init__(self, img_dir=None):
         self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
-        self.q_doas = queue.Queue()     # Queue where processed doas values are placed (time and column density)
+        self.q_doas = queue.Queue()     # Queue where processed doas values are placed (dictionary containing al relevant data)
         self.cd_list = []               # Column density list [time, CD]
 
         # Pyplis object setup
@@ -245,7 +245,7 @@ class PyplisWorker:
 
         # Dark subtraction - first extract ss then hunt for dark image
         ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, band=band, ss=ss)
+        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
@@ -283,7 +283,7 @@ class PyplisWorker:
 
         # Dark subtraction - first extract ss then hunt for dark image
         ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, band=band, ss=ss)
+        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
@@ -306,7 +306,7 @@ class PyplisWorker:
             else:
                 self.fig_A.update_plot(np.array(img.img, dtype=np.uint16), img_path)
 
-    def find_dark_img(self, img_dir=None, band='on', ss=None):
+    def find_dark_img(self, img_dir, ss, band='on'):
         """
         Searches for suitable dark image in designated directory. First it filters the images for the correct filter,
         then searches for an image with the same shutter speed defined

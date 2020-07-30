@@ -7,7 +7,7 @@ Socket setup and control for Raspberry Pi network and connection to the remote c
 from pycam.controllers import Camera, Spectrometer
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
 from pycam.utils import check_filename
-from pycam.savefuncs import save_img, save_spectrum
+from pycam.io import save_img, save_spectrum
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 
 import socket

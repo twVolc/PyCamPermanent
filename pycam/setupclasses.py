@@ -354,7 +354,8 @@ class SpecSpecs:
 
         # File information
         self.file_ext = '.npy'  # Spectra saved as numpy array
-        self.file_ss = '{}ss'  # Shutter speed format spec
+        self.file_ss = '{}ss'   # Shutter speed format spec
+        self.file_ss_loc = 1    # Shutter speed location in filename
         self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
 

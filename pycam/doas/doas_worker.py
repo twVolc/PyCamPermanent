@@ -2,6 +2,10 @@
 
 # Main Subroutine which processes images according to the DOAS retrieval method.
 
+from pycam.setupclasses import SpecSpecs
+from pycam.io import load_spectrum, save_spectrum
+import pyplis
+
 import numpy as np
 from scipy import signal
 import os
@@ -11,6 +15,9 @@ from astropy.convolution import convolve
 import scipy.integrate as integrate
 from scipy.optimize import curve_fit, OptimizeWarning
 import warnings
+from math import floor, log10
+import queue
+import threading
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -22,9 +29,13 @@ class DOASWorker:
     get_ref_spectrum()
     set_fit_window()
     shift_spectrum()
+
+    :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
-    def __init__(self, routine=2, species=['SO2']):
-        self.routine = routine  # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
+    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), dark_dir=None, q_doas=queue.Queue()):
+        self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
+
+        self.spec_specs = spec_specs    # Spectrometer specifications
 
         # ======================================================================================================================
         # Initial Definitions
@@ -32,7 +43,9 @@ class DOASWorker:
         self.ppmm_conversion = 2.7e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
 
         self.shift = 0                  # Shift of spectrum in number of pixels
+        self.shift_tol = 0              # Shift tolerance (will process data at multiple shifts defined by tolerance)
         self.stretch = 0                # Stretch of spectrum
+        self.stretch_tol = 0            # As shift_tol but for stretch
         self.stretch_adjuster = 0.0001  # Factor to scale stretch (needed if different spectrometers have different pixel resolutions otherwise the stretch applied may be in too large or too small stages)
         self.stretch_resample = 100     # Number of points to resample the spectrum by during stretching
         self._start_stray_pix = None    # Pixel space stray light window definitions
@@ -50,6 +63,7 @@ class DOASWorker:
         self.wavelengths = None         # Placeholder for wavelengths attribute which contains all wavelengths of spectra
         self.wavelengths_cut = None     # Wavelengths in fit window
         self._dark_spec = None           # Dark spectrum
+        self.dark_dict = {}             # Dictionary holding all dark spectra loaded in
         self._clear_spec_raw = None     # Clear (fraunhofer) spectrum - not dark corrected
         self._plume_spec_raw = None     # In-plume spectrum (main one which is used for calculation of SO2
         self.clear_spec_corr = None     # Clear (fraunhofer) spectrum - typically dark corrected and stray light corrected
@@ -101,6 +115,13 @@ class DOASWorker:
         self.clear_dark_corr = False  # Tells us if the clear image has been dark subtracted
         self.plume_dark_corr = False  # Tells us if the plume image has been dark subtracted
         # ==============================================================================================================
+
+        # Processing loop attributes
+        self.process_thread = None      # Thread for running processing loop
+        self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
+        self.q_doas = q_doas
+
+        self.dark_dir = dark_dir        # Directory where dark images are stored
 
     @property
     def start_stray_wave(self):
@@ -229,7 +250,6 @@ class DOASWorker:
         # Assume we have loaded a new spectrum, so set this to False - ILS has not been convolved yet
         self.ref_convolved = False
 
-
     def get_ref_spectrum(self):
         """Load in reference spectrum"""
         self.wavelengths = None  # Placeholder for wavelengths attribute which contains all wavelengths of spectra
@@ -316,6 +336,46 @@ class DOASWorker:
     def load_dark(self):
         """Load drk images -> co-add to generate single dark image"""
         pass
+
+    def find_dark_spectrum(self, spec_dir, ss):
+        """
+        Searches for suitable dark spectrum in designated directory by finding one with the same shutter speed as
+        passed to function.
+        :return: dark_spec
+        """
+
+        # Fast dictionary look up for preloaded dark spectra
+        if str(ss) in self.dark_dict.keys():
+            dark_spec = self.dark_dict[str(ss)]
+            return dark_spec
+
+        # List all dark images in directory
+        dark_list = [f for f in os.listdir(spec_dir)
+                     if self.spec_specs.file_spec_type['dark'] in f and self.spec_specs.file_ext in f]
+
+        # Extract ss from each image and round to 2 significant figures
+        ss_str = self.spec_specs.file_ss.replace('{}', '')
+        ss_list = [int(f.split('_')[self.spec_specs.file_ss_loc].replace(ss_str, '')) for f in dark_list]
+
+        ss_idx = [i for i, x in enumerate(ss_list) if x == ss]
+        ss_spectra = [dark_list[i] for i in ss_idx]
+
+        if len(ss_spectra) < 1:
+            return None
+
+        # If we have images, we loop through them to create a coadded image
+        dark_full = np.zeros([self.spec_specs.pix_num, len(ss_spectra)])
+        for i, ss_spectrum in enumerate(ss_spectra):
+            # Load image. Coadd.
+            wavelengths, dark_full[:, i] = load_spectrum(spec_dir + ss_spectrum)
+
+        # Coadd images to creat single image
+        dark_spec = np.mean(dark_full, axis=1)
+
+        # Update lookup dictionary for fast retrieval of dark image later
+        self.dark_dict[str(ss)] = dark_spec
+
+        return dark_spec
 
     def save_dark(self, filename):
         """Save dark spectrum"""
@@ -497,7 +557,6 @@ class DOASWorker:
         plt.legend(handles=[abs_plt, ref_plt, res_plt, poly_plt, best_plt])
         plt.show()
 
-
     def process_doas(self):
         """Handles the order of DOAS processing"""
         # Check we have all of the correct spectra to perform processing
@@ -531,21 +590,104 @@ class DOASWorker:
         if not self.stray_corrected_clear or not self.stray_corrected_plume:
             self.stray_corr_spectra()
 
-        # Set fitting windows for acquired and reference spectra
-        self.set_fit_windows()
-
         # Convolve reference spectrum with the instrument lineshape
+        # TODO COnfirm this still works - prior to the shift_tol incorporation these lines came AFTER self.set_fit_windows()
+        # TODO I think it won't make a difference as they aren't directly related. But I should confirm this
         if not self.ref_convolved:
             self.conv_ref_spec()
 
-        # Run processing
-        self.fltr_doas()
+        # Process at range of shifts defined by shift tolerance
+        fit_results = []
+        for i, shift in enumerate(range(self.shift - self.shift_tol, self.shift + self.shift_tol + 1)):
+            # Set shift to new value
+            self.shift = shift
+
+            # Set fitting windows for acquired and reference spectra
+            self.set_fit_windows()
+
+            # Run processing
+            self.fltr_doas()
+
+            # Create dictionary of all relevant fit results
+            fit_results.append({'std_err': self.std_err,
+                                'column_density': self.column_density,
+                                'ref_spec_fit': self.ref_spec_fit,
+                                })
+
+            # Find best fit by looping through all results, extracting std_err and finding minimum value
+            best_fit = np.argmin(np.array([x['std_err'] for x in fit_results]))
+            best_fit_results = fit_results[best_fit]
+
+            # Unpack the fit results dictionary back into the object attributes the keys represent
+            for key in best_fit_results:
+                setattr(self, key, best_fit_results[key])
+
+        # Reset shift to starting value (otherwise we could possibly get a runaway shift during multiple processing?)
+        self.shift -= self.shift_tol
 
         # Generate absorbance spectra for individual species
         self.gen_abs_specs()
 
         # Set flag defining that data has been fully processed
         self.processed_data = True
+
+    def start_processing(self):
+        """Public access thread starter for _processing"""
+        self.process_thread = threading.Thread(target=self._process_loop, args=())
+        self.process_thread.daemon = True
+        self.process_thread.start()
+
+    def _process_loop(self):
+        """
+        Main process loop for doas
+        :return:
+        """
+        # Setup which we don't need to repeat once in the loop (optimising the code a little)
+        ss_str = self.spec_specs.file_ss.replace('{}', '')
+
+        first_spec = True       # First spectrum is used as clear spectrum
+
+        while True:
+            # Blocking wait for new file
+            filename = self.q_spec.get(block=True)
+
+            # Extract shutter speed
+            ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
+            ss = int(ss_full_str.replace(ss_str, ''))
+
+            # Find dark spectrum with same shutter speed
+            self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
+
+            # Load spectrum
+            self.wavelengths, spectrum = load_spectrum(filename)
+
+            # Make first spectrum clear spectrum
+            if first_spec:
+                self.clear_spec_raw = spectrum
+
+                processed_dict = {'processed': False,
+                                  'dark': self.dark_spec,
+                                  'clear': self.clear_spec_raw}
+
+            # Process plume spectrum
+            else:
+                self.plume_spec_raw = spectrum
+                self.process_doas()
+
+                # Gather all relevant information and spectra and pass it to PyplisWorker
+                processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
+                                  'filename': filename,             # Filename of processed spectrum
+                                  'dark': self.dark_spec,           # Dark spectrum used (raw)
+                                  'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
+                                  'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
+                                  'abs': self.abs_spec_cut,         # Absorption spectrum
+                                  'ref': self.abs_spec_species,     # Reference spectra (scaled)
+                                  'std_err': self.std_err,          # Standard error of fit
+                                  'column_density': self.column_density}    # Column density
+
+            # Pass data dictionary to PyplisWorker queue
+            self.q_doas.put(processed_dict)
+
 
 
 class SpectraError(Exception):
