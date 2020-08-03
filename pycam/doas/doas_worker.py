@@ -18,6 +18,7 @@ import warnings
 from math import floor, log10
 import queue
 import threading
+from tkinter import filedialog
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -32,7 +33,8 @@ class DOASWorker:
 
     :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
-    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), dark_dir=None, q_doas=queue.Queue()):
+    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), spec_dir=None, dark_dir=None,
+                 q_doas=queue.Queue()):
         self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
 
         self.spec_specs = spec_specs    # Spectrometer specifications
@@ -118,10 +120,17 @@ class DOASWorker:
 
         # Processing loop attributes
         self.process_thread = None      # Thread for running processing loop
+        self.processing_in_thread = False   # Flags whether the object is processing in a thread or in the main thread - therefore deciding whether plots should be updated herein or through pyplisworker
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
 
         self.dark_dir = dark_dir        # Directory where dark images are stored
+        self.spec_dir = spec_dir        # Directory where plume spectra are stored
+        self.spec_dict = {}             # Dictionary containing all spectrum files from current spec_dir
+
+        # Figures
+        self.fig_spec = None            # pycam.doas.SpectraPlot object
+        self.fig_doas = None            # pycam.doas.DOASPlot object
 
     @property
     def start_stray_wave(self):
@@ -336,6 +345,53 @@ class DOASWorker:
     def load_dark(self):
         """Load drk images -> co-add to generate single dark image"""
         pass
+
+    def load_dir(self, plot=True):
+        """Load spectrum directory -
+        :param: plot    bool     If true, the first spectra are plotted in the GUI"""
+
+        spec_dir = filedialog.askdirectory(title='Select spectrum sequence directory', initialdir=self.spec_dir)
+
+        if len(spec_dir) > 0 and os.path.exists(spec_dir):
+            self.spec_dir = spec_dir
+        else:
+            raise ValueError('Spectrum directory not recognised: {}'.format(spec_dir))
+
+        # Update first_spec flag TODO possibly not used in DOASWorker, check
+        self.first_spec = True
+
+        # Get list of all files in directory
+        self.spec_dict = self.get_spec_list()
+
+        # Set current spectra to first in lists
+        if len(self.spec_dict['clear']) > 0:
+            self.clear_spec_raw = self.spec_dict['clear'][0]
+        if len(self.spec_dict['plume']) > 0:
+            self.plume_spec_raw = self.spec_dict['plume'][0]
+        if len(self.spec_dict['dark']) > 0:
+            self.dark_spec = self.spec_dict['dark'][0]
+
+        # Update plots if requested
+        if plot:
+            self.fig_spec.update_clear()
+            self.fig_spec.update_dark()
+            self.fig_spec.update_plume()
+
+    def get_spec_list(self):
+        """
+        Gets list of spectra files from current spec_dir
+        Assumes all .npy files in the directory are spectra...
+        :returns: sd    dict    Dictionary containing all filenames
+        """
+        # Setup empty dictionary sd
+        sd = {}
+
+        # Get all files into associated list/dictionary entry
+        sd['all'] = [f for f in os.listdir(self.spec_dir) if '.npy' in f].sort()
+        sd['plume'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['plume'] + '.npy' in f].sort()
+        sd['clear'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['clear'] + '.npy' in f].sort()
+        sd['dark'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['dark'] + '.npy' in f].sort()
+        return sd
 
     def find_dark_spectrum(self, spec_dir, ss):
         """
@@ -631,8 +687,36 @@ class DOASWorker:
         # Set flag defining that data has been fully processed
         self.processed_data = True
 
-    def start_processing(self):
+    def start_processing_threadless(self):
+        """
+        Process spectra already in a directory, without entering a thread - this means that the _process_loop
+        function can update the plots wihtout going through the main thread in PyplisWorker
+        """
+        # Flag that we are running processing outside of thread
+        self.processing_in_thread = False
+
+        # Get all files
+        spec_files = [f for f in os.listdir(self.spec_dir) if '.npy' in f]
+
+        # Sort files alphabetically (which will sort them by time due to file format)
+        spec_files.sort()
+
+        # Extract clear spectra if they exist. If not, the first file is assumed to be the clear spectrum
+        clear_spec = [f for f in spec_files if self.spec_specs.file_spec_type['clear'] + '.npy' in f]
+
+        # Loop through all files and add them to queue
+        for file in clear_spec:
+            self.q_spec.put(self.spec_dir + file)
+        for file in spec_files:
+            self.q_spec.put(self.spec_dir + file)
+
+        # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
+        self.q_spec.put('exit')
+
+
+    def start_processing_thread(self):
         """Public access thread starter for _processing"""
+        self.processing_in_thread = True
         self.process_thread = threading.Thread(target=self._process_loop, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
@@ -649,7 +733,14 @@ class DOASWorker:
 
         while True:
             # Blocking wait for new file
-            filename = self.q_spec.get(block=True)
+            pathname = self.q_spec.get(block=True)
+
+            # Close thread if requested with 'exit' command
+            if pathname == 'exit':
+                break
+
+            # Extract filename
+            filename = pathname.split('\\')[-1].split('/')[-1]
 
             # Extract shutter speed
             ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
@@ -659,13 +750,14 @@ class DOASWorker:
             self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
             # Load spectrum
-            self.wavelengths, spectrum = load_spectrum(filename)
+            self.wavelengths, spectrum = load_spectrum(pathname)
 
             # Make first spectrum clear spectrum
             if first_spec:
                 self.clear_spec_raw = spectrum
 
                 processed_dict = {'processed': False,
+                                  'filename': pathname,
                                   'dark': self.dark_spec,
                                   'clear': self.clear_spec_raw}
 
@@ -676,7 +768,7 @@ class DOASWorker:
 
                 # Gather all relevant information and spectra and pass it to PyplisWorker
                 processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
-                                  'filename': filename,             # Filename of processed spectrum
+                                  'filename': pathname,             # Filename of processed spectrum
                                   'dark': self.dark_spec,           # Dark spectrum used (raw)
                                   'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
                                   'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
@@ -686,7 +778,16 @@ class DOASWorker:
                                   'column_density': self.column_density}    # Column density
 
             # Pass data dictionary to PyplisWorker queue
-            self.q_doas.put(processed_dict)
+            if self.processing_in_thread:
+                self.q_doas.put(processed_dict)
+
+            # Or if we are not in a processing thread we update the plots directly here
+            else:
+                self.fig_spec.update_dark()
+                if first_spec:
+                    self.fig_spec.update_clear()
+                else:
+                    self.fig_spec.update_plume()
 
 
 

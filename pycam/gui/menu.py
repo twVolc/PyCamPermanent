@@ -11,6 +11,7 @@ import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg_menu_frames import calibration_wind
 from pycam.cfg import pyplis_worker
+from pycam.doas.cfg import doas_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -81,6 +82,9 @@ class PyMenu:
         self.submenu_proc = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
         self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
+        self.submenu_proc.add_separator()
+        self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
+        self.submenu_proc.add_command(label='Process DOAS', command=doas_worker.start_processing_threadless)
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
 

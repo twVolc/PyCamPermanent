@@ -7,6 +7,7 @@ Contains all classes associated with building figures for the analysis functions
 from pycam.gui.cfg import gui_setts
 from pycam.setupclasses import CameraSpecs, FileLocator
 from pycam.cfg import pyplis_worker
+from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pyplis import LineOnImage
 
@@ -1052,12 +1053,15 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.vars = {'plot_iter': int,
                      'bg_A': str,
                      'bg_B': str,
-                     'dark_dir': str}
+                     'dark_img_dir': str,
+                     'dark_spec_dir': str
+                     }
 
         self._plot_iter = tk.IntVar()
         self._bg_A = tk.StringVar()
         self._bg_B = tk.StringVar()
-        self._dark_dir = tk.StringVar()
+        self._dark_img_dir = tk.StringVar()
+        self._dark_spec_dir = tk.StringVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -1094,9 +1098,18 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Dark directory
         label = ttk.Label(self.frame, text='Dark image directory:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_label = ttk.Label(self.frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
-        self.dark_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_dir)
+        self.dark_img_label = ttk.Label(self.frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_img_dir)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Dark spec directory
+        label = ttk.Label(self.frame, text='Dark spectrum directory:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.dark_spec_label = ttk.Label(self.frame, text=self.dark_spec_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_spec_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -1130,17 +1143,30 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._plot_iter.set(value)
 
     @property
-    def dark_dir(self):
-        return self._dark_dir.get()
+    def dark_img_dir(self):
+        return self._dark_img_dir.get()
 
-    @dark_dir.setter
-    def dark_dir(self, value):
-        self._dark_dir.set(value)
+    @dark_img_dir.setter
+    def dark_img_dir(self, value):
+        self._dark_img_dir.set(value)
 
     @property
     def dark_dir_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.dark_dir[-self.path_str_length:]
+        return '...' + self.dark_img_dir[-self.path_str_length:]
+
+    @property
+    def dark_spec_dir(self):
+        return self._dark_spec_dir.get()
+
+    @dark_spec_dir.setter
+    def dark_spec_dir(self, value):
+        self._dark_spec_dir.set(value)
+
+    @property
+    def dark_spec_dir_short(self):
+        """Returns shorter label for dark directory"""
+        return '...' + self.dark_spec_dir[-self.path_str_length:]
 
     @property
     def bg_A(self):
@@ -1168,20 +1194,31 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Returns shorter label for bg_B file"""
         return '...' + self.bg_B[-self.path_str_length:]
 
-    def get_dark_dir(self):
-        """Gives user options for retreiving dark directory"""
-        dark_dir = filedialog.askdirectory(initialdir=self.dark_dir)
+    def get_dark_img_dir(self):
+        """Gives user options for retrieving dark image directory"""
+        dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
         self.frame.lift()
 
-        if len(dark_dir) > 0:
-            self.dark_dir = dark_dir
-            self.dark_label.configure(text=self.dark_dir_short)
+        if len(dark_img_dir) > 0:
+            self.dark_img_dir = dark_img_dir
+            self.dark_img_label.configure(text=self.dark_dir_short)
+
+    def get_dark_spec_dir(self):
+        """Gives user options for retrieving dark spectrum directory"""
+        dark_spec_dir = filedialog.askdirectory(initialdir=self.dark_spec_dir)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        self.frame.lift()
+
+        if len(dark_spec_dir) > 0:
+            self.dark_spec_dir = dark_spec_dir
+            self.dark_spec_label.configure(text=self.dark_spec_dir_short)
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
-        bg_file = filedialog.askopenfilename(initialdir=self.dark_dir)
+        bg_file = filedialog.askopenfilename(initialdir=self.dark_img_dir)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
         self.frame.lift()
@@ -1196,7 +1233,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         :return:
         """
         pyplis_worker.plot_iter = self.plot_iter
-        pyplis_worker.dark_dir = self.dark_dir          # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.dark_dir = self.dark_img_dir          # Load dark_dir prior to bg images - bg images require dark dir
+        doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
 
@@ -1211,8 +1249,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
         self.bg_A = pyplis_worker.bg_A_path
         self.bg_B = pyplis_worker.bg_B_path
-        self.dark_dir = pyplis_worker.dark_dir
-        self.dark_label.configure(text=self.dark_dir_short)
+        self.dark_img_dir = pyplis_worker.dark_dir
+        self.dark_spec_dir = doas_worker.dark_dir
+        self.dark_img_label.configure(text=self.dark_dir_short)
 
         self.frame.destroy()
 

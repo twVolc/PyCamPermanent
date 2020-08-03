@@ -13,6 +13,7 @@ from pycam.doas.doas_worker import DOASWorker
 from pycam.doas.cfg import doas_worker, species
 from pycam.gui.cfg import gui_setts
 # from acquisition_gui import AcquisitionFrame
+from pycam.cfg import pyplis_worker
 
 plt.style.use('dark_background')
 
@@ -28,6 +29,10 @@ class SpectraPlot:
         self.root = root
         self.doas_worker = doas_worker
         self.doas_plot = doas_plot
+
+        # Give pyplis_worker and doas_worker access to this figure
+        pyplis_worker.fig_spec = self
+        doas_worker.fig_spec = self
 
         self.figsize = gui_setts.fig_spec
         self.dpi = gui_setts.dpi
@@ -265,6 +270,10 @@ class DOASPlot:
         self.root = root
 
         self.doas_worker = doas_worker
+
+        # Give pyplis_worker and doas_worker access to this figure
+        pyplis_worker.fig_doas = self
+        doas_worker.fig_doas = self
 
         self.species = species
 

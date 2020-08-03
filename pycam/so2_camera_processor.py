@@ -58,6 +58,8 @@ class PyplisWorker:
         self.fig_bg_A = None
         self.fig_bg_B = None
         self.fig_bg_ref = None
+        self.fig_spec = None
+        self.fig_doas = None
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},

@@ -43,7 +43,6 @@ class PyCam(ttk.Frame):
         # Setup socket
         self.sock = SocketClient(host_ip=self.config[ConfigInfo.host_ip], port=int(self.config[ConfigInfo.port_ext]))
 
-
         # Setup style
         self.style = ThemedStyle(self.root)
         # self.style.set_theme('equilux')

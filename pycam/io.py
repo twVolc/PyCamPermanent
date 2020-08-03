@@ -66,3 +66,17 @@ def load_spectrum(filename):
     return wavelengths, spectrum
 
 
+def spec_txt_2_npy(directory):
+    """Generates numpy arrays of spectra text files (essentially compressing them)"""
+
+    # List all text files
+    txt_files = [f for f in os.listdir(directory) if '.txt' in f]
+
+    for file in txt_files:
+        spec = np.loadtxt(directory + file)
+        wavelengths = spec[:, 0]
+        spectrum = spec[:, 1]
+
+        save_spectrum(wavelengths, spectrum, directory + file.replace('txt', 'npy'))
+
+
