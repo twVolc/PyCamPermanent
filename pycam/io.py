@@ -57,7 +57,7 @@ def load_spectrum(filename):
     """Essentially a wrapper to numpy load function, with added filename check
     :param  filename:   str     Full path of spectrum to be loaded"""
     try:
-        check_filename(filename, SpecSpecs().file_ext)
+        check_filename(filename, SpecSpecs().file_ext.split('.')[-1])
     except:
         raise
     spec_array = np.load(filename)

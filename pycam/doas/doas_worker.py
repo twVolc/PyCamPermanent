@@ -33,7 +33,7 @@ class DOASWorker:
 
     :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
-    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), spec_dir=None, dark_dir=None,
+    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), spec_dir='C:\\', dark_dir=None,
                  q_doas=queue.Queue()):
         self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
 
@@ -124,6 +124,7 @@ class DOASWorker:
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
 
+        self._dark_dir = None
         self.dark_dir = dark_dir        # Directory where dark images are stored
         self.spec_dir = spec_dir        # Directory where plume spectra are stored
         self.spec_dict = {}             # Dictionary containing all spectrum files from current spec_dir
@@ -155,7 +156,6 @@ class DOASWorker:
         # Set pixel value too, if wavelengths attribute is present
         if self.wavelengths is not None:
             self._end_stray_pix = np.argmin(np.absolute(self.wavelengths - value))
-
 
     @property
     def start_fit_wave(self):
@@ -198,6 +198,16 @@ class DOASWorker:
         self.dark_corrected_plume = False
         self.stray_corrected_clear = False
         self.stray_corrected_plume = False
+
+    @property
+    def dark_dir(self):
+        return self._dark_dir
+
+    @dark_dir.setter
+    def dark_dir(self, value):
+        """If dark_dir is changed we need to reset the dark_dict which holds preloaded dark specs"""
+        self.dark_dict = {}
+        self._dark_dir = value
 
     @property
     def clear_spec_raw(self):
@@ -346,16 +356,21 @@ class DOASWorker:
         """Load drk images -> co-add to generate single dark image"""
         pass
 
-    def load_dir(self, plot=True):
-        """Load spectrum directory -
-        :param: plot    bool     If true, the first spectra are plotted in the GUI"""
+    def load_dir(self, prompt=True, plot=True):
+        """Load spectrum directory
+        :param: prompt  bool    If true, a dialogue box is opened to request directory load. Else, self.spec_dir is used
+        :param: plot    bool    If true, the first spectra are plotted in the GUI"""
 
-        spec_dir = filedialog.askdirectory(title='Select spectrum sequence directory', initialdir=self.spec_dir)
+        if prompt:
+            spec_dir = filedialog.askdirectory(title='Select spectrum sequence directory', initialdir=self.spec_dir)
 
-        if len(spec_dir) > 0 and os.path.exists(spec_dir):
-            self.spec_dir = spec_dir
+            if len(spec_dir) > 0 and os.path.exists(spec_dir):
+                self.spec_dir = spec_dir
+            else:
+                raise ValueError('Spectrum directory not recognised: {}'.format(spec_dir))
         else:
-            raise ValueError('Spectrum directory not recognised: {}'.format(spec_dir))
+            if self.spec_dir is None:
+                raise ValueError('Spectrum directory not recognised: {}'.format(self.spec_dir))
 
         # Update first_spec flag TODO possibly not used in DOASWorker, check
         self.first_spec = True
@@ -365,11 +380,13 @@ class DOASWorker:
 
         # Set current spectra to first in lists
         if len(self.spec_dict['clear']) > 0:
-            self.clear_spec_raw = self.spec_dict['clear'][0]
+            self.wavelengths, self.clear_spec_raw = load_spectrum(self.spec_dir + self.spec_dict['clear'][0])
         if len(self.spec_dict['plume']) > 0:
-            self.plume_spec_raw = self.spec_dict['plume'][0]
+            self.wavelengths, self.plume_spec_raw = load_spectrum(self.spec_dir + self.spec_dict['plume'][0])
         if len(self.spec_dict['dark']) > 0:
-            self.dark_spec = self.spec_dict['dark'][0]
+            ss_id = self.spec_specs.file_ss.replace('{}', '')
+            ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
+            self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
         # Update plots if requested
         if plot:
@@ -387,10 +404,17 @@ class DOASWorker:
         sd = {}
 
         # Get all files into associated list/dictionary entry
-        sd['all'] = [f for f in os.listdir(self.spec_dir) if '.npy' in f].sort()
-        sd['plume'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['plume'] + '.npy' in f].sort()
-        sd['clear'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['clear'] + '.npy' in f].sort()
-        sd['dark'] = [f for f in sd['all'] if self.spec_specs.file_spec_type['dark'] + '.npy' in f].sort()
+        sd['all'] = [f for f in os.listdir(self.spec_dir) if self.spec_specs.file_ext in f]
+        sd['all'].sort()
+        sd['plume'] = [f for f in sd['all']
+                       if self.spec_specs.file_spec_type['meas'] + self.spec_specs.file_ext in f]
+        sd['plume'].sort()
+        sd['clear'] = [f for f in sd['all']
+                       if self.spec_specs.file_spec_type['clear'] + self.spec_specs.file_ext in f]
+        sd['clear'].sort()
+        sd['dark'] = [f for f in sd['all']
+                      if self.spec_specs.file_spec_type['dark'] + self.spec_specs.file_ext in f]
+        sd['dark'].sort()
         return sd
 
     def find_dark_spectrum(self, spec_dir, ss):
@@ -399,10 +423,12 @@ class DOASWorker:
         passed to function.
         :return: dark_spec
         """
+        # Ensure ss is a string
+        ss = str(ss)
 
         # Fast dictionary look up for preloaded dark spectra
-        if str(ss) in self.dark_dict.keys():
-            dark_spec = self.dark_dict[str(ss)]
+        if ss in self.dark_dict.keys():
+            dark_spec = self.dark_dict[ss]
             return dark_spec
 
         # List all dark images in directory
@@ -413,7 +439,7 @@ class DOASWorker:
         ss_str = self.spec_specs.file_ss.replace('{}', '')
         ss_list = [int(f.split('_')[self.spec_specs.file_ss_loc].replace(ss_str, '')) for f in dark_list]
 
-        ss_idx = [i for i, x in enumerate(ss_list) if x == ss]
+        ss_idx = [i for i, x in enumerate(ss_list) if x == int(ss)]
         ss_spectra = [dark_list[i] for i in ss_idx]
 
         if len(ss_spectra) < 1:
@@ -429,7 +455,7 @@ class DOASWorker:
         dark_spec = np.mean(dark_full, axis=1)
 
         # Update lookup dictionary for fast retrieval of dark image later
-        self.dark_dict[str(ss)] = dark_spec
+        self.dark_dict[ss] = dark_spec
 
         return dark_spec
 

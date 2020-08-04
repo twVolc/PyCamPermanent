@@ -312,6 +312,7 @@ class PyplisWorker:
         """
         Searches for suitable dark image in designated directory. First it filters the images for the correct filter,
         then searches for an image with the same shutter speed defined
+        :param: ss  int,str     Shutter speed value to hunt for. Can be either int or str
         :return: dark_img
         """
         # If band is given in terms of A/B we convert to on/off

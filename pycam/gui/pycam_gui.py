@@ -16,6 +16,7 @@ from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
+from pycam.doas.cfg import doas_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -79,6 +80,7 @@ class PyCam(ttk.Frame):
 
         # Load in initial sequence directory
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
+        doas_worker.load_dir(prompt=False, plot=True)
 
     def exit_app(self):
         """Closes application"""
