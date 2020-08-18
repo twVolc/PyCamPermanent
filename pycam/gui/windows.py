@@ -6,6 +6,7 @@ Each window forms a tab which can be accessed through the 'View' menu."""
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
 from .misc import Indicator, ScrollWindow
 import pycam.gui.cfg as cfg
+from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
 from pycam.gui.figures_doas import SpectraPlot, DOASPlot
 from pycam.gui.figures_analysis import ImageSO2, SequenceInfo
@@ -90,7 +91,7 @@ class SpecWind:
         self.plt_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
 
         # DOAS frame and spectrum frame
-        self.doas_frame = DOASPlot(self.root, self.plt_frame)
+        self.doas_frame = DOASPlot(self.root, self.plt_frame, species=doas_worker.ref_spec_used)
         self.spec_frame = SpectraPlot(self.root, self.plt_frame, self.doas_frame)
         self.spec_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
         self.doas_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)

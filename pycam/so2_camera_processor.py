@@ -5,11 +5,13 @@
 Scripts are an edited version of the pyplis example scripts, adapted for use with the PiCam"""
 from __future__ import (absolute_import, division)
 
-from pycam.setupclasses import CameraSpecs
+from pycam.setupclasses import CameraSpecs, SpecSpecs
 
 import queue
 import threading
 import pyplis
+from pyplis.custom_image_import import load_picam_png
+import pydoas
 from tkinter import filedialog, messagebox
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,17 +20,40 @@ import cv2
 from skimage import transform as tf
 import warnings
 from math import log10, floor
+import datetime
 
 
 class PyplisWorker:
     """
     Main pyplis worker class
-
+    :param  img_dir:    str     Directory where images are stored
+    :param  cam_specs:  CameraSpecs     Object containing all details of the camera/images
+    :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
-    def __init__(self, img_dir=None):
+    def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
         self.q_doas = queue.Queue()     # Queue where processed doas values are placed (dictionary containing al relevant data)
-        self.cd_list = []               # Column density list [time, CD]
+
+        self.cam_specs = cam_specs  #
+        self.spec_specs = spec_specs
+
+        # Setup memory allocation for images (need to keep a large number for DOAS fov image search).
+        self.img_tau_buff_size = 200         # Buffer size for images (this number of images are held in memory)
+        self.img_tau_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_tau_buff_size],
+                                 dtype=np.float32)
+        self.img_tau_buff_time = [None] * self.img_tau_buff_size   # Names of images held within img_buff (on-band name held)
+        self.idx_current = 0    # Used to track what the current index is for saving to image buffer
+
+        self.doas_buff_size = 500
+        self.column_densities = np.zeros(self.doas_buff_size, dtype=np.float32)    # Column densities array
+        self.std_errs = np.zeros(self.doas_buff_size, dtype=np.float32)    # Array of standard error on column denisties
+        self.cd_times = [None] * self.doas_buff_size                             # Times of column densities data points
+        self.idx_current_doas = 0       # Current index for doas spectra
+
+        test_doas_start = self.get_img_time('2018-03-26T144404')
+        self.test_doas_times = [test_doas_start + datetime.timedelta(seconds=x) for x in range(0, 600, 4)]
+        self.test_doas_cds = np.random.rand(len(self.test_doas_times)) * 1000
+        self.test_doas_stds = np.random.rand(len(self.test_doas_times)) * 50
 
         # Pyplis object setup
         self.load_img_func = pyplis.custom_image_import.load_picam_png
@@ -38,7 +63,7 @@ class PyplisWorker:
         self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
         self.plume_bg.surface_fit_pyrlevel = 0
         self.plume_bg.mode = 4      # Plume background mode - default (4) is linear in x and y
-        self.cam_specs = CameraSpecs()
+
         self.BG_CORR_MODES = [0,    # 2D poly surface fit (without sky radiance image)
                               1,    # Scaling of sky radiance image
                               2,
@@ -50,16 +75,20 @@ class PyplisWorker:
         self.auto_param_bg = True   # Whether the line parameters for BG modelling are generated automatically
         self.POLYFIT_2D_MASK_THRESH = 100
         self.PCS_lines = []
+        self.maxrad_doas = self.spec_specs.fov * 1.1        # Max radius used for doas FOV search (degrees)
 
-        # Figure objects
-        self.fig_A = None
-        self.fig_B = None
-        self.fig_tau = None
-        self.fig_bg_A = None
-        self.fig_bg_B = None
-        self.fig_bg_ref = None
-        self.fig_spec = None
-        self.fig_doas = None
+        # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
+        # they will contain matplotlib figure objects as attributes
+        self.fig_A = None               # Figure displaying off-band raw image
+        self.fig_B = None               # Figure displaying off-band raw image
+        self.fig_tau = None             # Figure displaying absorbance image
+        self.fig_bg_A = None            # Figure displaying modelled background of on-band
+        self.fig_bg_B = None            # Figure displaying modelled background of off-band
+        self.fig_bg_ref = None          # Figure displaying ?
+        self.fig_spec = None            # Figure displaying spectra
+        self.fig_doas = None            # Figure displaying DOAS fit
+        self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
+        self.calib_pears = None         # Pyplis object holding functions to plot results
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},
@@ -78,6 +107,11 @@ class PyplisWorker:
         self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_aa = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # Optical depth image
         self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # SO2 calibrated image
+        self.got_cal = False
+        self._cell_cal_dir = None
+        self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
+        self.cell_dict_A = {}
+        self.cell_dict_B = {}
 
         # Load background image if we are provided with one
         self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
@@ -132,6 +166,16 @@ class PyplisWorker:
         # Load the source
         self.source = pyplis.setupclasses.Source(location_id)
 
+    @property
+    def cell_cal_dir(self):
+        return self._cell_cal_dir
+
+    @cell_cal_dir.setter
+    def cell_cal_dir(self, value):
+        """When the cell calibration directory is changed we automatically load it in and process the data"""
+        self._cell_cal_dir = value
+        self.perform_cell_calibration(plot=False, set_bg_img=False)
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object
 
@@ -162,6 +206,23 @@ class PyplisWorker:
         """Wrapper for pyplis plotting of measurement geometry"""
         self.geom_fig = self.meas.meas_geometry.draw_map_2d()
         self.geom_fig.fig.show()
+
+    def get_img_time(self, filename):
+        """
+        Gets time from filename and converts it to datetime object
+        :param filename:
+        :return img_time:
+        """
+        # Make sure filename only contains file and not larger pathname
+        filename = filename.split('\\')[-1].split('/')[-1]
+
+        # Extract time string from filename
+        time_str = filename.split('_')[self.cam_specs.file_date_loc]
+
+        # Turn time string into datetime object
+        img_time = datetime.datetime.strptime(time_str, self.cam_specs.file_datestr)
+
+        return img_time
 
     def get_img_list(self):
         """
@@ -206,6 +267,18 @@ class PyplisWorker:
 
         return img_list
 
+    def reset_self(self):
+        """
+        Resets aspects of self to ensure we start processing in the correct manner
+        :return:
+        """
+        self.img_tau_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_tau_buff_size],
+                                     dtype=np.float32)
+        self.img_tau_buff_time = [None] * self.img_tau_buff_size  # Names of images held within img_buff (on-band name held)
+        self.idx_current = 0  # Used to track what the current index is for saving to image buffer
+        self.idx_current_doas = 0   # Used for tracking current index of doas points
+        self.got_cal = False
+
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
         Loads image sequence which is defined by the user
@@ -222,6 +295,9 @@ class PyplisWorker:
 
         # Update first_image flag
         self.first_image = True
+
+        # Reset buffers as we have a new sequence
+        self.reset_self()
 
         # Update image list
         self.img_list = self.get_img_list()
@@ -255,12 +331,9 @@ class PyplisWorker:
             warnings.warn('No dark image provided for background image.\n '
                           'Background image has not been corrected for dark current.')
 
-        # Generate vign image
-        vign = img.img / img.img.max()  # NOTE: potentially includes y & x gradients
-
         # Set variables
         setattr(self, 'bg_{}'.format(band), img)
-        setattr(self, 'vign_{}'.format(band), vign)
+        self.generate_vign_mask(img.img, band)
         setattr(self, 'bg_{}_path'.format(band), bg_path)
 
     def load_img(self, img_path, band=None, plot=True):
@@ -369,6 +442,265 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
+    def update_img_buff(self, img_tau, filename):
+        """
+        Updates the image buffer and file time buffer
+        :param img_tau:     np.array        n x m image matrix of tau image
+        :param filname:     str             on- or off-band filename for image used to generate img_tau
+        """
+        # Extract time from filename into datetime object
+        img_time = self.get_img_time(filename)
+
+        # If we haven't exceeded buffer size then we simply add new data to buffer
+        if self.idx_current < self.img_tau_buff_size:
+            self.img_tau_buff[:, :, self.idx_current] = img_tau
+            self.img_tau_buff_time[self.idx_current] = img_time
+
+        # If we are beyond the buffer size we need to shift all images down one and add the new image to the end
+        # The oldest image is therefore lost from the buffer
+        else:
+            self.img_tau_buff[:, :, :-1] = self.img_tau_buff[:, :, 1:]
+            self.img_tau_buff[:, :, -1] = img_tau
+            self.img_tau_buff_time[:-1] = self.img_tau_buff_time[1:]
+            self.img_tau_buff_time[-1] = img_time
+
+        # Increment current index
+        self.idx_current += 1
+
+    def generate_vign_mask(self, img, band):
+        """
+        Generates vign mask and updates self.vign_X from the imag and for the specified band X
+        :param img:     np.array    Clear-sky image to be converted to vign_mask
+        :param band:    str         Band
+        :return:
+        """
+        if band.lower() == 'on':
+            band = 'A'
+        elif band.lower() == 'off':
+            band = 'B'
+
+        setattr(self, 'vign_{}'.format(band), img / np.amax(img))
+
+    def perform_cell_calibration(self, plot=True, set_bg_img=True):
+        """
+        Loads in cell calibration images and performs the calibration so that it is ready if needed
+        :param plot:        bool    States whether the results are plotted
+        :param set_bg_img:  bool    States whether bg image should be set to coadded clears loaded herein
+        :return:
+        """
+        img_list_full = [x for x in os.listdir(self.cell_cal_dir) if self.cam_specs.file_ext in x]
+
+        # Clear sky
+        clear_list_A = [x for x in img_list_full
+                        if self.cam_specs.file_filterids['on'] in x  and self.cam_specs.file_img_type['clear'] in x]
+        clear_list_B = [x for x in img_list_full
+                        if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
+        num_clear_A = len(clear_list_A)
+        num_clear_B = len(clear_list_B)
+        img_array_clear_A = np.zeros((self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, num_clear_A), dtype=np.float32)
+        img_array_clear_B = np.zeros((self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, num_clear_B), dtype=np.float32)
+
+        if num_clear_A == 0 or num_clear_B == 0:
+            print('No clear images present. Ensure the calibration directory contains clear images for both filters')
+            return
+
+        # Loop through clear images and load them into buffer
+        for i in range(num_clear_A):
+            img_array_clear_A[:, :, i], meta = load_picam_png(os.path.join(self.cell_cal_dir, clear_list_A[i]))
+
+            # Find associated dark image by extracting shutter speed, then subtract this image
+            ss = meta['texp'] / self.cam_specs.file_ss_units
+            img_array_clear_A[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='A')
+
+            # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
+            img_array_clear_A[:, :, i] *= (1 / meta['texp'])
+
+        # Coadd images to create single clear image A
+        img_clear_A = np.mean(img_array_clear_A, axis=2)    #  Co-added final clear image
+
+        # As above but with off-band images
+        for i in range(num_clear_B):
+            img_array_clear_B[:, :, i], meta = load_picam_png(os.path.join(self.cell_cal_dir, clear_list_B[i]))
+
+            # Find associated dark image by extracting shutter speed, then subtract this image
+            ss = meta['texp'] / self.cam_specs.file_ss_units
+            img_array_clear_B[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='B')
+
+            # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
+            img_array_clear_B[:, :, i] *= (1 / meta['texp'])
+
+        # Coadd images to create single clear image B
+        img_clear_B = np.mean(img_array_clear_B, axis=2)  # Co-added final clear image
+
+        self.mask_A = self.generate_vign_mask(img_clear_A, 'A')
+        self.mask_B = self.generate_vign_mask(img_clear_B, 'B')
+
+        # If requested, we update bg images to those from calibration, rather than explicitly defined bg images
+        if set_bg_img:
+            self.bg_A = pyplis.image.Img(img_clear_A)
+            self.bg_B = pyplis.image.Img(img_clear_B)
+            self.bg_A_path = 'Coadded. ...{}'.format(self.cell_cal_dir[-8])
+            self.bg_B_path = 'Coadded. ...{}'.format(self.cell_cal_dir[-8])
+
+        # -------------------------------
+        # READ IN CALIBRATION CELL IMAGES
+        # -------------------------------
+        # Calibration file listssky
+        cal_list_A = [x for x in img_list_full
+                      if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
+        cal_list_B = [x for x in img_list_full
+                      if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
+        num_cal_A = len(cal_list_A)
+        num_cal_B = len(cal_list_B)
+
+        if num_cal_A == 0 or num_cal_B == 0:
+            print('Calibration directory does not contain expected image. Aborting calibration load!')
+            return
+
+        cell_vals_A = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                       for x in cal_list_A]
+        cell_vals_B = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                       for x in cal_list_B]
+        cell_vals = list(set(cell_vals_A))
+
+        # Ensure that we only calibrate with cells which have both on and off band images. So first we determine values
+        # which are in one list but not the other, removing them from cell_vals
+        cell_vals_B = list(set(cell_vals_B))
+        missing_vals = np.setdiff1d(cell_vals, cell_vals_B, assume_unique=True)
+        for val in missing_vals:
+            try:
+                cell_vals.remove(val)
+            except ValueError:
+                pass
+            print('Cell {}ppmm is not present in both on- and off-band images, so is not being processed.')
+
+        # Reset cell image dictionary as we are loading a new folder (don't want old cells/values in there)
+        self.cell_dict_A = {}
+        self.cell_dict_B = {}
+
+        for ppmm in cell_vals:
+            # Set id for this cell (based on its filename)
+            cal_id = ppmm + self.cam_specs.file_img_type['cal']
+
+            for band in ['A', 'B']:
+                # Make list for specific calibration cell
+                cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
+                num_img = len(cell_list)
+
+                # Create empty array
+                cell_array = np.zeros((self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, num_img),
+                                       dtype=np.float32)
+
+                for i in range(num_img):
+                    cell_array[:, :, i], meta = load_picam_png(os.path.join(self.cell_cal_dir, cell_list[i]))
+
+                    # Find associated dark image by extracting shutter speed, then subtract this image
+                    ss = meta['texp'] / self.cam_specs.file_ss_units
+                    cell_array[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band=band)
+
+                    # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
+                    cell_array[:, :, i] *= (1 / meta['texp'])
+
+                # Coadd images to create single clear image B
+                cell_img_coadd = np.mean(cell_array, axis=2)  # Co-added final clear image
+
+                # Put image in dictionary
+                getattr(self, 'cell_dict_{}'.format(band))[band] = cell_img_coadd.copy()
+
+        # TODO Finish calibration work - calculate absorbances etc
+
+        # TODO organise plotting of calibration
+        if plot:
+            pass
+
+
+    def update_doas_buff(self, doas_dict):
+        """
+        Updates doas buffer
+        :param doas_dict:  dict     Must contain column_density and time keys, otherwise discarded. std_err is optional
+        :return:
+        """
+        if 'column_density' not in doas_dict or 'time' not in doas_dict:
+            print('Encountered unexpected value for doas_dict in update_doas_buff(), buffer was not updated')
+            return
+
+        # We either place the image in its position in the buffer, or if the buffer is already full we have to rearrange
+        # the arrays and then put the new values at the end
+        if self.idx_current_doas < self.doas_buff_size:
+            idx = self.idx_current_doas
+        else:
+            idx = -1
+            self.column_densities[:-1] = self.column_densities[1:]
+            self.cd_times[:-1] = self.cd_times[1:]
+            self.std_errs[:-1] =self.std_errs[1:]
+
+        # Update buffers with new values
+        self.column_densities[idx] = doas_dict['column_densities']
+        self.cd_times[idx] = doas_dict['time']
+
+        try:
+            self.std_errs[idx] = doas_dict['std_err']
+        except KeyError:
+            self.std_errs[idx] = np.nan
+
+        # Increment doas index
+        self.idx_current_doas += 1
+
+    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
+        """
+        Makes pydoas DOASResults object from timeseries
+        :param times:   arraylike           Datetimes of column densities
+        :param column_densities: arraylike  Column densities
+        :param stds:    arraylike           Standard errors in the column density values
+        :param species: str                 Gas species
+        """
+        doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
+        return doas_results
+
+    def doas_fov_search(self, img_stack, doas_results, plot=True):
+        """
+        Performs FOV search for doas
+        :param img_stack:
+        :param doas_results:
+        :return:
+        """
+        s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
+        s.maxrad = self.maxrad_doas   # Set maximum radius of FOV to close to that expected from optical calculations
+        s.g2dasym = False                       # Allow only circular FOV (not eliptical)
+        self.calib_pears = s.perform_fov_search(method='pearson')
+        self.calib_pears.fit_calib_data(polyorder=1, through_origin=True)
+        self.got_cal = True     # Flag that we now have a calibration
+
+        # Plot results if requested, first checking that we have the tkinter frame generated
+        if plot:
+            if not self.fig_doas_fov.in_frame:
+                self.fig_doas_fov.generate_frame()  # Generating the frame will create the plot automatically
+            else:
+                self.fig_doas_fov.update_plot()
+
+    def make_stack(self):
+        """
+        Generates image stack from self.img_tau_buff (tau images)
+        :return stack:  ImgStack        Stack with all loaded images
+        """
+        # Create empty pyplis ImgStack
+        stack = pyplis.processing.ImgStack(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.idx_current,
+                                           np.float32, 'tau', camera=self.cam, img_prep={'is_tau': True})
+
+        # Add all images of the current image buffer to stack
+        # (only take images from the buffer stack up to the current index - the images which have been loaded thusfar)
+        for i in range(self.idx_current):
+            stack.add_img(self.img_tau_buff[:, :, i], self.img_tau_buff_time[i])
+
+        stack.img_prep['pyrlevel'] = 0
+
+        return stack
+
+    def make_aa_list(self):
+        """Makes pyplis ImgList from current img_list (set using get_img_list())"""
+        full_paths = [os.path.join(self.img_dir, f) for f in self.img_list]
+        self.pyplis_img_list = pyplis.imagelists.ImgList(full_paths, cam=self.cam)
+
     def model_background(self, mode=None, params=None, plot=True):
         """
         Models plume background for image provided.
@@ -446,7 +778,7 @@ class PyplisWorker:
 
         return tau_A, tau_B
 
-    def generate_optical_depth(self, img_A, img_B, plot=True, plot_bg=True):
+    def generate_optical_depth(self, plot=True, plot_bg=True):
         """
         Performs the full catalogue of image procesing on a single image pair to generate optical depth image
         Processing beyond this point is left ot another function, since it requires use of a second set of images
@@ -458,7 +790,7 @@ class PyplisWorker:
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
 
-        # Register off-band image TODO - maybe I want to register first? As after modelling BG i will be in optical depth not intensity space
+        # Register off-band image
         img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
         self.tau_B_warped = pyplis.image.Img(img)
 
@@ -466,14 +798,15 @@ class PyplisWorker:
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
 
+        if self.got_cal:
+            #TODO perform calibration here if we have a calibration line.
+            pass
+
         if plot:
-            # TODO update optical depth image
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
             getattr(self, 'fig_tau').update_plot(np.array(self.img_tau.img))
 
-        # return img_tau
-
-    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=True):
+    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False):
         """
         Processes full image pair when passed images (need to think about how to deal with dark images)
 
@@ -486,13 +819,20 @@ class PyplisWorker:
 
         # Can pass None to this function for img paths, and then the current images will be processed
         if img_path_A is not None:
-            # Load in images TODO think about what to do with providing dark images here -should they already be loaded?
+            # Load in images
             self.load_img(img_path_A, band='A', plot=plot)
         if img_path_B is not None:
             self.load_img(img_path_B, band='B', plot=plot)
 
         # Generate optical depth image
-        self.img_aa = self.generate_optical_depth(self.img_A, self.img_B, plot=plot, plot_bg=plot_bg)
+        self.generate_optical_depth(plot=plot, plot_bg=plot_bg)
+
+        # Only update buffer if this is a new image (if it is a new image the path will be given to it)
+        # Really we only want to update the image buffer when processing a full sequence, which will always pass
+        # the img_path parameter to this function, so will update the buffer correctly.
+        if img_path_A is not None:
+            # Add tau image to buffer and update image time too
+            self.update_img_buff(self.img_tau.img, img_path_A)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -504,6 +844,9 @@ class PyplisWorker:
         :param plot_iter: bool      Tells function whether to plot iteratively or not
         :return:
         """
+        # Reset important parameters to ensure we start processing correctly
+        self.reset_self()
+
         # Set plot iter for this period, get it from current setting for this attribute
         plot_iter = self.plot_iter
 
@@ -526,6 +869,13 @@ class PyplisWorker:
             if i == 0:
                 self.first_image = False
 
+        # TODO Edit this test to use proper data (currently uses dummy random values)
+        # Current test for performing DOAS FOV search
+        stack = self.make_stack()
+        doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
+        self.doas_fov_search(stack, doas_results)
+
+
     def start_processing(self):
         """Public access thread starter for _processing"""
         self.process_thread = threading.Thread(target=self._processing, args=())
@@ -545,8 +895,10 @@ class PyplisWorker:
 
             # Attempt to get DOAS calibration point to add to list
             try:
-                doas_point = self.q_doas.get()
-                self.cd_list.append(doas_point)
+                doas_dict = self.q_doas.get()
+                # If we have been passed a processed spectrum, we load it into the buffer
+                if 'column_density' in doas_dict and 'time' in doas_dict:
+                    self.update_doas_buff(doas_dict)
             except queue.Empty:
                 pass
 
@@ -739,23 +1091,23 @@ def create_picam_new_filters(geom_info):
     cam.cam_id = "picam-1"
 
     # image file type
-    cam.file_type = "fts"
+    cam.file_type = "png"
 
     # File name delimiter for information extraction
     cam.delim = "_"
 
     # position of acquisition time (and date) string in file name after
     # splitting with delimiter
-    cam.time_info_pos = 1
+    cam.time_info_pos = 0
 
     # datetime string conversion of acq. time string in file name
     cam.time_info_str = "%Y-%m-%dT%H%M%S"
 
     # position of image filter type acronym in filename
-    cam.filter_id_pos = 2
+    cam.filter_id_pos = 1
 
     # position of meas type info
-    cam.meas_type_pos = 5
+    cam.meas_type_pos = 4
 
     # Define which dark correction type to use
     # 1: determine a dark image based on image exposure time using a dark img
@@ -788,7 +1140,7 @@ def create_picam_new_filters(geom_info):
     cam.pix_height = cam_specs.pix_size_x  # pixel height in m
     cam.pix_width = cam_specs.pix_size_y  # pixel width in m
     cam.pixnum_x = cam_specs.pix_num_x
-    cam.pixnum_y = cam_specs.pix_size_y
+    cam.pixnum_y = cam_specs.pix_num_y
 
     cam._init_access_substring_info()
 

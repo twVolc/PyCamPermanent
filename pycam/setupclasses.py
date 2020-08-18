@@ -120,9 +120,10 @@ class CameraSpecs:
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
         self.file_ag = '{}ag'                                   # Analog gain format spec
         self.file_ss = '{}ss'                                   # Shutter speed format spec
-        self.file_ss_loc = 3
+        self.file_ss_loc = 3                                    # Shutter speed location in filename
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
         self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
+        self.file_type_loc = 4                                  # Img type location in filename
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
         self.ss_list = np.concatenate((np.arange(1000, 5000, 500),
@@ -346,7 +347,7 @@ class SpecSpecs:
         """Define spectrometer default specs > Flame-S"""
         # Spectrometer specs
         self.model = "Flame-S"      # Spectrometer model
-        self.fov = 1                # Field of view fo spectrometer
+        self.fov = 1                # Field of view fo spectrometer (radius of FOV)
         self.ILS = None             # Number array holding instrument line shape (possibly don't hold this here?)
         self.fiber_diameter = 1e-3  # Diameter of optical fiber
         self.pix_num = 2048         # Number of pixels
@@ -358,6 +359,7 @@ class SpecSpecs:
         self.file_ss_loc = 1    # Shutter speed location in filename
         self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
+        self.file_datestr_loc = 0
 
 
         # Acquisition settings

@@ -126,10 +126,10 @@ class Settings:
     def __init__(self):
         self.frame = tk.Toplevel()
         self.frame.title('PyCam Settings')
-        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth()/2),
-                                                 int(self.frame.winfo_screenheight()/2),
-                                                 int(self.frame.winfo_screenwidth()/4),
-                                                 int(self.frame.winfo_screenheight()/4)))
+        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth()/1.5),
+                                                 int(self.frame.winfo_screenheight()/1.5),
+                                                 int(self.frame.winfo_screenwidth()/5),
+                                                 int(self.frame.winfo_screenheight()/5)))
 
         # Setup notebook tabs
         self.windows = ttk.Notebook(self.frame)

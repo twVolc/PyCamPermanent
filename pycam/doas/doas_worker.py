@@ -19,6 +19,8 @@ from math import floor, log10
 import queue
 import threading
 from tkinter import filedialog
+import copy
+import datetime
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -83,7 +85,8 @@ class DOASWorker:
         self.abs_spec_cut = None
         self.abs_spec_filt = None
         self.abs_spec_species = dict()  # Dictionary of absorbances isolated for individual species
-        self.ILS = None                 # Instrument line shape (will be a numpy array)
+        self.ILS_wavelengths = None     # Wavelengths for ILS
+        self._ILS = None                 # Instrument line shape (will be a numpy array)
         self.processed_data = False     # Bool to define if object has processed DOAS yet - will become true once process_doas() is run
 
         self.poly_order = 2  # Order of polynomial used to fit residual
@@ -228,7 +231,36 @@ class DOASWorker:
         self._plume_spec_raw = value
         self.dark_corrected_plume = False
         self.stray_corrected_plume = False
+
+    @property
+    def ILS(self):
+        """ILS array"""
+        return self._ILS
+
+    @ILS.setter
+    def ILS(self, value):
+        self._ILS = value
+
+        # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
+        self.ref_convolved = False
     # -------------------------------------------
+
+    def get_spec_time(self, filename):
+        """
+        Gets time from filename and converts it to datetime object
+        :param filename:
+        :return spec_time:
+        """
+        # Make sure filename only contains file and not larger pathname
+        filename = filename.split('\\')[-1].split('/')[-1]
+
+        # Extract time string from filename
+        time_str = filename.split('_')[self.spec_specs.file_datestr_loc]
+
+        # Turn time string into datetime object
+        spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
+
+        return spec_time
 
     def dark_corr_spectra(self):
         """Subtract dark spectrum from spectra"""
@@ -690,19 +722,19 @@ class DOASWorker:
             # Run processing
             self.fltr_doas()
 
-            # Create dictionary of all relevant fit results
+            # Create dictionary of all relevant fit results (need to make copies, otherwise dictionaries change when changed elsewhere)
             fit_results.append({'std_err': self.std_err,
-                                'column_density': self.column_density,
-                                'ref_spec_fit': self.ref_spec_fit,
+                                'column_density': copy.deepcopy(self.column_density),
+                                'ref_spec_fit': copy.deepcopy(self.ref_spec_fit),
                                 })
 
-            # Find best fit by looping through all results, extracting std_err and finding minimum value
-            best_fit = np.argmin(np.array([x['std_err'] for x in fit_results]))
-            best_fit_results = fit_results[best_fit]
+        # Find best fit by looping through all results, extracting std_err and finding minimum value
+        best_fit = np.argmin(np.array([x['std_err'] for x in fit_results]))
+        best_fit_results = fit_results[best_fit]
 
-            # Unpack the fit results dictionary back into the object attributes the keys represent
-            for key in best_fit_results:
-                setattr(self, key, best_fit_results[key])
+        # Unpack the fit results dictionary back into the object attributes the keys represent
+        for key in best_fit_results:
+            setattr(self, key, best_fit_results[key])
 
         # Reset shift to starting value (otherwise we could possibly get a runaway shift during multiple processing?)
         self.shift -= self.shift_tol
@@ -729,15 +761,19 @@ class DOASWorker:
 
         # Extract clear spectra if they exist. If not, the first file is assumed to be the clear spectrum
         clear_spec = [f for f in spec_files if self.spec_specs.file_spec_type['clear'] + '.npy' in f]
+        plume_spec = [f for f in spec_files if self.spec_specs.file_spec_type['meas'] + '.npy' in f]
 
         # Loop through all files and add them to queue
         for file in clear_spec:
             self.q_spec.put(self.spec_dir + file)
-        for file in spec_files:
+        for file in plume_spec:
             self.q_spec.put(self.spec_dir + file)
 
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
         self.q_spec.put('exit')
+
+        # Begin processing
+        self._process_loop()
 
 
     def start_processing_thread(self):
@@ -765,8 +801,9 @@ class DOASWorker:
             if pathname == 'exit':
                 break
 
-            # Extract filename
+            # Extract filename and create datetime object of spectrum time
             filename = pathname.split('\\')[-1].split('/')[-1]
+            spec_time = self.get_spec_time(filename)
 
             # Extract shutter speed
             ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
@@ -783,9 +820,12 @@ class DOASWorker:
                 self.clear_spec_raw = spectrum
 
                 processed_dict = {'processed': False,
+                                  'time': spec_time,
                                   'filename': pathname,
                                   'dark': self.dark_spec,
                                   'clear': self.clear_spec_raw}
+
+
 
             # Process plume spectrum
             else:
@@ -794,6 +834,7 @@ class DOASWorker:
 
                 # Gather all relevant information and spectra and pass it to PyplisWorker
                 processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
+                                  'time': spec_time,
                                   'filename': pathname,             # Filename of processed spectrum
                                   'dark': self.dark_spec,           # Dark spectrum used (raw)
                                   'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
@@ -815,7 +856,12 @@ class DOASWorker:
                 else:
                     self.fig_spec.update_plume()
 
+                    # Update doas plot
+                    self.fig_doas.update_plot()
 
+            if first_spec:
+                # Now that we have processed first_spec, set flag to False
+                first_spec = False
 
 class SpectraError(Exception):
     """

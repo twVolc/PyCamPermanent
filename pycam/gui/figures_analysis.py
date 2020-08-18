@@ -5,7 +5,7 @@ Contains all classes associated with building figures for the analysis functions
 """
 
 from pycam.gui.cfg import gui_setts
-from pycam.setupclasses import CameraSpecs, FileLocator
+from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
@@ -612,7 +612,7 @@ class GeomSettings:
     Creates frame holding all geometry and associated settings required by pyplis. This frame links to the PyplisWorker
     object to update settings when needed.
 
-    This object should be instantiated on startup, so a conf file need to do this, and then the generate_frame() method
+    This object should be instantiated on startup, so a conf file needs to do this, and then the generate_frame() method
     should be used at the point at which it is required
     """
     def __init__(self, parent=None, geom_path=FileLocator.CAM_GEOM):
@@ -1007,6 +1007,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         """Main processing for background modelling and displaying the results"""
         self.gather_vars()
         pyplis_worker.model_background()
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
 
     def close_window(self):
         """Restore current settings"""
@@ -1054,7 +1056,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'bg_A': str,
                      'bg_B': str,
                      'dark_img_dir': str,
-                     'dark_spec_dir': str
+                     'dark_spec_dir': str,
+                     'cell_cal_dir': str,
+                     'cal_type_int': int        # 0 = cell, 1 = doas, 2 = cell + doas
                      }
 
         self._plot_iter = tk.IntVar()
@@ -1062,6 +1066,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._bg_B = tk.StringVar()
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
+        self._cell_cal_dir = tk.StringVar()
+        self._cal_type = tk.StringVar()
+        self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
 
         # Load defaults from file
         self.load_defaults()
@@ -1113,6 +1120,24 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
+        # Cell calibration directory
+        label = ttk.Label(self.frame, text='Cell calibration directory:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.cell_cal_label = ttk.Label(self.frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
+                                         anchor='e')
+        self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_cell_cal_dir)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Calibration type
+        label = ttk.Label(self.frame, text='Calibration method:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.cal_type_widg = ttk.OptionMenu(self.frame, self._cal_type, self.cal_type, *self.cal_opts)
+        self.cal_type_widg.configure(width=15)
+        self.cal_type_widg.grid(row=row, column=1, sticky='e')
+        row += 1
+
         # Plot iteratively checkbutton
         self.plot_check = ttk.Checkbutton(self.frame, text='Update plots iteratively', variable=self._plot_iter)
         self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
@@ -1149,6 +1174,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @dark_img_dir.setter
     def dark_img_dir(self, value):
         self._dark_img_dir.set(value)
+        if hasattr(self, 'dark_img_label'):
+            self.dark_img_label.configure(text=self.dark_dir_short)
 
     @property
     def dark_dir_short(self):
@@ -1162,11 +1189,44 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @dark_spec_dir.setter
     def dark_spec_dir(self, value):
         self._dark_spec_dir.set(value)
+        if hasattr(self, 'dark_spec_label'):
+            self.dark_spec_label.configure(text=self.dark_spec_dir_short)
 
     @property
     def dark_spec_dir_short(self):
         """Returns shorter label for dark directory"""
         return '...' + self.dark_spec_dir[-self.path_str_length:]
+
+    @property
+    def cell_cal_dir(self):
+        return self._cell_cal_dir.get()
+
+    @cell_cal_dir.setter
+    def cell_cal_dir(self, value):
+        self._cell_cal_dir.set(value)
+        if hasattr(self, 'cell_cal_label'):
+            self.cell_cal_label.configure(text=self.cell_cal_dir_short)
+
+    @property
+    def cell_cal_dir_short(self):
+        """Returns shorter label for dark directory"""
+        return '...' + self.cell_cal_dir[-self.path_str_length:]
+
+    @property
+    def cal_type(self):
+        return self._cal_type.get()
+
+    @cal_type.setter
+    def cal_type(self, value):
+        self._cal_type.set(value)
+
+    @property
+    def cal_type_int(self):
+        return self.cal_opts.index(self.cal_type)
+
+    @cal_type_int.setter
+    def cal_type_int(self, value):
+        self.cal_type = self.cal_opts[value]
 
     @property
     def bg_A(self):
@@ -1203,7 +1263,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
         if len(dark_img_dir) > 0:
             self.dark_img_dir = dark_img_dir
-            self.dark_img_label.configure(text=self.dark_dir_short)
 
     def get_dark_spec_dir(self):
         """Gives user options for retrieving dark spectrum directory"""
@@ -1214,7 +1273,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
         if len(dark_spec_dir) > 0:
             self.dark_spec_dir = dark_spec_dir
-            self.dark_spec_label.configure(text=self.dark_spec_dir_short)
+
+    def get_cell_cal_dir(self):
+        """Gives user options for retrieving cell calibration directory"""
+        cell_cal_dir = filedialog.askdirectory(initialdir=self.cell_cal_dir)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        self.frame.lift()
+
+        if len(cell_cal_dir) > 0:
+            self.cell_cal_dir = cell_cal_dir
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
@@ -1233,7 +1301,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         :return:
         """
         pyplis_worker.plot_iter = self.plot_iter
-        pyplis_worker.dark_dir = self.dark_img_dir          # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.cell_cal_dir = self.cell_cal_dir
+        pyplis_worker.cal_type = self.cal_type_int
         doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
@@ -1251,8 +1321,110 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.bg_B = pyplis_worker.bg_B_path
         self.dark_img_dir = pyplis_worker.dark_dir
         self.dark_spec_dir = doas_worker.dark_dir
-        self.dark_img_label.configure(text=self.dark_dir_short)
+        self.cell_cal_dir = pyplis_worker.cell_cal_dir
+        self.cal_type_int = pyplis_worker.cal_type
 
         self.frame.destroy()
 
 
+class DOASFOVSearchFrame:
+    """
+    Frame to control some basic parameters in pyplis doas fov search and display the results if there are any
+    """
+    def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
+                 fig_setts=gui_setts):
+        self.cam_specs = cam_specs
+        self.spec_specs = spec_specs
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_doas_fov = self
+
+        self.dpi = fig_setts.dpi
+        self.fig_size_doas_calib_img = fig_setts.fig_doas_calib_img
+        self.fig_size_doas_calib_fit = fig_setts.fig_doas_calib_fit
+
+        # Correlation image
+        self.img_corr = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_y])
+        self.fov = None
+
+        # Flag whether the tk widget has been generated
+        self.in_frame = False
+
+        if generate:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """
+        Initiate tkinter variables
+        :return:
+        """
+        self._maxrad_doas = tk.DoubleVar()
+        self.maxrad_doas = self.spec_specs.fov * 1.1
+
+    def generate_frame(self):
+        """
+        Generates frame
+        :return:
+        """
+        self.frame = tk.Toplevel()
+        self.frame.title('DOAS FOV alignment')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        self.in_frame = True
+
+        # Create figure
+        self.fig_img = plt.Figure(figsize=self.fig_size_doas_calib_img, dpi=self.dpi)
+        self.ax_img = self.fig_img.subplots(1, 1)
+        self.ax_img.set_aspect(1)
+
+        # Create figure
+        self.fig_fit = plt.Figure(figsize=self.fig_size_doas_calib_fit, dpi=self.dpi)
+        self.ax_fit = self.fig_fit.subplots(1, 1)
+
+        # Finalise canvas and gridding
+        self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame)
+        self.img_canvas.draw()
+        self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
+
+        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame)
+        self.fit_canvas.draw()
+        self.fit_canvas.get_tk_widget().pack(side=tk.LEFT)
+
+        # If there is a calibration already available we can plot it
+        if self.pyplis_worker.calib_pears is not None:
+            self.update_plot()
+
+    @property
+    def maxrad_doas(self):
+        """Access to tk variable _maxrad_doas. Defines maximum radius of doas FOV"""
+        return self._maxrad_doas.get()
+
+    @maxrad_doas.setter
+    def maxrad_doas(self, value):
+        self._maxrad_doas.set(value)
+
+    def update_plot(self, img_corr=None, fov=None):
+        """
+        Updates plot
+        :param img_corr:
+        :param fov:
+        :return:
+        """
+        if img_corr is None and fov is None:
+            self.ax_img.cla()
+            self.ax_fit.cla()
+            self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
+            self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
+        self.img_corr = img_corr
+        self.fov = fov
+
+        self.img_canvas.draw()
+        self.fit_canvas.draw()
+
+    def close_frame(self):
+        """
+        Closes frame
+        :return:
+        """
+        self.in_frame = False
+        self.frame.destroy()

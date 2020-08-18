@@ -18,4 +18,5 @@ process_settings = read_file(FileLocator.PROCESS_DEFAULTS)
 # Global DOAS worker
 doas_worker = DOASWorker(spec_dir=process_settings['init_spec_dir'].split('\'')[1],
                          dark_dir=process_settings['dark_spec_dir'].split('\'')[1],
-                         q_doas=pyplis_worker.q_doas)
+                         q_doas=pyplis_worker.q_doas,
+                         species=list(species.keys()))

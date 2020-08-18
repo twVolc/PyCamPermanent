@@ -46,8 +46,10 @@ class GUISettings:
         self.fig_doas = tuple()
         self.fig_ref_spec = tuple()
         self.fig_SO2 = tuple()
-
-
+        self.fig_cal_doas = tuple()
+        self.fig_ILS = tuple()
+        self.fig_doas_calib_img = tuple()
+        self.fig_doas_calib_fit = tuple()
 
         # Load settings if given a file on instantiation
         if self.config_file is not None:
@@ -178,6 +180,14 @@ class SettingsFrame:
         self._ref_y = tk.DoubleVar()
         self._SO2_x = tk.DoubleVar()
         self._SO2_y = tk.DoubleVar()
+        self._cal_doas_x = tk.DoubleVar()
+        self._cal_doas_y = tk.DoubleVar()
+        self._ILS_x = tk.DoubleVar()
+        self._ILS_y = tk.DoubleVar()
+        self._doas_calib_img_x = tk.DoubleVar()
+        self._doas_calib_img_y = tk.DoubleVar()
+        self._doas_calib_fit_x = tk.DoubleVar()
+        self._doas_calib_fit_y = tk.DoubleVar()
 
         # Gather settings currently being used in Settings object
         self.collect_settings()
@@ -210,7 +220,7 @@ class SettingsFrame:
 
         # DPI
         label = ttk.Label(self.fig_frame, text='Resolution:')
-        label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.dpi_spin = ttk.Spinbox(self.fig_frame, textvariable=self._dpi, width=4, from_=10, to=150, increment=1)
         self.dpi_spin.grid(row=0, column=1, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='ew')
         label = ttk.Label(self.fig_frame, text='dpi')
@@ -220,7 +230,7 @@ class SettingsFrame:
         # Figure settings
         # --------------------------------------------------------------------------------------------------------------
         img_setts = FigureSizeSettings(self.fig_frame, 'Raw image:', self._img_x, self._img_y, row=1,
-                                        pdx=self.pdx, pdy=self.pdy)
+                                       pdx=self.pdx, pdy=self.pdy)
 
         spec_setts = FigureSizeSettings(self.fig_frame, 'Raw spectrum:', self._spec_x, self._spec_y, row=2,
                                         pdx=self.pdx, pdy=self.pdy)
@@ -233,6 +243,18 @@ class SettingsFrame:
 
         SO2_setts = FigureSizeSettings(self.fig_frame, 'SO2 image:', self._SO2_x, self._SO2_y, row=5,
                                        pdx=self.pdx, pdy=self.pdy)
+
+        cal_doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS calibration:', self._cal_doas_x, self._cal_doas_y,
+                                            row=6, pdx=self.pdx, pdy=self.pdy)
+
+        ILS_setts = FigureSizeSettings(self.fig_frame, 'ILS figure:', self._ILS_x, self._ILS_y,
+                                       row=7, pdx=self.pdx, pdy=self.pdy)
+
+        doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration image:', self._doas_calib_img_x,
+                                                  self._doas_calib_img_y, row=8, pdx=self.pdx, pdy=self.pdy)
+
+        doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration fit:', self._doas_calib_fit_x,
+                                                  self._doas_calib_fit_y, row=9, pdx=self.pdx, pdy=self.pdy)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -317,6 +339,42 @@ class SettingsFrame:
         self._SO2_x.set(value[0])
         self._SO2_y.set(value[1])
 
+    @property
+    def fig_cal_doas(self):
+        return (self._cal_doas_x.get(), self._cal_doas_y.get())
+
+    @fig_cal_doas.setter
+    def fig_cal_doas(self, value):
+        self._cal_doas_x.set(value[0])
+        self._cal_doas_y.set(value[1])
+
+    @property
+    def fig_ILS(self):
+        return (self._ILS_x.get(), self._ILS_y.get())
+
+    @fig_ILS.setter
+    def fig_ILS(self, value):
+        self._ILS_x.set(value[0])
+        self._ILS_y.set(value[1])
+
+    @property
+    def fig_doas_calib_img(self):
+        return (self._doas_calib_img_x.get(), self._doas_calib_img_y.get())
+
+    @fig_doas_calib_img.setter
+    def fig_doas_calib_img(self, value):
+        self._doas_calib_img_x.set(value[0])
+        self._doas_calib_img_y.set(value[1])
+
+    @property
+    def fig_doas_calib_fit(self):
+        return (self._doas_calib_fit_x.get(), self._doas_calib_fit_y.get())
+
+    @fig_doas_calib_fit.setter
+    def fig_doas_calib_fit(self, value):
+        self._doas_calib_fit_x.set(value[0])
+        self._doas_calib_fit_y.set(value[1])
+
     def collect_settings(self):
         """Sets tk variables to those of the settings object"""
         # Get list of settings attributes
@@ -375,7 +433,7 @@ class FigureSizeSettings:
         self.pdy = pdy
 
         label = ttk.Label(self.parent, text=self.name)
-        label.grid(row=self.row, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        label.grid(row=self.row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         label = ttk.Label(self.parent, text='x')
         label.grid(row=self.row, column=1, pady=self.pdy, sticky='e')
         img_spin = ttk.Spinbox(self.parent, textvariable=self.xvar, width=4, format='%.1f',
