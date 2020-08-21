@@ -373,7 +373,7 @@ class ImageSO2:
         row += 1
         label = ttk.Label(self.frame_opts, text='\u03C4 max.:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=2, increment=0.01,
+        self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=9, increment=0.01,
                                     command=self.scale_img)
         self.spin_max.set('{:.2f}'.format(self.tau_max))
         self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
@@ -1037,6 +1037,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         super().__init__()
         self.parent = parent
         self.frame = None
+        self.in_frame = False
 
         self.path_str_length = 50
         self.path_widg_length = self.path_str_length + 2
@@ -1058,7 +1059,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
-                     'cal_type_int': int        # 0 = cell, 1 = doas, 2 = cell + doas
+                     'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
+                     'use_sensitivity_mask': int
                      }
 
         self._plot_iter = tk.IntVar()
@@ -1069,6 +1071,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._cell_cal_dir = tk.StringVar()
         self._cal_type = tk.StringVar()
         self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
+        self._use_sensitivity_mask = tk.IntVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -1081,6 +1084,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.frame = tk.Toplevel()
         self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
         self.frame.title('Post-processing settings')
+        self.in_frame = True
 
         row = 0
 
@@ -1139,6 +1143,11 @@ class ProcessSettings(LoadSaveProcessingSettings):
         row += 1
 
         # Plot iteratively checkbutton
+        self.plot_check = ttk.Checkbutton(self.frame, text='Use sensitivity mask', variable=self._use_sensitivity_mask)
+        self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Plot iteratively checkbutton
         self.plot_check = ttk.Checkbutton(self.frame, text='Update plots iteratively', variable=self._plot_iter)
         self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
@@ -1174,7 +1183,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @dark_img_dir.setter
     def dark_img_dir(self, value):
         self._dark_img_dir.set(value)
-        if hasattr(self, 'dark_img_label'):
+        if hasattr(self, 'dark_img_label') and self.in_frame:
             self.dark_img_label.configure(text=self.dark_dir_short)
 
     @property
@@ -1189,7 +1198,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @dark_spec_dir.setter
     def dark_spec_dir(self, value):
         self._dark_spec_dir.set(value)
-        if hasattr(self, 'dark_spec_label'):
+        if hasattr(self, 'dark_spec_label') and self.in_frame:
             self.dark_spec_label.configure(text=self.dark_spec_dir_short)
 
     @property
@@ -1204,7 +1213,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @cell_cal_dir.setter
     def cell_cal_dir(self, value):
         self._cell_cal_dir.set(value)
-        if hasattr(self, 'cell_cal_label'):
+        if hasattr(self, 'cell_cal_label') and self.in_frame:
             self.cell_cal_label.configure(text=self.cell_cal_dir_short)
 
     @property
@@ -1227,6 +1236,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @cal_type_int.setter
     def cal_type_int(self, value):
         self.cal_type = self.cal_opts[value]
+
+    @property
+    def use_sensitivity_mask(self):
+        return self._use_sensitivity_mask.get()
+
+    @use_sensitivity_mask.setter
+    def use_sensitivity_mask(self, value):
+        self._use_sensitivity_mask.set(value)
 
     @property
     def bg_A(self):
@@ -1269,27 +1286,41 @@ class ProcessSettings(LoadSaveProcessingSettings):
         dark_spec_dir = filedialog.askdirectory(initialdir=self.dark_spec_dir)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        self.frame.lift()
+        if self.in_frame:
+            self.frame.lift()
 
         if len(dark_spec_dir) > 0:
             self.dark_spec_dir = dark_spec_dir
 
-    def get_cell_cal_dir(self):
-        """Gives user options for retrieving cell calibration directory"""
+    def get_cell_cal_dir(self, set_var=False):
+        """
+        Gives user options for retrieving cell calibration directory
+        :param set_var: bool
+            If true, this will set the pyplis_worker value automatically. This means that this function can be used
+            from outside of the process_settings widget and the directory will automatically be updated, without
+            requiring the OK click from the settings widget which usually instigates gather_vars. This is used by the
+            menu widget 'Load cell directory' submenu
+        """
         cell_cal_dir = filedialog.askdirectory(initialdir=self.cell_cal_dir)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        self.frame.lift()
+        if self.in_frame:
+            self.frame.lift()
 
         if len(cell_cal_dir) > 0:
             self.cell_cal_dir = cell_cal_dir
+
+        # Update pyplis worker value if requested (done when using submenu selection
+        if set_var:
+            pyplis_worker.cell_cal_dir = self.cell_cal_dir
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
         bg_file = filedialog.askopenfilename(initialdir=self.dark_img_dir)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        self.frame.lift()
+        if self.in_frame:
+            self.frame.lift()
 
         if len(bg_file) > 0:
             setattr(self, 'bg_{}'.format(band), bg_file)
@@ -1304,6 +1335,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
         pyplis_worker.cal_type = self.cal_type_int
+        pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
@@ -1323,7 +1355,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_spec_dir = doas_worker.dark_dir
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
         self.cal_type_int = pyplis_worker.cal_type
+        self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
 
+        self.in_frame = False
         self.frame.destroy()
 
 
@@ -1420,6 +1454,137 @@ class DOASFOVSearchFrame:
 
         self.img_canvas.draw()
         self.fit_canvas.draw()
+
+    def close_frame(self):
+        """
+        Closes frame
+        :return:
+        """
+        self.in_frame = False
+        self.frame.destroy()
+
+
+class CellCalibFrame:
+    """
+    Frame to control some basic parameters in pyplis doas fov search and display the results if there are any
+    """
+    def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
+                 fig_setts=gui_setts):
+        self.cam_specs = cam_specs
+        self.spec_specs = spec_specs
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_cell_cal = self
+
+        self.dpi = fig_setts.dpi
+        self.fig_size_cell_fit = fig_setts.fig_cell_fit
+        self.fig_size_cell_abs = fig_setts.fig_cell_abs
+        self.fig_size_sens_mask = fig_setts.fig_sens_mask
+
+        # Correlation image
+        self.cell_abs = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_y])      # Cell absorbance
+        self.sens_mask = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_y])     # Sensitivity mask
+
+        # Flag whether the tk widget has been generated
+        self.in_frame = False
+
+        if generate:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """
+        Initiate tkinter variables
+        :return:
+        """
+        pass
+
+    def generate_frame(self):
+        """
+        Generates frame
+        :return:
+        """
+        self.frame = tk.Toplevel()
+        self.frame.title('Cell calibration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        self.in_frame = True
+
+        # Create figure
+        self.fig_abs = plt.Figure(figsize=self.fig_size_cell_abs, dpi=self.dpi)
+        self.ax_abs = self.fig_abs.subplots(1, 1)
+        self.ax_abs.set_aspect(1)
+
+        # Create figure
+        self.fig_mask = plt.Figure(figsize=self.fig_size_sens_mask, dpi=self.dpi)
+        self.ax_mask = self.fig_mask.subplots(1, 1)
+        self.ax_mask.set_aspect(1)
+
+        # Create figure
+        self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
+        self.ax_fit = self.fig_fit.subplots(1, 1)
+
+        # Finalise canvas and gridding
+        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame)
+        self.fit_canvas.draw()
+        self.fit_canvas.get_tk_widget().pack(side=tk.TOP)
+
+        self.abs_canvas = FigureCanvasTkAgg(self.fig_abs, master=self.frame)
+        self.abs_canvas.draw()
+        self.abs_canvas.get_tk_widget().pack(side=tk.LEFT)
+
+        self.mask_canvas = FigureCanvasTkAgg(self.fig_mask, master=self.frame)
+        self.mask_canvas.draw()
+        self.mask_canvas.get_tk_widget().pack(side=tk.LEFT)
+
+        # If there is a calibration already available we can plot it
+        if self.pyplis_worker.got_cal_cell:
+            self.update_plot()
+
+    def update_plot(self):
+        """
+        Updates plot
+        :return:
+        """
+        # Clear old axes
+        self.ax_fit.cla()
+        self.ax_abs.cla()
+        self.ax_mask.cla()
+
+        # Plot calibration fit line
+        # TODO This line is not plotting consistently. Some issues with matching ppmm to AA in cell_cal_vals. Work out issue.
+        self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
+                            marker='x', color='white', s=50)
+        max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
+        self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
+        self.ax_fit.set_title('Cell ppm.m vs apparent absorbance')
+        self.ax_fit.set_ylabel('Column Density [ppm.m]')
+        self.ax_fit.set_xlabel('Apparent Absorbance')
+
+        # Plot absorbance of 2nd smallest cell
+        # TODO Make function which calculates 95% max value of image, so that we can set the scale of the color bar
+        # TODO Currently this image seems to have a very large number, so the scale bar is all wrong - also check this
+        abs_im = self.ax_abs.imshow(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm],
+                           interpolation='none', vmin=0)
+        self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
+        divider = make_axes_locatable(self.ax_abs)
+        cax = divider.append_axes("right", size="10%", pad=0.05)
+        cbar = plt.colorbar(abs_im, cax=cax)
+        cbar.outline.set_edgecolor('white')
+        cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Plot sensitivity mask
+        mask_im = self.ax_mask.imshow(self.pyplis_worker.sensitivity_mask,
+                           interpolation='none', vmin=1)
+        self.ax_mask.set_title('Sensitivity mask')
+        divider = make_axes_locatable(self.ax_mask)
+        cax = divider.append_axes("right", size="10%", pad=0.05)
+        cbar = plt.colorbar(mask_im, cax=cax)
+        cbar.outline.set_edgecolor('white')
+        cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        self.fit_canvas.draw()
+        self.abs_canvas.draw()
+        self.mask_canvas.draw()
 
     def close_frame(self):
         """

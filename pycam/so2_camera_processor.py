@@ -11,6 +11,8 @@ import queue
 import threading
 import pyplis
 from pyplis.custom_image_import import load_picam_png
+from pyplis.helpers import make_circular_mask
+from pyplis.optimisation import PolySurfaceFit
 import pydoas
 from tkinter import filedialog, messagebox
 import matplotlib.pyplot as plt
@@ -60,6 +62,7 @@ class PyplisWorker:
         self.cam = create_picam_new_filters({})         # Generate pyplis-picam object
         self.meas = pyplis.setupclasses.MeasSetup()     # Pyplis MeasSetup object (instantiated empty)
         self.img_reg = ImageRegistration()              # Image registration object
+        self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
         self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
         self.plume_bg.surface_fit_pyrlevel = 0
         self.plume_bg.mode = 4      # Plume background mode - default (4) is linear in x and y
@@ -88,7 +91,11 @@ class PyplisWorker:
         self.fig_spec = None            # Figure displaying spectra
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
+        self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
         self.calib_pears = None         # Pyplis object holding functions to plot results
+        self.doas_fov_x = None          # X FOV of DOAS (from pyplis results)
+        self.doas_fov_y = None          # Y FOV of DOAS
+        self.doas_fov_extent = None     # DOAS FOV radius
 
         self.img_dir = img_dir
         self.dark_dict = {'on': {},
@@ -107,11 +114,22 @@ class PyplisWorker:
         self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_aa = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # Optical depth image
         self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # SO2 calibrated image
-        self.got_cal = False
+
+        # Calibration attributes
+        self.got_cal_doas = False
+        self.got_cal_cell = False
         self._cell_cal_dir = None
         self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
         self.cell_dict_A = {}
         self.cell_dict_B = {}
+        self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
+        self.cell_masks = {}        # Masks for each cell to adjust for sensitivity changes over FOV
+        self.sensitivity_mask = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])  # Mask of lowest cell ppmm - one to use for correcting all tau images.
+        self.sens_mask_ppmm = None  # Cell ppmm value for that used for generating sensitivity mask
+        self.cell_cal_vals = np.zeros(2)
+        self.cell_fit = None        # The cal scalar will be [0] of this array
+        self.cell_pol = None
+        self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
 
         # Load background image if we are provided with one
         self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
@@ -277,7 +295,8 @@ class PyplisWorker:
         self.img_tau_buff_time = [None] * self.img_tau_buff_size  # Names of images held within img_buff (on-band name held)
         self.idx_current = 0  # Used to track what the current index is for saving to image buffer
         self.idx_current_doas = 0   # Used for tracking current index of doas points
-        self.got_cal = False
+        self.got_cal_doas = False
+        self.got_cal_cell = False
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -488,6 +507,9 @@ class PyplisWorker:
         :param set_bg_img:  bool    States whether bg image should be set to coadded clears loaded herein
         :return:
         """
+        # Create updated cell calib engine (includes current cam geometry - may not be necessary)
+        self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
+
         img_list_full = [x for x in os.listdir(self.cell_cal_dir) if self.cam_specs.file_ext in x]
 
         # Clear sky
@@ -605,14 +627,116 @@ class PyplisWorker:
                 cell_img_coadd = np.mean(cell_array, axis=2)  # Co-added final clear image
 
                 # Put image in dictionary
-                getattr(self, 'cell_dict_{}'.format(band))[band] = cell_img_coadd.copy()
+                getattr(self, 'cell_dict_{}'.format(band))[ppmm] = cell_img_coadd.copy()
 
-        # TODO Finish calibration work - calculate absorbances etc
+        # GENERATE OPTICAL DEPTHS FOR EACH CELL
+        num_cells = len(self.cell_dict_A)
+        self.cell_cal_vals = np.zeros([num_cells, 2])
+        self.cell_tau_dict = {}
+        self.cell_masks = {}
+
+        # Loop thorugh each cell calculating optical depth
+        for i, ppmm in enumerate(self.cell_dict_A):
+            # Set ppmm value
+            self.cell_cal_vals[i, 0] = int(ppmm)
+
+            # Generate absorbance image
+            with np.errstate(divide='ignore', invalid='ignore'):
+                self.cell_tau_dict[ppmm] = -np.log10(np.divide(np.divide(self.cell_dict_A[ppmm], img_clear_A),
+                                                     np.divide(self.cell_dict_B[ppmm], img_clear_B)))
+            self.cell_tau_dict[ppmm][np.isneginf(self.cell_tau_dict[ppmm])] = 0
+            self.cell_tau_dict[ppmm][np.isinf(self.cell_tau_dict[ppmm])] = 0
+            self.cell_tau_dict[ppmm][np.isnan(self.cell_tau_dict[ppmm])] = 0
+
+            # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
+            # DOAS FOV for normalisation region
+
+            if self.cal_type in [1, 2] and self.got_cal_doas:
+                self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
+                                                                       pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
+                                                                       radius=self.doas_fov_extent, pyr_lvl=2)
+            else:
+                self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm], radius=3, pyr_lvl=2)
+
+            # Correct cell images for sensitivity using mask
+            self.cell_tau_dict[ppmm] = self.cell_tau_dict[ppmm] / self.cell_masks[ppmm].img
+
+            # Finally calculate average cell optical depth
+            self.cell_cal_vals[i, 1] = np.mean(self.cell_tau_dict[ppmm])
+
+        # Use 2nd smallest cell for sensitvity mask (don't want to stray into non-linearity, but don't want 0 cell)
+        ppmms = self.cell_cal_vals[:, 0]
+        ppmms.sort()
+        self.sens_mask_ppmm = str(int(ppmms[1]))
+        self.sensitivity_mask = self.cell_masks[self.sens_mask_ppmm].img
+
+        # Perform linear fit (tau is x variable, so that self.cell_pol can be used directly to extract ppmm from tau)
+        self.cell_fit = np.polyfit(self.cell_cal_vals[:, 1], self.cell_cal_vals[:, 0], 1)
+        self.cell_pol = np.poly1d(self.cell_fit)
+
+        # Flag that we now have a cell calibration
+        self.got_cal_cell = True
 
         # TODO organise plotting of calibration
         if plot:
-            pass
+            if self.fig_cell_cal.in_frame:
+                self.fig_cell_cal.update_plot()
+            else:
+                self.fig_cell_cal.generate_frame()
 
+    def generate_sensitivity_mask(self, img_tau, pos_x=None, pos_y=None, radius=1, pyr_lvl=2):
+        # TODO check pyr_lvl is working correctly, and pos_x/y and radius are scaled correctly following pyr
+        """
+        Generates mask which optical depth images are divided by to correct for sensitivity changes due to filter
+        tranmission shifts with viewing angle change.
+
+        Taken from pyplis.cellcalib.CellCalibEngine.get_sensitivity_corr_mask(), breaks it out to allow passing tau
+        image and the centre point - easier use here as it doesn't require full setup of CellCalibEngine, which I don't
+        want to use - it's a little clunky for my use.
+
+        :param img_tau: np.array
+            Optical depth image of cell whihc is used to generate the sensitivity mask
+        pos_x : int
+            x-pixel position of normalisation mask, if None the image center
+            position is used (which is also the default pixel used to retrieve
+            the vector of calibration optical densities from the cell OD
+            images)
+        pos_y : int
+            y-pixel position of normalisation mask, if None the image center
+            position is used (which is also the default pixel used to retrieve
+            the vector of calibration optical densities from the cell OD
+            images)
+        radius : int
+            radius specifying the disk size around ``pos_x_abs`` and
+            ``pos_y_abs`` used to normalise the mask (i.e. uses average OD of
+            cell image in this OD)
+        :param pyr_lvl: int
+            Pyramid level for downscaling of polynomial surface fit
+        :return mask:   pyplis.image.Img
+            Mask which OD images should be divided by to correct for changes in SO2 sensitivity
+        """
+        # If pos_x_abs or pos_y_abs is None, we use the centre position of the image for the mask normalisation
+        if pos_x is None or pos_y is None:
+            pos_x, pos_y = int(self.cam_specs.pix_num_x / 2.0), int(self.cam_specs.pix_num_y / 2.0)
+
+        # Generate the mask for the central area for OD normalisation
+        fov_mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, pos_x, pos_y, radius)
+
+        # Fit 2D model to tau image
+        try:
+            # This returns an array with 2 too many rows, so take from second to second last
+            cell_img = PolySurfaceFit(img_tau, pyrlevel=pyr_lvl).model[1:-1, :]
+        except:
+            warnings.warn("2D polyfit failed while determination of sensitivity "
+                 "correction mask, using original cell tau image for mask "
+                 "determination")
+            cell_img = img_tau
+
+        # Generate mask
+        mean = (cell_img * fov_mask).sum() / fov_mask.sum()
+        mask = pyplis.image.Img(cell_img / mean)
+
+        return mask
 
     def update_doas_buff(self, doas_dict):
         """
@@ -669,7 +793,9 @@ class PyplisWorker:
         s.g2dasym = False                       # Allow only circular FOV (not eliptical)
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=1, through_origin=True)
-        self.got_cal = True     # Flag that we now have a calibration
+        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.got_cal_doas = True     # Flag that we now have a calibration
 
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
@@ -798,8 +924,16 @@ class PyplisWorker:
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
 
-        if self.got_cal:
+        # Adjust for changing FOV sensitivity if requested
+        if self.use_sensitivity_mask:
+            self.img_tau.img = self.img_tau.img / self.sensitivity_mask
+
+        if self.got_cal_doas and self.cal_type in [1, 2]:
             #TODO perform calibration here if we have a calibration line.
+            pass
+
+        if self.cal_type == 0:
+            # TODO perform cell calibration here
             pass
 
         if plot:
@@ -853,6 +987,11 @@ class PyplisWorker:
         # Add images to queue to be displayed if the plot_iter requested
         self.img_list = self.get_img_list()
 
+        # Perform calibration work
+        if self.cal_type in [0, 2]:
+            # TODO Need to create an option for set_bg_img, as we may want it to be true sometimes
+            self.perform_cell_calibration(plot=False, set_bg_img=False)
+
         # Loop through img_list and process data
         self.first_image = True
         for i in range(len(self.img_list)):
@@ -869,11 +1008,12 @@ class PyplisWorker:
             if i == 0:
                 self.first_image = False
 
-        # TODO Edit this test to use proper data (currently uses dummy random values)
-        # Current test for performing DOAS FOV search
-        stack = self.make_stack()
-        doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
-        self.doas_fov_search(stack, doas_results)
+        if self.cal_type in [1,2]:
+            # TODO Edit this test to use proper data (currently uses dummy random values)
+            # Current test for performing DOAS FOV search
+            stack = self.make_stack()
+            doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
+            self.doas_fov_search(stack, doas_results)
 
 
     def start_processing(self):

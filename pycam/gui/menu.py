@@ -83,6 +83,10 @@ class PyMenu:
         self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
         self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.submenu_proc.add_separator()
+        self.submenu_proc.add_command(label='Load cell directory',
+                                      command=lambda: process_settings.get_cell_cal_dir(set_var=True))
+        self.submenu_proc.add_command(label='Plot cell calibration', command=pyplis_worker.perform_cell_calibration)
+        self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
         self.submenu_proc.add_command(label='Process DOAS', command=doas_worker.start_processing_threadless)
         self.submenu_proc.add_separator()

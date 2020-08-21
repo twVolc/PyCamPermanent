@@ -50,6 +50,9 @@ class GUISettings:
         self.fig_ILS = tuple()
         self.fig_doas_calib_img = tuple()
         self.fig_doas_calib_fit = tuple()
+        self.fig_cell_fit = tuple()
+        self.fig_cell_abs = tuple()
+        self.fig_sens_mask = tuple()
 
         # Load settings if given a file on instantiation
         if self.config_file is not None:
@@ -188,6 +191,12 @@ class SettingsFrame:
         self._doas_calib_img_y = tk.DoubleVar()
         self._doas_calib_fit_x = tk.DoubleVar()
         self._doas_calib_fit_y = tk.DoubleVar()
+        self._cell_fit_x = tk.DoubleVar()
+        self._cell_fit_y = tk.DoubleVar()
+        self._cell_abs_x = tk.DoubleVar()
+        self._cell_abs_y = tk.DoubleVar()
+        self._sens_mask_x = tk.DoubleVar()
+        self._sens_mask_y = tk.DoubleVar()
 
         # Gather settings currently being used in Settings object
         self.collect_settings()
@@ -253,8 +262,17 @@ class SettingsFrame:
         doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration image:', self._doas_calib_img_x,
                                                   self._doas_calib_img_y, row=8, pdx=self.pdx, pdy=self.pdy)
 
-        doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration fit:', self._doas_calib_fit_x,
+        doas_calib_fit_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration fit:', self._doas_calib_fit_x,
                                                   self._doas_calib_fit_y, row=9, pdx=self.pdx, pdy=self.pdy)
+
+        cell_fit_setts = FigureSizeSettings(self.fig_frame, 'Cell calibration fit:', self._cell_fit_x,
+                                            self._cell_fit_y, row=10, pdx=self.pdx, pdy=self.pdy)
+
+        cell_abs_setts = FigureSizeSettings(self.fig_frame, 'Cell absorbance image:', self._cell_abs_x,
+                                            self._cell_abs_y, row=11, pdx=self.pdx, pdy=self.pdy)
+
+        sens_mask_setts = FigureSizeSettings(self.fig_frame, 'Sensitivity mask:', self._sens_mask_x,
+                                             self._sens_mask_y, row=12, pdx=self.pdx, pdy=self.pdy)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -374,6 +392,33 @@ class SettingsFrame:
     def fig_doas_calib_fit(self, value):
         self._doas_calib_fit_x.set(value[0])
         self._doas_calib_fit_y.set(value[1])
+
+    @property
+    def fig_cell_fit(self):
+        return (self._cell_fit_x.get(), self._cell_fit_y.get())
+
+    @fig_cell_fit.setter
+    def fig_cell_fit(self, value):
+        self._cell_fit_x.set(value[0])
+        self._cell_fit_y.set(value[1])
+
+    @property
+    def fig_cell_abs(self):
+        return (self._cell_abs_x.get(), self._cell_abs_y.get())
+
+    @fig_cell_abs.setter
+    def fig_cell_abs(self, value):
+        self._cell_abs_x.set(value[0])
+        self._cell_abs_y.set(value[1])
+
+    @property
+    def fig_sens_mask(self):
+        return (self._sens_mask_x.get(), self._sens_mask_y.get())
+
+    @fig_sens_mask.setter
+    def fig_sens_mask(self, value):
+        self._sens_mask_x.set(value[0])
+        self._sens_mask_y.set(value[1])
 
     def collect_settings(self):
         """Sets tk variables to those of the settings object"""
