@@ -26,4 +26,4 @@ plume_bg = PlumeBackground()
 doas_fov = DOASFOVSearchFrame(fig_setts=gui_setts)
 
 # Cell calibration frame
-cell_calib = CellCalibFrame(fig_setts=gui_setts)
+cell_calib = CellCalibFrame(fig_setts=gui_setts, process_setts=process_settings)

@@ -9,7 +9,10 @@ from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
+from pycam.utils import make_circular_mask_line
+
 from pyplis import LineOnImage
+from pyplis.helpers import make_circular_mask
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -1344,6 +1347,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Gathers all variables and then closes"""
         self.gather_vars()
         self.close_window()
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
     def close_window(self):
         """Closes window"""
@@ -1469,11 +1473,12 @@ class CellCalibFrame:
     Frame to control some basic parameters in pyplis doas fov search and display the results if there are any
     """
     def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
-                 fig_setts=gui_setts):
+                 fig_setts=gui_setts, process_setts=None):
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_cell_cal = self
+        self.process_setts = process_setts
 
         self.dpi = fig_setts.dpi
         self.fig_size_cell_fit = fig_setts.fig_cell_fit
@@ -1498,7 +1503,7 @@ class CellCalibFrame:
         """
         pass
 
-    def generate_frame(self):
+    def generate_frame(self, update_plot=True):
         """
         Generates frame
         :return:
@@ -1508,6 +1513,36 @@ class CellCalibFrame:
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
         self.in_frame = True
+
+        self.frame_top = ttk.Frame(self.frame)
+        self.frame_top.pack(side=tk.TOP, fill=tk.BOTH)
+
+        # Calibration settings
+        self.frame_setts = ttk.LabelFrame(self.frame_top, text='Cell calibration settings', borderwidth=5)
+        self.frame_setts.pack(side=tk.LEFT, padx=5, pady=5, anchor='nw')
+
+        label = ttk.Label(self.frame_setts, text='Calibration directory:')
+        label.grid(row=0, column=0, padx=5)
+        dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
+        dir_lab.grid(row=0, column=1, padx=5)
+        change_butt = ttk.Button(self.frame_setts, text='Change directory',
+                                 command=lambda: self.process_setts.get_cell_cal_dir(set_var=True))
+        change_butt.grid(row=0, column=2, padx=5)
+
+        # Cropped calibration region
+        self._radius = tk.IntVar()
+        self.radius = 50
+        rad_lab = ttk.Label(self.frame_setts, text='Crop radius [pix]:')
+        rad_lab.grid(row=1, column=0, padx=5, sticky='w')
+        rad_spin = ttk.Spinbox(self.frame_setts, textvariable=self._radius, from_=1, to=self.cam_specs.pix_num_y,
+                               increment=10, command=self.draw_circle)
+        rad_spin.grid(row=1, column=1, sticky='w')
+
+        self._cal_crop = tk.IntVar()
+        self.cal_crop = int(self.pyplis_worker.cal_crop)
+        crop_check = ttk.Checkbutton(self.frame_setts, text='Crop calibration region', variable=self._cal_crop,
+                                     command=self.run_cal)
+        crop_check.grid(row=1, column=2)
 
         # Create figure
         self.fig_abs = plt.Figure(figsize=self.fig_size_cell_abs, dpi=self.dpi)
@@ -1524,34 +1559,102 @@ class CellCalibFrame:
         self.ax_fit = self.fig_fit.subplots(1, 1)
 
         # Finalise canvas and gridding
-        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame)
+        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame_top)
         self.fit_canvas.draw()
-        self.fit_canvas.get_tk_widget().pack(side=tk.TOP)
+        self.fit_canvas.get_tk_widget().pack(side=tk.LEFT)
 
-        self.abs_canvas = FigureCanvasTkAgg(self.fig_abs, master=self.frame)
+        self.frame_imgs = ttk.Frame(self.frame)
+        self.frame_imgs.pack(side=tk.BOTTOM)
+        self.abs_canvas = FigureCanvasTkAgg(self.fig_abs, master=self.frame_imgs)
         self.abs_canvas.draw()
         self.abs_canvas.get_tk_widget().pack(side=tk.LEFT)
 
-        self.mask_canvas = FigureCanvasTkAgg(self.fig_mask, master=self.frame)
+        self.mask_canvas = FigureCanvasTkAgg(self.fig_mask, master=self.frame_imgs)
         self.mask_canvas.draw()
         self.mask_canvas.get_tk_widget().pack(side=tk.LEFT)
 
         # If there is a calibration already available we can plot it
-        if self.pyplis_worker.got_cal_cell:
+        if self.pyplis_worker.got_cal_cell and update_plot:
             self.update_plot()
+
+    @property
+    def cal_dir_short(self):
+        try:
+            val = '...' + self.pyplis_worker.cell_cal_dir[-50:]
+        except:
+            val = self.pyplis_worker.cell_cal_dir
+        return val
+
+    @property
+    def cal_crop(self):
+        return self._cal_crop.get()
+
+    @cal_crop.setter
+    def cal_crop(self, value):
+        self._cal_crop.set(value)
+
+    @property
+    def radius(self):
+        return self._radius.get()
+
+    @radius.setter
+    def radius(self, value):
+        self._radius.set(value)
+
+    def generate_cropped_region(self):
+        """
+        Generates a bool array defining the values of the calibration image which are to be used in calibration
+        :return:
+        """
+        return (make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                   self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2, radius=self.radius),
+                make_circular_mask_line(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                        self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2,radius=self.radius))
+
+    def draw_circle(self, draw=True, run_cal=True):
+        """
+        Draws crop circle on ax_abs
+        :return:
+        """
+        # try to remove old circle
+        try:
+            self.circle.remove()
+        except AttributeError:
+            pass
+
+        self.circle = plt.Circle((self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2), self.radius,
+                                 color='white', fill=False)
+        self.ax_abs.add_artist(self.circle)
+
+        if draw:
+            self.abs_canvas.draw()
+
+        # Update calibration if requested, and only if cal_crop is true (otherwise redrawing the circle won't change
+        # the calibration result so this step would unnecessarily slow the program)
+        if run_cal and self.cal_crop:
+            self.run_cal()
+
+    def run_cal(self):
+        """Runs calibration with current settings"""
+        self.pyplis_worker.cal_crop = bool(self.cal_crop)
+        self.pyplis_worker.cal_crop_region, self.pyplis_worker.cal_crop_line_mask = self.generate_cropped_region()
+        self.pyplis_worker.perform_cell_calibration(plot=True)
 
     def update_plot(self):
         """
         Updates plot
         :return:
         """
+        # Generate frame if it is not already present
+        if not self.in_frame:
+            self.generate_frame(update_plot=False)
+
         # Clear old axes
         self.ax_fit.cla()
         self.ax_abs.cla()
         self.ax_mask.cla()
 
         # Plot calibration fit line
-        # TODO This line is not plotting consistently. Some issues with matching ppmm to AA in cell_cal_vals. Work out issue.
         self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
                             marker='x', color='white', s=50)
         max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
@@ -1561,10 +1664,8 @@ class CellCalibFrame:
         self.ax_fit.set_xlabel('Apparent Absorbance')
 
         # Plot absorbance of 2nd smallest cell
-        # TODO Make function which calculates 95% max value of image, so that we can set the scale of the color bar
-        # TODO Currently this image seems to have a very large number, so the scale bar is all wrong - also check this
-        abs_im = self.ax_abs.imshow(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm],
-                           interpolation='none', vmin=0)
+        abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
+        abs_im = self.ax_abs.imshow(abs_img, interpolation='none', vmin=0, vmax=np.percentile(abs_img, 99))
         self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
         divider = make_axes_locatable(self.ax_abs)
         cax = divider.append_axes("right", size="10%", pad=0.05)
@@ -1574,13 +1675,15 @@ class CellCalibFrame:
 
         # Plot sensitivity mask
         mask_im = self.ax_mask.imshow(self.pyplis_worker.sensitivity_mask,
-                           interpolation='none', vmin=1)
+                           interpolation='none', vmin=1, vmax=np.percentile(self.pyplis_worker.sensitivity_mask, 99))
         self.ax_mask.set_title('Sensitivity mask')
         divider = make_axes_locatable(self.ax_mask)
         cax = divider.append_axes("right", size="10%", pad=0.05)
         cbar = plt.colorbar(mask_im, cax=cax)
         cbar.outline.set_edgecolor('white')
         cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        self.draw_circle(draw=False, run_cal=False)
 
         self.fit_canvas.draw()
         self.abs_canvas.draw()

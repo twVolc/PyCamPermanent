@@ -134,3 +134,38 @@ def kill_process(process='pycam_camera'):
     p = subprocess.check_output(cmd, shell=True)
     print(p)
     subprocess.call(['kill', p.split()[0]])
+
+
+def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):
+    """Create a circular access mask for accessing certain pixels in an image. T
+    aken from pyplis.helpers.make_circular_mask and adapted to only produce a line mask, rather than a filled circle
+
+    Parameters
+    ----------
+    h : int
+        height of mask
+    w : int
+        width of mask
+    cx : int
+        x-coordinate of center pixel of disk
+    cy : int
+        y-coordinate of center pixel of disk
+    radius : int
+        radius of disk
+    tol : int
+        Tolerance % (+/-) for accepted true values around radius value
+
+    Returns
+    -------
+    ndarray
+        the pixel access mask
+
+    """
+    y, x = np.ogrid[:h, :w]
+    rad_grid = np.round((x - cx) ** 2 + (y - cy) ** 2).astype(int)
+    rad_square_min = radius ** 2
+    rad_square_min *= 1 - tol
+    rad_square_max = radius ** 2
+    rad_square_max *= 1 + tol
+
+    return  np.where((rad_grid >= rad_square_min) & (rad_grid <= rad_square_max), True, False)

@@ -6,6 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
+from pycam.utils import make_circular_mask_line
 
 import queue
 import threading
@@ -126,6 +127,9 @@ class PyplisWorker:
         self.cell_masks = {}        # Masks for each cell to adjust for sensitivity changes over FOV
         self.sensitivity_mask = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])  # Mask of lowest cell ppmm - one to use for correcting all tau images.
         self.sens_mask_ppmm = None  # Cell ppmm value for that used for generating sensitivity mask
+        self.cal_crop = False       # Bool defining if calibration region is cropped
+        self.cal_crop_region = None # Bool Array defining crop region for calibration
+        self.cal_crop_line_mask = None  # Bool array of the line for crop region (used to find mean of area to set everything outside to that value
         self.cell_cal_vals = np.zeros(2)
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
@@ -662,10 +666,13 @@ class PyplisWorker:
             self.cell_tau_dict[ppmm] = self.cell_tau_dict[ppmm] / self.cell_masks[ppmm].img
 
             # Finally calculate average cell optical depth
-            self.cell_cal_vals[i, 1] = np.mean(self.cell_tau_dict[ppmm])
+            if not self.cal_crop:
+                self.cell_cal_vals[i, 1] = np.mean(self.cell_tau_dict[ppmm])
+            else:
+                self.cell_cal_vals[i, 1] = np.mean(self.cell_tau_dict[ppmm][self.cal_crop_region])
 
         # Use 2nd smallest cell for sensitvity mask (don't want to stray into non-linearity, but don't want 0 cell)
-        ppmms = self.cell_cal_vals[:, 0]
+        ppmms = self.cell_cal_vals[:, 0].copy()
         ppmms.sort()
         self.sens_mask_ppmm = str(int(ppmms[1]))
         self.sensitivity_mask = self.cell_masks[self.sens_mask_ppmm].img
@@ -677,12 +684,9 @@ class PyplisWorker:
         # Flag that we now have a cell calibration
         self.got_cal_cell = True
 
-        # TODO organise plotting of calibration
+        # Plot calibration
         if plot:
-            if self.fig_cell_cal.in_frame:
-                self.fig_cell_cal.update_plot()
-            else:
-                self.fig_cell_cal.generate_frame()
+            self.fig_cell_cal.update_plot()
 
     def generate_sensitivity_mask(self, img_tau, pos_x=None, pos_y=None, radius=1, pyr_lvl=2):
         # TODO check pyr_lvl is working correctly, and pos_x/y and radius are scaled correctly following pyr
@@ -735,6 +739,12 @@ class PyplisWorker:
         # Generate mask
         mean = (cell_img * fov_mask).sum() / fov_mask.sum()
         mask = pyplis.image.Img(cell_img / mean)
+
+        # Take the average value at the edge of the crop region and set this to all values outside of it if we are
+        # requested to do a cal crop
+        if self.cal_crop:
+            invert_fov_mask = np.invert(fov_mask)
+            mask.img[invert_fov_mask] = np.mean(mask.img[self.cal_crop_line_mask])
 
         return mask
 

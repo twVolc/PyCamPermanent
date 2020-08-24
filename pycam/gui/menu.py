@@ -5,7 +5,7 @@
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib
 from pycam.gui.misc import About
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
@@ -83,10 +83,6 @@ class PyMenu:
         self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
         self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.submenu_proc.add_separator()
-        self.submenu_proc.add_command(label='Load cell directory',
-                                      command=lambda: process_settings.get_cell_cal_dir(set_var=True))
-        self.submenu_proc.add_command(label='Plot cell calibration', command=pyplis_worker.perform_cell_calibration)
-        self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
         self.submenu_proc.add_command(label='Process DOAS', command=doas_worker.start_processing_threadless)
         self.submenu_proc.add_separator()
@@ -104,6 +100,7 @@ class PyMenu:
         # More windows cascade
         self.submenu_windows = tk.Menu(self.frame, tearoff=0)
         self.submenu_windows.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
+        self.submenu_windows.add_command(label='Cell calibration', command=cell_calib.update_plot)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
 
         self.menus[tab].add_separator()
