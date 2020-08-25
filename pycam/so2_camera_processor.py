@@ -14,6 +14,7 @@ import pyplis
 from pyplis.custom_image_import import load_picam_png
 from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
+from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
 import pydoas
 from tkinter import filedialog, messagebox
 import matplotlib.pyplot as plt
@@ -80,6 +81,7 @@ class PyplisWorker:
         self.POLYFIT_2D_MASK_THRESH = 100
         self.PCS_lines = []
         self.maxrad_doas = self.spec_specs.fov * 1.1        # Max radius used for doas FOV search (degrees)
+        self.opt_flow = OptflowFarneback()
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -130,6 +132,7 @@ class PyplisWorker:
         self.cal_crop = False       # Bool defining if calibration region is cropped
         self.cal_crop_region = None # Bool Array defining crop region for calibration
         self.cal_crop_line_mask = None  # Bool array of the line for crop region (used to find mean of area to set everything outside to that value
+        self.crop_sens_mask = False     # Whether cal crop region is used to crop the sensitivity mask
         self.cell_cal_vals = np.zeros(2)
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
@@ -742,9 +745,10 @@ class PyplisWorker:
 
         # Take the average value at the edge of the crop region and set this to all values outside of it if we are
         # requested to do a cal crop
-        if self.cal_crop:
-            invert_fov_mask = np.invert(fov_mask)
-            mask.img[invert_fov_mask] = np.mean(mask.img[self.cal_crop_line_mask])
+        if self.crop_sens_mask:
+            invert_fov_mask = np.invert(self.cal_crop_region)
+            mean_edge = np.mean(mask.img[self.cal_crop_line_mask])
+            mask.img[invert_fov_mask] = mean_edge
 
         return mask
 
@@ -930,9 +934,13 @@ class PyplisWorker:
         img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
         self.tau_B_warped = pyplis.image.Img(img)
 
+        # Set last image to img_tau_prev, as it is used in optical flow computation
+        self.img_tau_prev = self.img_tau
+
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
+        self.img_tau.meta['start_acq'] = self.img_A.meta['start_acq']
 
         # Adjust for changing FOV sensitivity if requested
         if self.use_sensitivity_mask:
@@ -949,6 +957,32 @@ class PyplisWorker:
         if plot:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
             getattr(self, 'fig_tau').update_plot(np.array(self.img_tau.img))
+
+    def update_opt_flow_settings(self, **settings):
+        """
+        Updates optical flow object's settings
+        :param settings:
+        :return:
+        """
+        for key in settings:
+            setattr(self.opt_flow.settings, key, settings[key])
+
+    def generate_opt_flow(self):
+        """
+        Generates optical flow vectors for current and previous image
+        :return:
+        """
+        # Update optical flow object to contain previous tau image and current image
+        self.opt_flow.set_images(self.img_tau_prev, self.img_tau)
+
+        # Calculate optical flow vectors
+        self.flow = self.opt_flow.calc_flow()
+
+        # Generate plume speed array
+        dist_img, _, _ = self.meas.meas_geometry.compute_all_integration_step_lengths(pyrlevel=0)
+        self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
+
+        return self.flow, self.velo_img
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False):
         """
@@ -980,7 +1014,8 @@ class PyplisWorker:
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
-            pass    # TODO all of processing if not the first image pair
+            self.generate_opt_flow()
+            # TODO all of processing if not the first image pair
 
     def process_sequence(self):
         """

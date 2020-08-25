@@ -1542,21 +1542,49 @@ class CellCalibFrame:
         self.cal_crop = int(self.pyplis_worker.cal_crop)
         crop_check = ttk.Checkbutton(self.frame_setts, text='Crop calibration region', variable=self._cal_crop,
                                      command=self.run_cal)
-        crop_check.grid(row=1, column=2)
+        crop_check.grid(row=2, column=0)
+        self._sens_crop = tk.IntVar()
+        self.sens_crop = int(self.pyplis_worker.crop_sens_mask)
+        crop_sens_check = ttk.Checkbutton(self.frame_setts, text='Crop sensitivity mask', variable=self._sens_crop,
+                                     command=self.run_cal)
+        crop_sens_check.grid(row=3, column=0)
+
+        # Create figure
+        self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
+        self.ax_fit = self.fig_fit.subplots(1, 1)
+        self.ax_fit.set_title('Cell ppm.m vs apparent absorbance')
+        self.ax_fit.set_ylabel('Column Density [ppm.m]')
+        self.ax_fit.set_xlabel('Apparent Absorbance')
+        self.scat = self.ax_fit.scatter([0, 0], [0, 0],
+                                        marker='x', color='white', s=50)
+        self.line_plt = self.ax_fit.plot([], [], '-', color='white')
 
         # Create figure
         self.fig_abs = plt.Figure(figsize=self.fig_size_cell_abs, dpi=self.dpi)
         self.ax_abs = self.fig_abs.subplots(1, 1)
         self.ax_abs.set_aspect(1)
+        abs_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.abs_im = self.ax_abs.imshow(abs_img, interpolation='none', vmin=0, vmax=np.percentile(abs_img, 99))
+        divider = make_axes_locatable(self.ax_abs)
+        cax = divider.append_axes("right", size="10%", pad=0.05)
+        self.cbar_abs = plt.colorbar(self.abs_im, cax=cax)
+        self.cbar_abs.outline.set_edgecolor('white')
+        self.cbar_abs.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
         # Create figure
         self.fig_mask = plt.Figure(figsize=self.fig_size_sens_mask, dpi=self.dpi)
         self.ax_mask = self.fig_mask.subplots(1, 1)
         self.ax_mask.set_aspect(1)
-
-        # Create figure
-        self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
-        self.ax_fit = self.fig_fit.subplots(1, 1)
+        self.ax_mask.set_title('Sensitivity mask')
+        mask_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.mask_im = self.ax_mask.imshow(mask_img, interpolation='none',
+                                           vmin=np.percentile(mask_img, 1),
+                                           vmax=np.percentile(mask_img, 99))
+        divider = make_axes_locatable(self.ax_mask)
+        cax = divider.append_axes("right", size="10%", pad=0.05)
+        self.cbar_mask = plt.colorbar(self.mask_im, cax=cax)
+        self.cbar_mask.outline.set_edgecolor('white')
+        self.cbar_mask.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
         # Finalise canvas and gridding
         self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame_top)
@@ -1592,6 +1620,14 @@ class CellCalibFrame:
     @cal_crop.setter
     def cal_crop(self, value):
         self._cal_crop.set(value)
+
+    @property
+    def sens_crop(self):
+        return self._sens_crop.get()
+
+    @sens_crop.setter
+    def sens_crop(self, value):
+        self._sens_crop.set(value)
 
     @property
     def radius(self):
@@ -1637,8 +1673,25 @@ class CellCalibFrame:
     def run_cal(self):
         """Runs calibration with current settings"""
         self.pyplis_worker.cal_crop = bool(self.cal_crop)
+        self.pyplis_worker.crop_sens_mask = bool(self.sens_crop)
         self.pyplis_worker.cal_crop_region, self.pyplis_worker.cal_crop_line_mask = self.generate_cropped_region()
         self.pyplis_worker.perform_cell_calibration(plot=True)
+
+    def scale_imgs(self, draw=True):
+        """
+        Scales two images to 99 percentile
+        :param draw:
+        :return:
+        """
+        self.abs_im.set_clim(vmin=0,
+                             vmax=np.percentile(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm], 99))
+        self.mask_im.set_clim(vmin=np.percentile(self.pyplis_worker.sensitivity_mask, 1),
+                              vmax=np.percentile(self.pyplis_worker.sensitivity_mask, 99))
+
+        if draw:
+            self.abs_canvas.draw()
+            self.mask_canvas.draw()
+            self.mask_canvas.draw()
 
     def update_plot(self):
         """
@@ -1649,39 +1702,32 @@ class CellCalibFrame:
         if not self.in_frame:
             self.generate_frame(update_plot=False)
 
-        # Clear old axes
-        self.ax_fit.cla()
-        self.ax_abs.cla()
-        self.ax_mask.cla()
+        # try:
+        #     self.cbar_abs.remove()
+        #     self.cbar_mask.remove()
+        # except AttributeError:
+        #     pass
 
         # Plot calibration fit line
-        self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
-                            marker='x', color='white', s=50)
+        self.scat.remove()
+        self.scat = self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
+                                        marker='x', color='white', s=50)
         max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
-        self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
-        self.ax_fit.set_title('Cell ppm.m vs apparent absorbance')
-        self.ax_fit.set_ylabel('Column Density [ppm.m]')
-        self.ax_fit.set_xlabel('Apparent Absorbance')
+        self.line_plt.pop(0).remove()
+        self.line_plt = self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
 
         # Plot absorbance of 2nd smallest cell
         abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
-        abs_im = self.ax_abs.imshow(abs_img, interpolation='none', vmin=0, vmax=np.percentile(abs_img, 99))
+        self.abs_im.set_data(abs_img)
         self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
-        divider = make_axes_locatable(self.ax_abs)
-        cax = divider.append_axes("right", size="10%", pad=0.05)
-        cbar = plt.colorbar(abs_im, cax=cax)
-        cbar.outline.set_edgecolor('white')
-        cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        self.cbar_abs.draw_all()
 
         # Plot sensitivity mask
-        mask_im = self.ax_mask.imshow(self.pyplis_worker.sensitivity_mask,
-                           interpolation='none', vmin=1, vmax=np.percentile(self.pyplis_worker.sensitivity_mask, 99))
-        self.ax_mask.set_title('Sensitivity mask')
-        divider = make_axes_locatable(self.ax_mask)
-        cax = divider.append_axes("right", size="10%", pad=0.05)
-        cbar = plt.colorbar(mask_im, cax=cax)
-        cbar.outline.set_edgecolor('white')
-        cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        self.mask_im.set_data(self.pyplis_worker.sensitivity_mask)
+        self.cbar_mask.draw_all()
+
+        # Set limits for images
+        self.scale_imgs(draw=False)
 
         self.draw_circle(draw=False, run_cal=False)
 
@@ -1696,3 +1742,176 @@ class CellCalibFrame:
         """
         self.in_frame = False
         self.frame.destroy()
+
+
+class OptiFlowSettings(LoadSaveProcessingSettings):
+    """
+    Optical flow settings frame
+
+        To add a new variable:
+        1. Add it as a tk variable in initiate variables
+        2. Add it to the vars dictionary, along with its type
+        3. Add its associated widgets
+        4. Add its associated property with get and set options
+        5. Add its default value to processing_setting_defaults.txt
+    """
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+
+        self.pyplis_worker = pyplis_work
+        self.cam_specs = cam_specs
+        self.fig_setts = fig_setts
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """
+        Initiates all tkinter variables
+        :return:
+        """
+        self.vars = {'pyr_scale': float,
+                     'levels': int,
+                     'winsize': int,
+                     'iterations': int,
+                     'poly_n': int,
+                     'poly_sigma': float,
+                     'hist_dir_gnum_max': int,
+                     'hist_dir_binres': int,
+                     'hist_sigma_tol': int
+                     }
+
+        self._pyr_scale = tk.DoubleVar()
+        self._levels = tk.IntVar()
+        self._winsize = tk.IntVar()
+        self._iterations = tk.IntVar()
+        self._poly_n = tk.IntVar()
+        self._poly_sigma = tk.DoubleVar()
+        self._hist_dir_gnum_max = tk.IntVar()
+        self._hist_dir_binres = tk.IntVar()
+        self._hist_sigma_tol = tk.IntVar()
+
+    def generate_frame(self):
+        """
+        Generates widget settings frame
+        :return:
+        """
+        self.in_frame = True
+
+        self.frame = tk.Toplevel()
+        self.frame.title('Cell calibration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        row = 0
+
+        butt_frame = ttk.Frame(self.frame)
+        butt_frame.grid(row=row, column=0)
+
+        # Apply button
+        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # Set default button
+        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
+        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+    @property
+    def pyr_scale(self):
+        return self._pyr_scale.get()
+
+    @pyr_scale.setter
+    def pyr_scale(self, value):
+        self._pyr_scale.set(value)
+
+    @property
+    def levels(self):
+        return self._levels.get()
+
+    @levels.setter
+    def levels(self, value):
+        self._levels.set(value)
+
+    @property
+    def winsize(self):
+        return self._winsize.get()
+
+    @winsize.setter
+    def winsize(self, value):
+        self._winsize.set(value)
+
+    @property
+    def iterations(self):
+        return self._iterations.get()
+
+    @iterations.setter
+    def iterations(self, value):
+        self._iterations.set(value)
+
+    @property
+    def poly_n(self):
+        return self._poly_n.get()
+
+    @poly_n.setter
+    def poly_n(self, value):
+        self._poly_n.set(value)
+
+    @property
+    def poly_sigma(self):
+        return self._poly_sigma.get()
+
+    @poly_sigma.setter
+    def poly_sigma(self, value):
+        self._poly_sigma.set(value)
+
+    @property
+    def hist_dir_gnum_max(self):
+        return self._hist_dir_gnum_max.get()
+
+    @hist_dir_gnum_max.setter
+    def hist_dir_gnum_max(self, value):
+        self._hist_dir_gnum_max.set(value)
+
+    @property
+    def hist_dir_binres(self):
+        return self._hist_dir_binres.get()
+
+    @hist_dir_binres.setter
+    def hist_dir_binres(self, value):
+        self._hist_dir_binres.set(value)
+
+    @property
+    def hist_sigma_tol(self):
+        return self._hist_sigma_tol.get()
+
+    @hist_sigma_tol.setter
+    def hist_sigma_tol(self, value):
+        self._hist_sigma_tol.set(value)
+
+    def gather_vars(self):
+        """
+        Gathers all optical flow settings and updates pyplis worker settings
+        :return:
+        """
+        # PAck all settings into a settings dictionary
+        settings = {}
+        for key in self.vars:
+            settings[key] = getattr(self, key)
+
+        # Pass settings to pyplis worker update function
+        self.pyplis_worker.update_opt_flow_settings(**settings)
+
+    def close_frame(self):
+        """
+        Closes frame and makes sure current values are correct
+        :return:
+        """
+        # Ensure current values are correct
+        for key in self.vars:
+            setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
+
+        # Close frame
+        self.frame.destroy()
+
+
