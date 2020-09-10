@@ -6,7 +6,8 @@ E.g. the data held within these objects links to the processing work, and needs 
 object's frame has been build in the menu
 """
 
-from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame, CellCalibFrame
+from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame, \
+    CellCalibFrame, OptiFlowSettings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts
 
@@ -27,3 +28,6 @@ doas_fov = DOASFOVSearchFrame(fig_setts=gui_setts)
 
 # Cell calibration frame
 cell_calib = CellCalibFrame(fig_setts=gui_setts, process_setts=process_settings)
+
+# Optical flow frame
+opti_flow = OptiFlowSettings(fig_setts=gui_setts)

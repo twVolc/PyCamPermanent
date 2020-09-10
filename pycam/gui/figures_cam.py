@@ -20,6 +20,9 @@ import matplotlib.cm as cm
 import numpy as np
 import threading
 import time
+import queue
+
+refresh_rate = 200  # Refresh rate of draw command when in processing thread
 
 
 class ImageFigure:
@@ -30,13 +33,20 @@ class ImageFigure:
     def __init__(self, frame, img_reg, lock=threading.Lock(), name='Image', band='A',
                  image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x]),
                  start_update_thread=False):
+
+        # Get root - used for plotting using refresh after in _draw_canv_()
+        parent_name = frame.winfo_parent()
+        self.root = frame._nametowidget(parent_name)
+
         self.parent = frame
         self.frame = ttk.LabelFrame(self.parent, text=name)
         self.img_reg = img_reg
         self.lock = lock
         self.update_thread = None
+
+        self.q = queue.Queue()      # Queue for requesting canvas draw (when in processing thread)
         self.draw_time = time.time()
-        self.plot_lag = 0.15        # Minimum time between successive draw() calls. Prevents GUI freezing
+        self.plot_lag = 0.5         # Minimum time between successive draw() calls. Prevents GUI freezing
 
         # Set self to pyplis worker figure object
         setattr(pyplis_worker, 'fig_{}'.format(band), self)
@@ -200,7 +210,7 @@ class ImageFigure:
         self.x_sect_butt = ttk.Button(self.xsect_frame, text="Update plot", command=self.x_sect_plot)
         self.x_sect_butt.grid(row=0, column=4, padx=self.pdx, pady=self.pdy)
 
-    def x_sect_plot(self):
+    def x_sect_plot(self, draw=True):
         """Updates cross-section plot"""
         # Extract row and column digital numbers
         row_DN = self.image[self.row, :]
@@ -215,13 +225,14 @@ class ImageFigure:
         self.img_disp_col.set_data([self.col, self.col], [0, self.specs.pix_num_y])
 
         # Redraw the canvas to update plot
-        with self.lock:
-            # Check how long has passed. Only draw if > 0.5s has passed, to ensure that we don't freeze up the GUI
-            if time.time() - self.draw_time > self.plot_lag:
-                self.img_canvas.draw()
-                self.draw_time = time.time()
+        if draw:
+            with self.lock:
+                # Check how long has passed. Only draw if > 0.5s has passed, to ensure that we don't freeze up the GUI
+                if time.time() - self.draw_time > self.plot_lag:
+                    self.img_canvas.draw()
+                    self.draw_time = time.time()
 
-    def update_plot(self, img, img_path):
+    def update_plot(self, img, img_path, draw=True):
         """
         Updates image figure and all associated subplots
         :param img: np.ndarray  Image array
@@ -236,7 +247,7 @@ class ImageFigure:
         self.ax.set_title(filename)
 
         # Update subplots - this includes a call to draw() so the figure will be updated after this
-        self.x_sect_plot()
+        self.x_sect_plot(draw)
 
     def cp_select(self, event):
         """
@@ -321,6 +332,18 @@ class ImageFigure:
 
             # Get data from the pyplis.image.Img object
             self.update_plot(np.array(img_obj.img, dtype=np.uint16), img_path)
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                self.img_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.root.after(refresh_rate, self.__draw_canv__)
 
 
 class ImageRegistrationFrame:
@@ -442,9 +465,13 @@ class ImageRegistrationFrame:
         # Once ImageRegistration object has been set up we call the registration function
         pyplis_worker.register_image(**kwargs)
 
-        # Now update off-band image
-        pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
-                                        pyplis_worker.img_B.pathname)
+        # # Now update off-band image
+        # pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
+        #                                 pyplis_worker.img_B.pathname)
+        #
+        # # Run processing with the new image warp - this will generate the absorbance image and update it
+        # pyplis_worker.process_pair(img_path_A=None, img_path_B=None, plot=True, plot_bg=None)
 
-        # Run processing with the new image warp - this will generate the absorbance image and update it
-        pyplis_worker.process_pair(img_path_A=None, img_path_B=None, plot=True, plot_bg=None)
+        # Just rerun loading of sequence, which will mean that optical flow is run too (this requires updating
+        # img_tau_prev as well as img_tau, which register_img() won't do on its own)
+        pyplis_worker.load_sequence(img_dir=pyplis_worker.img_dir, plot_bg=False)

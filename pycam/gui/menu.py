@@ -5,7 +5,7 @@
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, opti_flow
 from pycam.gui.misc import About
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
@@ -101,6 +101,7 @@ class PyMenu:
         self.submenu_windows = tk.Menu(self.frame, tearoff=0)
         self.submenu_windows.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
         self.submenu_windows.add_command(label='Cell calibration', command=cell_calib.update_plot)
+        self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
 
         self.menus[tab].add_separator()

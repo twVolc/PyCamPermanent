@@ -202,3 +202,15 @@ class ScrollWindow:
     def __on_frame_configure__(self, event):
         """Controls movement of window on click event"""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+
+class SpinboxOpt:
+    """
+    Utility class to allow rapid building of spinbox options in tkinter frame
+    """
+    def __init__(self, parent, name, var, limits=[0, 10, 1], row=0, pdx=2, pdy=2):
+
+        label = ttk.Label(parent, text='{}:'.format(name))
+        label.grid(row=row, column=0, sticky='w', padx=pdx, pady=pdy)
+        pyr_opt = ttk.Spinbox(parent, textvariable=var, from_=limits[0], to=limits[1], increment=limits[2])
+        pyr_opt.grid(row=row, column=1, sticky='ew', padx=pdx, pady=pdy)

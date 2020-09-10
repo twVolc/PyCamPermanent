@@ -5,6 +5,7 @@ Contains all classes associated with building figures for the analysis functions
 """
 
 from pycam.gui.cfg import gui_setts
+from pycam.gui.misc import SpinboxOpt
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -23,8 +24,15 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.cm as cm
+import matplotlib.widgets as widgets
+import matplotlib.patches as patches
+import matplotlib.lines as mpllines
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
+import time
+import queue
+
+refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
 
 class SequenceInfo:
@@ -130,10 +138,17 @@ class ImageSO2:
 
     def __init__(self, parent, image_tau=None, image_cal=None,
                  pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
+
+        # Get root - used for plotting using refresh after in _draw_canv_()
+        parent_name = parent.winfo_parent()
+        self.root = parent._nametowidget(parent_name)
+
         self.parent = parent
         self.image_tau = image_tau
         self.image_cal = image_cal
-        setattr(pyplis_worker, 'fig_tau', self)
+        pyplis_worker.fig_tau = self
+        pyplis_worker.fig_opt.fig_SO2 = self
+
         self.pix_num_x = pix_dim[0]
         self.pix_num_y = pix_dim[1]
         self.dpi = gui_setts.dpi
@@ -141,6 +156,9 @@ class ImageSO2:
 
         self.specs = CameraSpecs()
 
+        self.q = queue.Queue()      # Queue for requesting canvas draw (when in processing thread)
+        self.plot_lag = 0.5             # Lag between images to be plotted (don't plot every image, it freezes the GUI)
+        self.draw_time = time.time()
 
         self.max_lines = 5  # Maximum number of ICA lines
         # ------------------------------------------------------------------------------------------
@@ -313,7 +331,7 @@ class ImageSO2:
         self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
         # Plot optical flwo if it is requested at start
-        self.plt_opt_flow()
+        self.plt_opt_flow(draw=False)
 
         # Finalise canvas and gridding
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
@@ -565,30 +583,48 @@ class ImageSO2:
         if self.disp_cal:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
-                vmax = np.percentile(self.image_tau, 99.99)
+                self.vmax_cal = np.percentile(self.image_tau, 99.99)
             else:
-                vmax = self.ppmm_max
+                self.vmax_cal = self.ppmm_max
+            self.img_disp.set_clim(vmin=0, vmax=self.vmax_cal)
         else:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_tau:
-                vmax = np.percentile(self.image_tau, 99.99)
+                self.vmax_tau = np.percentile(self.image_tau, 99.99)
             else:
-                vmax = self.tau_max
+                self.vmax_tau = self.tau_max
+            self.img_disp.set_clim(vmin=0, vmax=self.vmax_tau)
 
         # Set new limits
-        self.img_disp.set_clim(vmin=0, vmax=vmax)
+
 
         if draw:
             self.img_canvas.draw()
 
-    def plt_opt_flow(self):
+    def plt_opt_flow(self, draw=True):
         """Plots optical flow onto figure"""
-        pass
+        # Delete old optical flow lines
+        # TODO Currently this will probably delete ICA lines too. Need to find a way of excluding these
+        for child in self.ax.get_children():
+            if isinstance(child, patches.Circle):
+                child.remove()
+            elif isinstance(child, mpllines.Line2D):
+                child.remove()
 
-    def update_plot(self, img_tau, img_cal=None):
+        if self.plt_flow:
+            # Update flow_lines
+            pyplis_worker.opt_flow.draw_flow(ax=self.ax, in_roi=True)
+            self.ax.set_xlim([0, self.pix_num_x])
+            self.ax.set_ylim([self.pix_num_y, 0])
+
+        if draw:
+            self.img_canvas.draw()
+
+    def update_plot(self, img_tau, img_cal=None, draw=True):
         """
         Updates image figure and all associated subplots
         :param img: np.ndarray  Image array
+        :param draw:    bool    If True, the plot is drawn (use False when calling from a thread)
         :return:
         """
         self.image_tau = img_tau
@@ -606,9 +642,28 @@ class ImageSO2:
         else:
             self.img_disp.set_data(img_tau)
         self.scale_img(draw=False)
-        self.cbar.draw_all()
-        self.img_canvas.draw()
 
+        # Plot optical flow
+        self.plt_opt_flow(draw=False)
+
+        if draw:
+            if time.time() - self.draw_time > self.plot_lag:
+                self.cbar.draw_all()
+                self.img_canvas.draw()
+                self.draw_time = time.time()
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                self.img_canvas.draw()
+                self.cbar.draw_all()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.root.after(refresh_rate, self.__draw_canv__)
 
 class GeomSettings:
     """
@@ -876,6 +931,8 @@ class LoadSaveProcessingSettings:
                 if key in self.vars.keys():
                     if self.vars[key] is str:
                         value = value.split('\'')[1]
+                    elif self.vars[key] is list:
+                        value = [int(x) for x in value.split('[')[1].split(']')[0].split(',')]
                     else:
                         value = self.vars[key](value.split('\n')[0].split('#')[0])
                     setattr(self, key, value)
@@ -1522,7 +1579,7 @@ class CellCalibFrame:
         self.frame_setts.pack(side=tk.LEFT, padx=5, pady=5, anchor='nw')
 
         label = ttk.Label(self.frame_setts, text='Calibration directory:')
-        label.grid(row=0, column=0, padx=5)
+        label.grid(row=0, column=0, sticky='w', padx=5)
         dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
         dir_lab.grid(row=0, column=1, padx=5)
         change_butt = ttk.Button(self.frame_setts, text='Change directory',
@@ -1542,12 +1599,18 @@ class CellCalibFrame:
         self.cal_crop = int(self.pyplis_worker.cal_crop)
         crop_check = ttk.Checkbutton(self.frame_setts, text='Crop calibration region', variable=self._cal_crop,
                                      command=self.run_cal)
-        crop_check.grid(row=2, column=0)
+        crop_check.grid(row=2, column=0, sticky='w')
         self._sens_crop = tk.IntVar()
         self.sens_crop = int(self.pyplis_worker.crop_sens_mask)
         crop_sens_check = ttk.Checkbutton(self.frame_setts, text='Crop sensitivity mask', variable=self._sens_crop,
                                      command=self.run_cal)
-        crop_sens_check.grid(row=3, column=0)
+        crop_sens_check.grid(row=3, column=0, sticky='w')
+
+        self._use_cell_bg = tk.IntVar()
+        self.use_cell_bg = int(self.pyplis_worker.use_cell_bg)
+        crop_sens_check = ttk.Checkbutton(self.frame_setts, text='Automatically set background images',
+                                          variable=self._use_cell_bg, command=self.gather_vars)
+        crop_sens_check.grid(row=4, column=0, columnspan=2, sticky='w')
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
@@ -1630,6 +1693,14 @@ class CellCalibFrame:
         self._sens_crop.set(value)
 
     @property
+    def use_cell_bg(self):
+        return bool(self._use_cell_bg.get())
+
+    @use_cell_bg.setter
+    def use_cell_bg(self, value):
+        self._use_cell_bg.set(value)
+
+    @property
     def radius(self):
         return self._radius.get()
 
@@ -1669,6 +1740,10 @@ class CellCalibFrame:
         # the calibration result so this step would unnecessarily slow the program)
         if run_cal and self.cal_crop:
             self.run_cal()
+
+    def gather_vars(self):
+        """Updates pyplis worker variables"""
+        self.pyplis_worker.use_cell_bg = self.use_cell_bg
 
     def run_cal(self):
         """Runs calibration with current settings"""
@@ -1758,8 +1833,17 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
 
         self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_opt = self
+        self.fig_SO2 = None
         self.cam_specs = cam_specs
         self.fig_setts = fig_setts
+        self.dpi = self.fig_setts.dpi
+        self.fig_size = self.fig_setts.fig_SO2
+        self.img_tau = None
+        self.img_vel = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x], dtype=np.float)
+
+        self.pdx = 5
+        self.pdy = 5
 
         self.in_frame = False
 
@@ -1778,9 +1862,13 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'iterations': int,
                      'poly_n': int,
                      'poly_sigma': float,
+                     'min_length': float,
+                     'min_count_frac': float,
                      'hist_dir_gnum_max': int,
                      'hist_dir_binres': int,
-                     'hist_sigma_tol': int
+                     'hist_sigma_tol': int,
+                     'use_roi': int,
+                     'roi_abs': list
                      }
 
         self._pyr_scale = tk.DoubleVar()
@@ -1789,9 +1877,15 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._iterations = tk.IntVar()
         self._poly_n = tk.IntVar()
         self._poly_sigma = tk.DoubleVar()
+        self._min_length = tk.DoubleVar()
+        self._min_count_frac = tk.DoubleVar()
         self._hist_dir_gnum_max = tk.IntVar()
         self._hist_dir_binres = tk.IntVar()
         self._hist_sigma_tol = tk.IntVar()
+        self._use_roi = tk.IntVar()
+
+        # Load default values
+        self.load_defaults()
 
     def generate_frame(self):
         """
@@ -1801,16 +1895,95 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.in_frame = True
 
         self.frame = tk.Toplevel()
-        self.frame.title('Cell calibration')
+        self.frame.title('Optical flow settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        # -------------------------
+        # Build optical flow figure
+        # -------------------------
+        self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        # self.frame.rowconfigure(0, weight=1)
+        self._build_fig_img()
+        self._build_fig_vel()
+
+        # -----------------
+        # Parameter options
+        # -----------------
+        self.param_frame = ttk.LabelFrame(self.frame, text='Optical flow parameters', borderwidth=5)
+        self.param_frame.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
 
+        # pyr_scale
+        pyr_opt = SpinboxOpt(self.param_frame, name='Pyramid scale (pyr_scale)', var=self._pyr_scale, limits=[0, 1, 0.1], row=row)
+        row += 1
+
+        # Levels
+        levels = SpinboxOpt(self.param_frame, name='Number of pyramid levels (levels)', var=self._levels, limits=[0, 10, 1], row=row)
+        row += 1
+
+        # Levels
+        winsize = SpinboxOpt(self.param_frame, name='Averaging window size (winsize)', var=self._winsize,
+                             limits=[0, 100, 1], row=row)
+        row += 1
+
+        # Levels
+        iterations = SpinboxOpt(self.param_frame, name='Number of iterations (iterations)', var=self._iterations, limits=[0, 500, 1], row=row)
+        row += 1
+
+        # Levels
+        poly_n = SpinboxOpt(self.param_frame, name='Pixel neighbourhood size (poly_n)', var=self._poly_n,
+                            limits=[0, 10, 1], row=row)
+        row += 1
+
+        # Levels
+        poly_sigma = SpinboxOpt(self.param_frame, name='SD of Gaussian smoothing (poly_sigma)', var=self._poly_sigma,
+                                limits=[0, 10, 0.1], row=row)
+        row += 1
+
+        # ------------------------------
+        # Pyplis Analysis options frame
+        # ------------------------------
+        self.analysis_frame = ttk.LabelFrame(self.frame, text='Analysis parameters', borderwidth=5)
+        self.analysis_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
+        row = 0
+
+        # Minimum vector length
+        min_length = SpinboxOpt(self.analysis_frame, name='Minimum vector length analysed', var=self._min_length,
+                                limits=[1, 99, 0.1], row=row)
+        row += 1
+
+        # Minimum vector length
+        min_count_frac = SpinboxOpt(self.analysis_frame, name='Minimum fraction of available vectors',
+                                    var=self._min_count_frac, limits=[0, 1, 0.05], row=row)
+        row += 1
+
+        # Maximum Gaussian number for histogram fit
+        hist_dir_gnum_max = SpinboxOpt(self.analysis_frame, name='Maximum Gaussians for histogram fit',
+                                       var=self._hist_dir_gnum_max, limits=[1, 100, 1], row=row)
+        row += 1
+
+        # Histogram bin width in degrees
+        hist_dir_binres = SpinboxOpt(self.analysis_frame, name='Histogram bin width [deg]', var=self._hist_dir_binres,
+                                limits=[1, 180, 1], row=row)
+        row += 1
+
+        # Sigma tolerance for mean flow analysis
+        hist_dir_binres = SpinboxOpt(self.analysis_frame, name='Sigma tolerance for mean flow analysis',
+                                     var=self._hist_sigma_tol, limits=[1, 4, 0.1], row=row)
+        row += 1
+
+        # USe ROI
+        roi_check = ttk.Checkbutton(self.analysis_frame, text='Use ROI', variable=self._use_roi)
+        roi_check.grid(row=row, column=0, sticky='w', padx=2, pady=2 )
+
+        # Set buttons
         butt_frame = ttk.Frame(self.frame)
-        butt_frame.grid(row=row, column=0)
+        butt_frame.grid(row=2, column=0, sticky='nsew')
 
         # Apply button
-        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt = ttk.Button(butt_frame, text='Apply', command=lambda: self.gather_vars(run=True))
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Set default button
@@ -1866,6 +2039,22 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._poly_sigma.set(value)
 
     @property
+    def min_length(self):
+        return self._min_length.get()
+
+    @min_length.setter
+    def min_length(self, value):
+        self._min_length.set(value)
+
+    @property
+    def min_count_frac(self):
+        return self._min_count_frac.get()
+
+    @min_count_frac.setter
+    def min_count_frac(self, value):
+        self._min_count_frac.set(value)
+
+    @property
     def hist_dir_gnum_max(self):
         return self._hist_dir_gnum_max.get()
 
@@ -1889,29 +2078,206 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
     def hist_sigma_tol(self, value):
         self._hist_sigma_tol.set(value)
 
-    def gather_vars(self):
+    @property
+    def use_roi(self):
+        return self._use_roi.get()
+
+    @use_roi.setter
+    def use_roi(self, value):
+        self._use_roi.set(value)
+
+    def gather_vars(self, run=False):
         """
         Gathers all optical flow settings and updates pyplis worker settings
         :return:
         """
-        # PAck all settings into a settings dictionary
+        # Pack all settings into a settings dictionary
         settings = {}
         for key in self.vars:
             settings[key] = getattr(self, key)
 
+        # If not using ROI, we set the roi_abs to full resolution
+        if not self.use_roi:
+            settings['roi_abs'] = [0, 0, self.cam_specs.pix_num_x, self.cam_specs.pix_num_y]
+
         # Pass settings to pyplis worker update function
         self.pyplis_worker.update_opt_flow_settings(**settings)
+
+        if run:
+            self.run_flow()
+
+    def run_flow(self):
+        """
+        Runs optical flow with current settings and plots the results
+        :return:
+        """
+        # Now run optical flow
+        self.pyplis_worker.generate_opt_flow(plot=True)
+
+    def _build_fig_img(self):
+        """Build image figure"""
+        # Create figure
+        self.fig = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
+        self.ax = self.fig.subplots(1, 1)
+        self.ax.set_aspect(1)
+
+        # Figure colour
+        self.fig.set_facecolor('black')
+        for child in self.ax.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color('white')
+        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Image display
+        self.img_tau = self.pyplis_worker.img_tau_prev.img
+        self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
+                                       vmax=0.5, aspect='auto')
+        self.ax.set_title('Optical flow', color='white')
+
+        self.pyplis_worker.opt_flow.draw_flow(ax=self.ax)
+
+        # Colorbar
+        divider = make_axes_locatable(self.ax)
+        self.ax_divider = divider.append_axes("right", size="10%", pad=0.05)
+        self.cbar = plt.colorbar(self.img_disp, cax=self.ax_divider)
+        self.cbar.outline.set_edgecolor('white')
+        self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Plot optical flwo if it is requested at start
+        self.plt_opt_flow()
+
+        # Finalise canvas and gridding
+        self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+        self.img_canvas.draw()
+        self.img_canvas.get_tk_widget().grid(row=0, column=0)
+
+        # Add rectangle crop functionality
+        self.rs = widgets.RectangleSelector(self.ax, self.draw_roi, drawtype='box',
+                                            rectprops=dict(facecolor='red', edgecolor='blue', alpha=0.5, fill=True))
+
+        # Initial rectangle format
+        self.roi_start_x, self.roi_end_x = self.roi_abs[0], self.roi_abs[2]
+        self.roi_start_y, self.roi_end_y = self.roi_abs[1], self.roi_abs[3]
+        crop_x = self.roi_end_x - self.roi_start_x
+        crop_y = self.roi_end_y - self.roi_start_y
+
+        # Draw initial rectangle
+        if self.roi_end_x <= self.cam_specs.pix_num_x and self.roi_end_y <= self.cam_specs.pix_num_y:
+            self.rect = self.ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y),
+                                                            crop_x, crop_y, edgecolor='green', fill=False, linewidth=3))
+            self.img_canvas.draw()
+
+    def _build_fig_vel(self):
+        """
+        Builds figure plotting velocity magnitudes (not directions, although that could be overlayed?)
+        :return:
+        """
+        self.fig_vel = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
+        self.ax_vel = self.fig_vel.subplots(1, 1)
+        self.ax_vel.set_aspect(1)
+
+        # Figure colour
+        self.fig_vel.set_facecolor('black')
+        for child in self.ax_vel.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color('white')
+        self.ax_vel.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Image display
+        self.img_vel = self.pyplis_worker.velo_img
+        # self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
+        #                                vmax=0.5, aspect='auto')
+        self.img_vel.show_img(ax=self.ax_vel, tit='Optical flow velocities', cbar=False, cmap='Greens')
+        self.img_vel_disp = self.ax_vel.get_images()[0]
+
+        # Colorbar
+        divider = make_axes_locatable(self.ax_vel)
+        self.ax_vel_divider = divider.append_axes("right", size="10%", pad=0.05)
+        self.cbar_vel = plt.colorbar(self.img_vel_disp, cax=self.ax_vel_divider)
+        self.cbar_vel.outline.set_edgecolor('white')
+        self.cbar_vel.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Finalise canvas and gridding
+        self.vel_canvas = FigureCanvasTkAgg(self.fig_vel, master=self.frame_fig)
+        self.vel_canvas.draw()
+        self.vel_canvas.get_tk_widget().grid(row=0, column=1)
+
+    def draw_roi(self, eclick, erelease):
+        """
+        Draws region of interest for calculating optical flow
+        :return:
+        """
+        try:  # Delete previous rectangle, if it exists
+            self.rect.remove()
+        except AttributeError:
+            pass
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+        self.rect = self.ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y),
+                                                        crop_X, crop_Y, edgecolor='green', fill=False, linewidth=3))
+
+        # Only update roi_abs if use_roi is true
+        if self.use_roi:
+            self.roi_abs = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+
+        self.fig.canvas.draw()
+
+    def plt_opt_flow(self):
+        """
+        Plots optical flow onto figure
+        :return:
+        """
+        pass
+
+    def update_plot(self, draw=True):
+        """
+        Updates plot
+        :param draw:    bool
+            If true the draw() function of the canvas is called. Draw should be false if threading the processing
+        :return:
+        """
+        for child in self.ax.get_children():
+            if isinstance(child, patches.Circle):
+                child.remove()
+            elif isinstance(child, mpllines.Line2D):
+                child.remove()
+
+        self.img_tau = self.pyplis_worker.img_tau_prev.img
+
+        # Update SO2 image
+        self.img_disp.set_data(self.img_tau)
+        self.img_disp.set_clim(vmin=0, vmax=self.fig_SO2.vmax_tau)      # Set upper limit using main SO2 image
+
+        # Update flow_lines
+        self.pyplis_worker.opt_flow.draw_flow(ax=self.ax, in_roi=True)
+        self.ax.set_xlim([0, self.cam_specs.pix_num_x])
+        self.ax.set_ylim([self.cam_specs.pix_num_y, 0])
+
+        # Update velocity image
+        self.img_vel_disp.set_data(self.pyplis_worker.velo_img.img)
+        self.img_vel_disp.set_clim(vmin=0, vmax=np.percentile(self.pyplis_worker.velo_img.img, 99))
+
+        if draw:
+            self.img_canvas.draw()
+            self.vel_canvas.draw()
 
     def close_frame(self):
         """
         Closes frame and makes sure current values are correct
         :return:
         """
+        # Set in_frame to False
+        self.in_frame = False
+
         # Ensure current values are correct
         for key in self.vars:
             setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
 
         # Close frame
         self.frame.destroy()
-
-

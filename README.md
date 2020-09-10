@@ -19,11 +19,10 @@ socket is no longer connected is not a useful functionality
 TODO ideas:
 1. A comm command should be introduced to cause the camera to send all of its current settings, e.g. framerates and shutter speeds.
 The external comm can then use this message to update its GUI with the correct current settings
-2. Have a connection section (probably in settings at the top toolbar) to input IP and port and then connect to the camera. 
-Turn a light green in the main window when we are connected to a camera
-3. Calibration of spectrometer is in an optional window to save constant GUI work. But this means that the reference
-spectra aren't automatically loaded on start-up. I may need to do this somehow - but perhaps this will be done as part
-of the processing thread which will need to be running constantly.
+2. I am going to have to make the processing a thread, to stop the GUI from freezing up. This means that thread can't be in charge 
+of calling the draw() command on plots. Use the SpecScan technique of intermittently updating the plots, and flag draw=False
+in the update_plot() calls from the processing thread. Can use this technique only when in the processing thread, and then 
+kill the intermittent plot updater when processing is stopped
 
 
 Requirements for GUI:

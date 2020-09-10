@@ -25,6 +25,7 @@ from skimage import transform as tf
 import warnings
 from math import log10, floor
 import datetime
+import time
 
 
 class PyplisWorker:
@@ -40,6 +41,8 @@ class PyplisWorker:
 
         self.cam_specs = cam_specs  #
         self.spec_specs = spec_specs
+
+        self.wait_time = 0.2
 
         # Setup memory allocation for images (need to keep a large number for DOAS fov image search).
         self.img_tau_buff_size = 200         # Buffer size for images (this number of images are held in memory)
@@ -94,6 +97,7 @@ class PyplisWorker:
         self.fig_spec = None            # Figure displaying spectra
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
+        self.fig_opt = None             # Figure for displaying optical flow
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
         self.calib_pears = None         # Pyplis object holding functions to plot results
         self.doas_fov_x = None          # X FOV of DOAS (from pyplis results)
@@ -117,6 +121,10 @@ class PyplisWorker:
         self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_aa = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # Optical depth image
         self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # SO2 calibrated image
+        self.img_tau = pyplis.image.Img()
+        self.img_tau.img = self.img_A           # Set image to zeors as it may be used to generate empty figure
+        self.img_tau_prev = pyplis.image.Img()
+        self.img_tau_prev.img = self.img_A
 
         # Calibration attributes
         self.got_cal_doas = False
@@ -137,6 +145,7 @@ class PyplisWorker:
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
         self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
+        self.use_cell_bg = False    # If true, the bg image for bg modelling is automatically set from the cell calibration directory. Otherwise the defined path to bg imag is used
 
         # Load background image if we are provided with one
         self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
@@ -333,6 +342,14 @@ class PyplisWorker:
             self.process_pair(self.img_dir + '\\' + self.img_list[0][0],
                               self.img_dir + '\\' + self.img_list[0][1],
                               plot=plot, plot_bg=plot_bg)
+
+            if len(self.img_list) > 1:
+                # Load second image too so that we have optical flow output generated
+                self.first_image = False
+                self.process_pair(self.img_dir + '\\' + self.img_list[1][0],
+                                  self.img_dir + '\\' + self.img_list[1][1],
+                                  plot=plot, plot_bg=plot_bg)
+
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
@@ -967,12 +984,17 @@ class PyplisWorker:
         for key in settings:
             setattr(self.opt_flow.settings, key, settings[key])
 
-    def generate_opt_flow(self):
+            # If we have the roi_rad setting we need to set roi_rad_abs too
+            if key == 'roi_abs':
+                self.opt_flow.settings.roi_rad_abs = settings[key]
+
+    def generate_opt_flow(self, plot=False):
         """
         Generates optical flow vectors for current and previous image
         :return:
         """
         # Update optical flow object to contain previous tau image and current image
+        # This includes updating_contrast_range() and prep_images()
         self.opt_flow.set_images(self.img_tau_prev, self.img_tau)
 
         # Calculate optical flow vectors
@@ -981,6 +1003,10 @@ class PyplisWorker:
         # Generate plume speed array
         dist_img, _, _ = self.meas.meas_geometry.compute_all_integration_step_lengths(pyrlevel=0)
         self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
+
+        if plot:
+            if self.fig_opt.in_frame:
+                self.fig_opt.update_plot()
 
         return self.flow, self.velo_img
 
@@ -1014,7 +1040,7 @@ class PyplisWorker:
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
-            self.generate_opt_flow()
+            self.generate_opt_flow(plot=plot)
             # TODO all of processing if not the first image pair
 
     def process_sequence(self):
@@ -1034,8 +1060,9 @@ class PyplisWorker:
 
         # Perform calibration work
         if self.cal_type in [0, 2]:
-            # TODO Need to create an option for set_bg_img, as we may want it to be true sometimes
-            self.perform_cell_calibration(plot=False, set_bg_img=False)
+            # TODO Need to create an option in cell calibration frame to change use_cell_bg as an option
+            # TODO this bool defines whetehr cal_dir is used for automatically finding the clear sky image for bg modelling
+            self.perform_cell_calibration(plot=False, set_bg_img=self.use_cell_bg)
 
         # Loop through img_list and process data
         self.first_image = True
@@ -1052,6 +1079,9 @@ class PyplisWorker:
             # Once first image is processed we update the first_image bool
             if i == 0:
                 self.first_image = False
+
+            # Wait for defined amount of time to allow plotting of data without freezing up
+            time.sleep(self.wait_time)
 
         if self.cal_type in [1,2]:
             # TODO Edit this test to use proper data (currently uses dummy random values)
@@ -1076,7 +1106,7 @@ class PyplisWorker:
             img_path_A, img_path_B = self.q.get(block=True)
 
             # Process the pair
-            self.process_pair(img_path_A, img_path_B)
+            self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
 
             # Attempt to get DOAS calibration point to add to list
             try:
@@ -1086,6 +1116,9 @@ class PyplisWorker:
                     self.update_doas_buff(doas_dict)
             except queue.Empty:
                 pass
+
+            # TODO After a certain amount of time we need to perform doas calibration (maybe once DOAS buff is full?
+            # TODO start of day will be uncalibrated until this point
 
 
 
