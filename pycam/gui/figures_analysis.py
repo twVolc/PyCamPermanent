@@ -341,6 +341,9 @@ class ImageSO2:
         # Bind click event to figure
         self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
 
+        # Setup thread-safe plot update
+        self.__draw_canv__()
+
     def _build_analysis(self):
         """Build analysis options"""
         self.frame_analysis = ttk.LabelFrame(self.frame, text='Analysis')
@@ -526,7 +529,7 @@ class ImageSO2:
                 self.PCS_lines_list[PCS_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
                                                                include_roi_rot=True, label=lbl)
 
-                # # Extract ICA values and plotting them
+                # TODO Extract ICA values and plotting them
                 # self.plot_ica_xsect()
 
             self.img_canvas.draw()
@@ -597,7 +600,6 @@ class ImageSO2:
 
         # Set new limits
 
-
         if draw:
             self.img_canvas.draw()
 
@@ -606,9 +608,35 @@ class ImageSO2:
         # Delete old optical flow lines
         # TODO Currently this will probably delete ICA lines too. Need to find a way of excluding these
         for child in self.ax.get_children():
+            del_line = False
+
             if isinstance(child, patches.Circle):
-                child.remove()
+                del_line = True
+
+                # Loop thorugh PCS lines and check their color. If they match the current circle, don't delete
+                # We only want to delete optical flow circles
+                color = child._original_edgecolor
+                for line in self.PCS_lines_list:
+                    if line is not None:
+                        if color == line.color:
+                            del_line = False
+                            break
+
             elif isinstance(child, mpllines.Line2D):
+                del_line = True
+
+                # Loop thorugh PCS lines and check their color. If they match the current line, don't delete
+                # We only want to delete optical flow line
+                x_dat = child.get_xdata()
+                y_dat = child.get_ydata()
+                coords = [[x_dat[0], y_dat[0]], [x_dat[-1], y_dat[-1]]]
+                for line in self.PCS_lines_list:
+                    if line is not None:
+                        if line.start in coords and line.stop in coords:
+                            del_line = False
+                            break
+
+            if del_line:
                 child.remove()
 
         if self.plt_flow:
@@ -618,7 +646,8 @@ class ImageSO2:
             self.ax.set_ylim([self.pix_num_y, 0])
 
         if draw:
-            self.img_canvas.draw()
+            self.q.put(1)
+            # self.img_canvas.draw()
 
     def update_plot(self, img_tau, img_cal=None, draw=True):
         """
@@ -647,10 +676,11 @@ class ImageSO2:
         self.plt_opt_flow(draw=False)
 
         if draw:
-            if time.time() - self.draw_time > self.plot_lag:
-                self.cbar.draw_all()
-                self.img_canvas.draw()
-                self.draw_time = time.time()
+            self.q.put(1)
+            # if time.time() - self.draw_time > self.plot_lag:
+            #     self.cbar.draw_all()
+            #     self.img_canvas.draw()
+            #     self.draw_time = time.time()
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
@@ -1835,6 +1865,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_opt = self
         self.fig_SO2 = None
+        self.q = queue.Queue()
         self.cam_specs = cam_specs
         self.fig_setts = fig_setts
         self.dpi = self.fig_setts.dpi
@@ -1990,6 +2021,9 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
         butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
+        # Setup thread-safe drawing
+        self.__draw_canv__()
+
     @property
     def pyr_scale(self):
         return self._pyr_scale.get()
@@ -2134,7 +2168,10 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                                        vmax=0.5, aspect='auto')
         self.ax.set_title('Optical flow', color='white')
 
-        self.pyplis_worker.opt_flow.draw_flow(ax=self.ax)
+        # Draw optical flow
+        self.pyplis_worker.opt_flow.draw_flow(ax=self.ax, in_roi=True)
+        self.ax.set_xlim([0, self.cam_specs.pix_num_x])
+        self.ax.set_ylim([self.cam_specs.pix_num_y, 0])
 
         # Colorbar
         divider = make_axes_locatable(self.ax)
@@ -2143,8 +2180,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.cbar.outline.set_edgecolor('white')
         self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
-        # Plot optical flwo if it is requested at start
-        self.plt_opt_flow()
 
         # Finalise canvas and gridding
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
@@ -2264,8 +2299,10 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.img_vel_disp.set_clim(vmin=0, vmax=np.percentile(self.pyplis_worker.velo_img.img, 99))
 
         if draw:
-            self.img_canvas.draw()
-            self.vel_canvas.draw()
+            self.q.put(1)
+
+            # self.img_canvas.draw()
+            # self.vel_canvas.draw()
 
     def close_frame(self):
         """
@@ -2279,5 +2316,22 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         for key in self.vars:
             setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
 
+        # Close drawing function (it is started again on opening the frame
+        self.q.put(2)
+
         # Close frame
         self.frame.destroy()
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.img_canvas.draw()
+                    self.vel_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)

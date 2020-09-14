@@ -17,6 +17,7 @@ from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
 import pydoas
 from tkinter import filedialog, messagebox
+import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -973,7 +974,7 @@ class PyplisWorker:
 
         if plot:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
-            getattr(self, 'fig_tau').update_plot(np.array(self.img_tau.img))
+            self.fig_tau.update_plot(np.array(self.img_tau.img))
 
     def update_opt_flow_settings(self, **settings):
         """
@@ -1005,6 +1006,7 @@ class PyplisWorker:
         self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
 
         if plot:
+            self.fig_tau.update_plot(self.img_tau.img)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
 
@@ -1044,6 +1046,12 @@ class PyplisWorker:
             # TODO all of processing if not the first image pair
 
     def process_sequence(self):
+        """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
+        self.process_thread = threading.Thread(target=self._process_sequence, args=())
+        self.process_thread.daemon = True
+        self.process_thread.start()
+
+    def _process_sequence(self):
         """
         Processes the current image directory
         :param plot_iter: bool      Tells function whether to plot iteratively or not
@@ -1089,7 +1097,6 @@ class PyplisWorker:
             stack = self.make_stack()
             doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
             self.doas_fov_search(stack, doas_results)
-
 
     def start_processing(self):
         """Public access thread starter for _processing"""

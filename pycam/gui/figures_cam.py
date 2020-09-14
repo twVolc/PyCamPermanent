@@ -186,6 +186,9 @@ class ImageFigure:
         self.txt_CP = []        # List to hold all scatter point text markers for CP plot
         self.num_cp_txt = 1     # Count for text on scatter point
 
+        # Initiate thread-safe plot updating
+        self.__draw_canv__()
+
     def _build_xsect_panel(self):
         """Builds control panel GUI for adjusting x-sections in image"""
         self.xsect_frame = ttk.LabelFrame(self.frame, text="Image cross-sectional DNs", relief=tk.GROOVE,
@@ -226,11 +229,13 @@ class ImageFigure:
 
         # Redraw the canvas to update plot
         if draw:
-            with self.lock:
-                # Check how long has passed. Only draw if > 0.5s has passed, to ensure that we don't freeze up the GUI
-                if time.time() - self.draw_time > self.plot_lag:
-                    self.img_canvas.draw()
-                    self.draw_time = time.time()
+            self.q.put(1)
+
+            # with self.lock:
+            #     # Check how long has passed. Only draw if > 0.5s has passed, to ensure that we don't freeze up the GUI
+            #     if time.time() - self.draw_time > self.plot_lag:
+            #         self.img_canvas.draw()
+            #         self.draw_time = time.time()
 
     def update_plot(self, img, img_path, draw=True):
         """
