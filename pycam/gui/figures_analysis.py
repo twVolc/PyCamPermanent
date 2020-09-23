@@ -14,6 +14,7 @@ from pycam.utils import make_circular_mask_line
 
 from pyplis import LineOnImage
 from pyplis.helpers import make_circular_mask
+from geonum import GeoPoint
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -320,7 +321,7 @@ class ImageSO2:
 
         # Image display
         self.img_disp = self.ax.imshow(self.image_tau, cmap=self.cmap, interpolation='none', vmin=0,
-                                       vmax=self.specs._max_DN, aspect='auto')
+                                       vmax=self.specs._max_DN, aspect='equal')
         self.ax.set_title('SO2 image', color='white')
 
         # Colorbar
@@ -695,6 +696,7 @@ class ImageSO2:
             pass
         self.root.after(refresh_rate, self.__draw_canv__)
 
+
 class GeomSettings:
     """
     Creates frame holding all geometry and associated settings required by pyplis. This frame links to the PyplisWorker
@@ -703,11 +705,14 @@ class GeomSettings:
     This object should be instantiated on startup, so a conf file needs to do this, and then the generate_frame() method
     should be used at the point at which it is required
     """
-    def __init__(self, parent=None, geom_path=FileLocator.CAM_GEOM):
+    def __init__(self, parent=None, geom_path=FileLocator.CAM_GEOM, fig_setts=gui_setts):
         self.parent = parent
         self.frame = None
         self.geom_path = geom_path
         self.filename = None        # Path to file of current settings
+        self.dpi = fig_setts.dpi
+        self.fig_size = fig_setts.fig_img
+        self.q = queue.Queue()
 
         self.pyplis_worker = pyplis_worker
 
@@ -720,12 +725,17 @@ class GeomSettings:
         self._elev = tk.DoubleVar()
         self._azim = tk.DoubleVar()
         self._volcano = tk.StringVar()
+        self._lat_ref = tk.StringVar()
+        self._lon_ref = tk.StringVar()
+        self._altitude_ref = tk.IntVar()
 
         self.geom_dict = {'lat': None,
                           'lon': None,
                           'altitude': None,
                           'elev': None,
                           'azim': None}    # List of attributes
+
+
 
         # Setting start values of variables
         with open(FileLocator.DEFAULT_GEOM, 'r') as f:
@@ -743,61 +753,147 @@ class GeomSettings:
         self.frame = ttk.Frame(self.parent)
         # ----------------------------------------------------------------------
         # Tkinter widgets
+        self.frame_geom = ttk.LabelFrame(self.frame, text='Instrument geometry', borderwidth=2)
+        self.frame_geom.grid(row=0, column=0, padx=5, pady=5, sticky='nw')
+
         row = 0
 
-        label = ttk.Label(self.frame, text='Latitude [dec]:')
+        label = ttk.Label(self.frame_geom, text='Latitude [dec]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame, width=10, textvariable=self._lat)
+        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lat)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame, text='Longitude [dec]:')
+        label = ttk.Label(self.frame_geom, text='Longitude [dec]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame, width=10, textvariable=self._lon)
+        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lon)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame, text='Altitude [m]:')
+        label = ttk.Label(self.frame_geom, text='Altitude [m]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame, textvariable=self._altitude, from_=0, to=8000, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._altitude, from_=0, to=8000, increment=1, width=4)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame, text='Elevation angle [°]:')
+        label = ttk.Label(self.frame_geom, text='Elevation angle [°]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame, format='%.1f', textvariable=self._elev,
+        spinbox = ttk.Spinbox(self.frame_geom, format='%.1f', textvariable=self._elev,
                               from_=-90, to=90, increment=0.1, width=4)
         spinbox.set('{:.1f}'.format(self.elev))
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame, text='Azimuth [°]:')
+        label = ttk.Label(self.frame_geom, text='Azimuth [°]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame, textvariable=self._azim, from_=0, to=359, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._azim, from_=0, to=359, increment=1, width=4)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame, text='Volcano:')
+        label = ttk.Label(self.frame_geom, text='Volcano:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame, width=10, textvariable=self._volcano)
+        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._volcano)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        button = ttk.Button(self.frame, text='Update settings', command=self.update_geom)
+        button = ttk.Button(self.frame_geom, text='Update settings', command=self.update_geom)
         button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
 
-        button = ttk.Button(self.frame, text='Save settings', command=self.save_instrument_setup)
+        button = ttk.Button(self.frame_geom, text='Save settings', command=self.save_instrument_setup)
         button.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
-        button = ttk.Button(self.frame, text='Load settings', command=self.load_instrument_setup)
-        button.grid(row=row, column=2, padx=2, pady=2, sticky='nsew')
+        row += 1
+        button = ttk.Button(self.frame_geom, text='Load settings', command=self.load_instrument_setup)
+        button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
 
-        button = ttk.Button(self.frame, text='Set as default', command=self.set_default_instrument_setup)
-        button.grid(row=row, column=3, padx=2, pady=2, sticky='nsew')
+        button = ttk.Button(self.frame_geom, text='Set as default', command=self.set_default_instrument_setup)
+        button.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        button = ttk.Button(self.frame, text='Draw geometry', command=self.draw_geometry)
+        button = ttk.Button(self.frame_geom, text='Draw geometry', command=self.draw_geometry)
         button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
+
+        # Reference point location widgets
+        self.frame_ref = ttk.LabelFrame(self.frame, text='Reference point location')
+        self.frame_ref.grid(row=1, column=0, sticky='new', padx=5, pady=5)
+
+        row = 0
+        label = ttk.Label(self.frame_ref, text='Latitude [dec]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lat_ref)
+        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_ref, text='Longitude [dec]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lon_ref)
+        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_ref, text='Altitude [m]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        spinbox = ttk.Spinbox(self.frame_ref, textvariable=self._altitude_ref, from_=0, to=8000, increment=1, width=4)
+        spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        button = ttk.Button(self.frame_ref, text='Find viewing direction', command=self.find_viewing_direction)
+        button.grid(row=row, column=0, columnspan=2, padx=2, pady=2, sticky='nsew')
+
+        self.frame_ref.grid_columnconfigure(1, weight=1)
+        self.frame_ref.grid_rowconfigure(1, weight=1)
+
+        # Figure setup
+        self.frame_fig = ttk.Frame(self.frame)
+        self.frame_fig.grid(row=0, column=1, rowspan=2, sticky='nw')
+
+        self._build_fig()
+
+        self.__draw_canv__()
+
+    def _build_fig(self):
+        """Build figure for adjust geometry based on a defined point"""
+        # Create figure
+        self.fig = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
+        self.ax = self.fig.subplots(1, 1)
+        self.ax.set_aspect(1)
+
+        # Figure colour
+        self.fig.set_facecolor('black')
+        for child in self.ax.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color('white')
+        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Image display
+        self.img_A = self.pyplis_worker.img_A.img
+        self.img_disp = self.ax.imshow(self.img_A, cmap=cm.gray, interpolation='none', vmin=0,
+                                       vmax=self.pyplis_worker.cam_specs._max_DN, aspect='equal')
+        self.ax.set_title('Reference point selection', color='white')
+
+        # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
+        self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+        self.img_canvas.get_tk_widget().grid(row=0, column=0)
+
+        # Bind click event to figure
+        self.fig.canvas.callbacks.connect('button_press_event', self.set_ref_pt)
+
+        # Draw canvas
+        self.q.put(1)
+
+    def set_ref_pt(self, event):
+        """Sets reference point from a click"""
+        if event.inaxes is self.ax:
+            self.pix_x = event.xdata
+            self.pix_y = event.ydata
+
+        try:
+            self.ref_pt_plot.remove()
+        except AttributeError:
+            pass
+
+        self.ref_pt_plot = self.ax.scatter(self.pix_x, self.pix_y, c='orange')
+
+        self.q.put(1)
 
     @property
     def lat(self):
@@ -846,6 +942,30 @@ class GeomSettings:
     @volcano.setter
     def volcano(self, value):
         self._volcano.set(value)
+
+    @property
+    def lat_ref(self):
+        return self._lat_ref.get()
+
+    @lat_ref.setter
+    def lat_ref(self, value):
+        self._lat_ref.set(value)
+
+    @property
+    def lon_ref(self):
+        return self._lon_ref.get()
+
+    @lon_ref.setter
+    def lon_ref(self, value):
+        self._lon_ref.set(value)
+
+    @property
+    def altitude_ref(self):
+        return self._altitude_ref.get()
+
+    @altitude_ref.setter
+    def altitude_ref(self, value):
+        self._altitude_ref.set(value)
 
     def gather_geom(self):
         """Gathers all geometry data and adds it to the dictionary"""
@@ -924,6 +1044,34 @@ class GeomSettings:
         """Draws geometry through pyplis"""
         self.update_geom()
         self.pyplis_worker.show_geom()
+
+    def find_viewing_direction(self):
+        """
+        Uses reference point to calculate the viewing direction of camera using pyplis function
+        :return:
+        """
+        if not hasattr(self, 'pix_x'):
+            messagebox.showerror('Run error',
+                                 'User must define reference point location on the image before viewing direction can be estimated')
+            return
+        geo_point = GeoPoint(self.lat_ref, self.lon_ref, self.altitude_ref, name=self.volcano)
+        elev_cam, az_cam, geom_old, map = self.pyplis_worker.meas.meas_geometry.find_viewing_direction(
+            pix_x=self.pix_x, pix_y=self.pix_y, pix_pos_err=10, geo_point=geo_point, draw_result=True)
+        map.fig.show()
+        self.elev = np.round(elev_cam, 1)
+        self.azim = np.round(az_cam, 1)
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                self.img_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
 
 
 class LoadSaveProcessingSettings:
@@ -1005,6 +1153,9 @@ class LoadSaveProcessingSettings:
 
         # Finally, overwrite old default file with new file
         os.replace(filename_temp, filename)
+
+        messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
+                                              'These will now be the program start-up settings.')
 
 
 class PlumeBackground(LoadSaveProcessingSettings):
@@ -1462,6 +1613,7 @@ class DOASFOVSearchFrame:
         self.spec_specs = spec_specs
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_doas_fov = self
+        self.q = queue.Queue()
 
         self.dpi = fig_setts.dpi
         self.fig_size_doas_calib_img = fig_setts.fig_doas_calib_img
@@ -1508,12 +1660,14 @@ class DOASFOVSearchFrame:
 
         # Finalise canvas and gridding
         self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame)
-        self.img_canvas.draw()
         self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
 
         self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame)
-        self.fit_canvas.draw()
         self.fit_canvas.get_tk_widget().pack(side=tk.LEFT)
+
+        # Setup thread-safe drawing
+        self.__draw_canv__()
+        self.q.put(1)
 
         # If there is a calibration already available we can plot it
         if self.pyplis_worker.calib_pears is not None:
@@ -1543,16 +1697,30 @@ class DOASFOVSearchFrame:
         self.img_corr = img_corr
         self.fov = fov
 
-        self.img_canvas.draw()
-        self.fit_canvas.draw()
+        self.q.put(1)
 
     def close_frame(self):
         """
         Closes frame
         :return:
         """
+        self.q.put(2)
         self.in_frame = False
         self.frame.destroy()
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.img_canvas.draw()
+                    self.fit_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
 
 
 class CellCalibFrame:
@@ -2165,7 +2333,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # Image display
         self.img_tau = self.pyplis_worker.img_tau_prev.img
         self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
-                                       vmax=0.5, aspect='auto')
+                                       vmax=0.5, aspect='equal')
         self.ax.set_title('Optical flow', color='white')
 
         # Draw optical flow
@@ -2181,9 +2349,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
 
-        # Finalise canvas and gridding
+        # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
-        self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=0, column=0)
 
         # Add rectangle crop functionality
@@ -2200,7 +2367,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         if self.roi_end_x <= self.cam_specs.pix_num_x and self.roi_end_y <= self.cam_specs.pix_num_y:
             self.rect = self.ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y),
                                                             crop_x, crop_y, edgecolor='green', fill=False, linewidth=3))
-            self.img_canvas.draw()
 
     def _build_fig_vel(self):
         """
@@ -2234,8 +2400,10 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # Finalise canvas and gridding
         self.vel_canvas = FigureCanvasTkAgg(self.fig_vel, master=self.frame_fig)
-        self.vel_canvas.draw()
         self.vel_canvas.get_tk_widget().grid(row=0, column=1)
+
+        # Draw all canvases
+        self.q.put(1)
 
     def draw_roi(self, eclick, erelease):
         """
@@ -2301,9 +2469,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-            # self.img_canvas.draw()
-            # self.vel_canvas.draw()
-
     def close_frame(self):
         """
         Closes frame and makes sure current values are correct
@@ -2330,6 +2495,144 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                 if self.in_frame:
                     self.img_canvas.draw()
                     self.vel_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
+
+
+class LightDilutionSettings(LoadSaveProcessingSettings):
+    """
+        Optical flow settings frame
+
+            To add a new variable:
+            1. Add it as a tk variable in initiate variables
+            2. Add it to the vars dictionary, along with its type
+            3. Add its associated widgets
+            4. Add its associated property with get and set options
+            5. Add its default value to processing_setting_defaults.txt
+        """
+
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_dilution = self
+        self.q = queue.Queue()
+        self.cam_specs = cam_specs
+        self.fig_setts = fig_setts
+        self.dpi = self.fig_setts.dpi
+        self.fig_size = self.fig_setts.fig_SO2
+        self.img_A = None
+        self.img_B = None
+
+        self.pdx = 5
+        self.pdy = 5
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """
+        Initiates all tkinter variables
+        :return:
+        """
+        self.vars = {}
+
+        # Load default values
+        self.load_defaults()
+
+    def generate_frame(self):
+        """
+        Generates widget settings frame
+        :return:
+        """
+        self.in_frame = True
+
+        self.frame = tk.Toplevel()
+        self.frame.title('Optical flow settings')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        # -------------------------
+        # Build optical flow figure
+        # -------------------------
+        self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        self._build_fig_img()
+
+        butt_frame = ttk.Frame(self.frame)
+        butt_frame.grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+
+        # Apply button
+        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # Set default button
+        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
+        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.__draw_canv__()
+
+    def _build_fig_img(self):
+        """Build figure frame for dilution correction"""
+        # Create figure
+        self.fig = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
+        self.ax = self.fig.subplots(1, 1)
+        self.ax.set_aspect(1)
+
+        # Figure colour
+        self.fig.set_facecolor('black')
+        for child in self.ax.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color('white')
+        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Image display
+        self.img_A = self.pyplis_worker.img_A.img
+        self.img_disp = self.ax.imshow(self.img_A, cmap=cm.Oranges, interpolation='none', vmin=0,
+                                       vmax=0.5, aspect='equal')
+        self.ax.set_title('Light dilution', color='white')
+
+        # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
+        self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+        self.img_canvas.get_tk_widget().grid(row=0, column=0)
+
+        # Draw canvas
+        self.q.put(1)
+
+    def gather_vars(self):
+        """
+        Gathers all parameters and sets them to pyplis worker
+        :return:
+        """
+
+    def close_frame(self):
+        """
+        Closes frame and makes sure current values are correct
+        :return:
+        """
+        self.in_frame = False
+
+        # Ensure current values are correct
+        for key in self.vars:
+            setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
+
+        # Close drawing function (it is started again on opening the frame
+        self.q.put(2)
+
+        # Close frame
+        self.frame.destroy()
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.img_A_canvas.draw()
+                    self.img_B_canvas.draw()
             else:
                 return
         except queue.Empty:

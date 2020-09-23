@@ -130,7 +130,7 @@ class ImageFigure:
                 child.set_color('white')
         self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
         self.img_disp = self.ax.imshow(self.image, cmap=cm.gray, interpolation='none', vmin=0,
-                                       vmax=self.specs._max_DN, aspect='auto')  # FOR GREYSCALE
+                                       vmax=self.specs._max_DN, aspect='equal')  # FOR GREYSCALE
         self.img_disp_row, = self.ax.plot([0, self.specs.pix_num_x], [self._init_img_row, self._init_img_row],
                                           color=self._row_colour, lw=2)
         self.img_disp_col, = self.ax.plot([self._init_img_col, self._init_img_col], [0, self.specs.pix_num_y],

@@ -99,6 +99,7 @@ class PyplisWorker:
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
         self.fig_opt = None             # Figure for displaying optical flow
+        self.fig_dilution = None        # Figure for displaying light dilution
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
         self.calib_pears = None         # Pyplis object holding functions to plot results
         self.doas_fov_x = None          # X FOV of DOAS (from pyplis results)
