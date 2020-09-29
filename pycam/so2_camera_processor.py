@@ -8,14 +8,15 @@ from __future__ import (absolute_import, division)
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line
 
-import queue
-import threading
 import pyplis
+from pyplis import LineOnImage
 from pyplis.custom_image_import import load_picam_png
 from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
+from pyplis.dilutioncorr import DilutionCorr
 import pydoas
+
 from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
@@ -27,7 +28,8 @@ import warnings
 from math import log10, floor
 import datetime
 import time
-
+import queue
+import threading
 
 class PyplisWorker:
     """
@@ -86,6 +88,9 @@ class PyplisWorker:
         self.PCS_lines = []
         self.maxrad_doas = self.spec_specs.fov * 1.1        # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
+        self.light_dil_lines = []
+        self.ambient_roi = [0, 0, 0, 0]    # Ambient intensity ROI coordinates for light dilution
+        self.I0_MIN = 0     # Minimum intensity for dilution fit
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -213,7 +218,7 @@ class PyplisWorker:
         self.perform_cell_calibration(plot=False, set_bg_img=False)
 
     def update_cam_geom(self, geom_info):
-        """Updates camera geometry info by creating a new object
+        """Updates camera geometry info by creating a new object and updating MeasSetup object
 
         Parameters
         ----------
@@ -771,6 +776,58 @@ class PyplisWorker:
 
         return mask
 
+    def model_light_dilution(self, lines=None, draw=True, **kwargs):
+        """
+        Models light dilution and applies correction to images
+        :param lines:   list    List of pyplis LineOnImage objects for light dilution intensity extraction
+        :param draw:    bool    Defines whether results are to be ploted
+        :param kwargs:  Any further settings to be passed to DilutionCorr object
+        :return:
+        """
+        # If we are passed lines, we use these, otherwise we use already defined lines
+        if lines is not None:
+            self.light_dil_lines = lines
+
+        # Ensure we only use the correct objects for processing
+        self.light_dil_lines = [f for f in self.light_dil_lines if isinstance(f, LineOnImage)]
+
+        # Compute distances to plume
+        pix_dists, _, plume_dists = self.meas.meas_geometry.compute_all_integration_step_lengths()
+
+        # Create the pyplis light dilution object
+        dil = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
+
+        # Determine distances to the two lines defined above (every 6th pixel)
+        for line_id in dil.line_ids:
+            dil.det_topo_dists_line(line_id)
+
+        # Estimate ambient intensity using defined ROI
+        amb_int_on = self.vigncorr_A.crop(self.ambient_roi, True).mean()
+        amb_int_off = self.vigncorr_B.crop(self.ambient_roi, True).mean()
+
+        # perform dilution anlysis and retrieve extinction coefficients (on-band)
+        ext_on, _, _, ax0 = dil.apply_dilution_fit(img=self.vigncorr_A,
+                                                   rad_ambient=amb_int_on,
+                                                   i0_min=self.I0_MIN,
+                                                   plot=draw)
+        # Off-band
+        ext_off, _, _, ax1 = dil.apply_dilution_fit(img=self.vigncorr_B,
+                                                   rad_ambient=amb_int_off,
+                                                   i0_min=self.I0_MIN,
+                                                   plot=draw)
+
+        # Update light dilution plots if requested
+        if draw:
+            # Plot the results in a 3D map
+            basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
+            basemap.fig.show()
+
+            ax0.set_ylabel("Terrain radiances (on band)")
+            ax1.set_ylabel("Terrain radiances (off band)")
+            ax0.figure.show()
+            ax1.figure.show()
+
+
     def update_doas_buff(self, doas_dict):
         """
         Updates doas buffer
@@ -866,6 +923,8 @@ class PyplisWorker:
         """
         self.vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
         self.vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
+        self.vigncorr_A.edit_log['vigncorr'] = True
+        self.vigncorr_B.edit_log['vigncorr'] = True
 
         if self.auto_param_bg and params is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc

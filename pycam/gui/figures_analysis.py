@@ -722,6 +722,7 @@ class GeomSettings:
         self._lat = tk.StringVar()
         self._lon = tk.StringVar()
         self._altitude = tk.IntVar()
+        self._alt_offset = tk.IntVar()
         self._elev = tk.DoubleVar()
         self._azim = tk.DoubleVar()
         self._volcano = tk.StringVar()
@@ -732,6 +733,7 @@ class GeomSettings:
         self.geom_dict = {'lat': None,
                           'lon': None,
                           'altitude': None,
+                          'alt_offset': None,
                           'elev': None,
                           'azim': None}    # List of attributes
 
@@ -772,7 +774,13 @@ class GeomSettings:
         row += 1
         label = ttk.Label(self.frame_geom, text='Altitude [m]:')
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._altitude, from_=0, to=8000, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._altitude, from_=0, to=8848, increment=1, width=4)
+        spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_geom, text='Altitude offset [m]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._alt_offset, from_=0, to=9999, increment=1, width=4)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -806,7 +814,7 @@ class GeomSettings:
         button = ttk.Button(self.frame_geom, text='Load settings', command=self.load_instrument_setup)
         button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
 
-        button = ttk.Button(self.frame_geom, text='Set as default', command=self.set_default_instrument_setup)
+        button = ttk.Button(self.frame_geom, text='Set default', command=self.set_default_instrument_setup)
         button.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -920,6 +928,14 @@ class GeomSettings:
         self._altitude.set(value)
 
     @property
+    def alt_offset(self):
+        return self._alt_offset.get()
+
+    @alt_offset.setter
+    def alt_offset(self, value):
+        self._alt_offset.set(value)
+
+    @property
     def elev(self):
         return self._elev.get()
 
@@ -1023,7 +1039,7 @@ class GeomSettings:
                 value = value.replace('\n', '')
                 if key == 'volcano':
                     setattr(self, key, value)
-                elif key == 'altitude':
+                elif key == 'altitude' or key == 'alt_offset':
                     setattr(self, key, int(value))
                 else:
                     setattr(self, key, float(value))
@@ -2519,11 +2535,22 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.fig_dilution = self
         self.q = queue.Queue()
         self.cam_specs = cam_specs
+        self.pix_num_x = self.cam_specs.pix_num_x
+        self.pix_num_y = self.cam_specs.pix_num_y
         self.fig_setts = fig_setts
         self.dpi = self.fig_setts.dpi
         self.fig_size = self.fig_setts.fig_SO2
         self.img_A = None
         self.img_B = None
+
+        # Set up lines for drawing light dilution extraction and the colours they will be
+        self.max_lines = 5
+        self.lines_A = [None] * self.max_lines
+        self.lines_pyplis = [None] * self.max_lines
+        cmap = cm.get_cmap("jet", 100)
+        self.line_colours = [cmap(int(f * (100 / (self.max_lines - 1)))) for f in
+                             range(self.max_lines)]  # Line colours
+        self.line_coords = []
 
         self.pdx = 5
         self.pdy = 5
@@ -2539,10 +2566,44 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Initiates all tkinter variables
         :return:
         """
-        self.vars = {}
+        self._current_line = tk.IntVar()
+        self.current_line = 1
+
+        self._draw_meth = tk.IntVar()
+        self.draw_meth = 1
+
+        self.vars = {'amb_roi': list,
+                     'I0_MIN': int}
+
+        self.amb_roi = [0, 0, 0, 0]
+        self._I0_MIN = tk.IntVar()
 
         # Load default values
         self.load_defaults()
+
+    @property
+    def I0_MIN(self):
+        return self._I0_MIN.get()
+
+    @I0_MIN.setter
+    def I0_MIN(self, value):
+        self._I0_MIN.set(value)
+
+    @property
+    def current_line(self):
+        return self._current_line.get()
+
+    @current_line.setter
+    def current_line(self, value):
+        self._current_line.set(value)
+
+    @property
+    def draw_meth(self):
+        return self._draw_meth.get()
+
+    @draw_meth.setter
+    def draw_meth(self, value):
+        self._draw_meth.set(value)
 
     def generate_frame(self):
         """
@@ -2555,23 +2616,54 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.frame.title('Optical flow settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
+
+
+        # Line settings
+        line_frame = ttk.LabelFrame(self.frame, text='Settings', borderwidth=5)
+        line_frame.grid(row=0, column=0, sticky='nw')
+
+        row = 0
+        lab = ttk.Label(line_frame, text='Minimum intensity:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(line_frame, textvariable=self._I0_MIN, from_=0, to=self.cam_specs._max_DN, increment=1)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+
+        row += 1
+        lab = ttk.Label(line_frame, text='Edit line:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(line_frame, textvariable=self._current_line, from_=1, to=self.max_lines)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+
+        del_butt = ttk.Button(line_frame, text='Delete line', command=lambda: self.del_line(self.current_line - 1))
+        del_butt.grid(row=row, column=2)
+
+        row += 1
+        check_butt_1 = ttk.Radiobutton(line_frame, text='Draw line', variable=self._draw_meth, value=1,
+                                       command=self.event_select)
+        check_butt_1.grid(row=row, column=0)
+        check_butt_2 = ttk.Radiobutton(line_frame, text='Draw ambient region', variable=self._draw_meth, value=0,
+                                       command=self.event_select)
+        check_butt_2.grid(row=row, column=1)
+        self.draw_meth = 1
+
+        # Buttons frame
+        butt_frame = ttk.Frame(self.frame)
+        butt_frame.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # Run button
+        butt = ttk.Button(butt_frame, text='Run', command=self.run_dil_corr)
+        butt.grid(row=0, column=0, sticky='sw', padx=self.pdx, pady=self.pdy)
+
+        butt = ttk.Button(butt_frame, text='Save defaults', command=self.set_defaults)
+        butt.grid(row=0, column=1, sticky='sw', padx=self.pdx, pady=self.pdy)
+
         # -------------------------
-        # Build optical flow figure
+        # Build light dilution flow figure
         # -------------------------
         self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
-        self.frame_fig.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        self.frame_fig.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
         self._build_fig_img()
-
-        butt_frame = ttk.Frame(self.frame)
-        butt_frame.grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
-
-        # Apply button
-        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
-        butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
-        # Set default button
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self._build_fig_rads()
 
         self.__draw_canv__()
 
@@ -2591,15 +2683,155 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Image display
         self.img_A = self.pyplis_worker.img_A.img
-        self.img_disp = self.ax.imshow(self.img_A, cmap=cm.Oranges, interpolation='none', vmin=0,
-                                       vmax=0.5, aspect='equal')
+        self.img_disp = self.ax.imshow(self.img_A, cmap=cm.gray, interpolation='none', vmin=0,
+                                       vmax=self.cam_specs._max_DN, aspect='equal')
         self.ax.set_title('Light dilution', color='white')
 
         # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
         self.img_canvas.get_tk_widget().grid(row=0, column=0)
 
+        # Bind click event to figure
+        self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.draw_line)
+
+        # Plot any existing lines
+        for i, line in enumerate(self.lines_pyplis):
+            if line is not None:
+                self.ax.plot([line.x0, line.x1], [line.y0, line.y1], color=self.line_colours[i])
+        crop_x = self.amb_roi[2] - self.amb_roi[0]
+        crop_y = self.amb_roi[3] - self.amb_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+                                                        crop_x, crop_y, edgecolor='green', fill=False, linewidth=3))
+
         # Draw canvas
+        self.q.put(1)
+
+    def _build_fig_rads(self):
+        """Builds radiance figures"""
+        self.fig_rad_on = plt.Figure()
+        self.fig_rad_off = plt.Figure()
+
+        self.rads_canvas = FigureCanvasTkAgg(self.fig_rad_on, master=self.frame_fig)
+        self.rads_canvas.get_tk_widget().grid(row=1, column=0)
+
+
+
+    def event_select(self):
+        """Controls plot interactive events"""
+        if self.draw_meth:
+            self.rs.disconnect_events()
+            self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.draw_line)
+        else:
+            self.fig.canvas.mpl_disconnect(self.line_draw)
+            self.rs = widgets.RectangleSelector(self.ax, self.draw_roi, drawtype='box',
+                                                rectprops=dict(facecolor='red', edgecolor='blue', alpha=0.5, fill=True))
+
+    def draw_line(self, event):
+        """Draws line on image for light dilution following click event"""
+        # Python indices start at 0, so need to set the correct index for list indexing
+        line_idx = self.current_line - 1
+
+        if event.inaxes is self.ax:
+            idx = len(self.line_coords)
+
+            # If we are about to overwrite an old line, we first check that the user wants this
+            if idx == 1:
+                if self.lines_pyplis[line_idx] is not None:
+                    resp = messagebox.askokcancel('Overwriting line',
+                                                  'You are about to overwrite an existing line.\n'
+                                                  'This could affect processing results if it is currently running.')
+                    self.frame.attributes('-topmost', 1)
+                    self.frame.attributes('-topmost', 0)
+                    if not resp:
+                        return
+
+            # If 2 points are already defined we want to clear these points
+            if idx == 2:
+                self.line_coords = []
+                idx = 0  # Resetting index for 'point' definition
+
+            # Update ica_coords with new coordinates
+            self.line_coords.append((int(np.round(event.xdata)), int(np.round(event.ydata))))
+
+            # Remove last click point and scatter current click
+            try:
+                self.scat_ica_point.remove()
+            except:
+                pass
+            self.scat_ica_point = self.ax.scatter(event.xdata, event.ydata, s=50, marker='x', color='k', lw=1)
+
+            self.ax.set_xlim(0, self.pix_num_x - 1)
+            self.ax.set_ylim(self.pix_num_y - 1, 0)
+
+            if idx == 1:
+                # Delete scatter point
+                try:
+                    self.scat_ica_point.remove()
+                except:
+                    pass
+
+                # Delete previous line if it exists
+                if self.lines_pyplis[line_idx] is not None:
+                    self.del_line(line_idx)
+
+                # Update pyplis line object and objects in pyplis_worker
+                lbl = "{}".format(line_idx)
+                self.lines_pyplis[line_idx] = LineOnImage(x0=self.line_coords[0][0],
+                                                           y0=self.line_coords[0][1],
+                                                           x1=self.line_coords[1][0],
+                                                           y1=self.line_coords[1][1],
+                                                           normal_orientation="right",
+                                                           color=self.line_colours[line_idx],
+                                                           line_id=lbl)
+
+                self.pyplis_worker.light_dil_lines = self.lines_pyplis
+
+                # Plot pyplis object on figure
+                self.lines_A[line_idx] = self.ax.plot([self.line_coords[0][0], self.line_coords[1][0]],
+                                [self.line_coords[0][1], self.line_coords[1][1]], color=self.line_colours[line_idx])
+
+                # Auto increment the line we are currently drawing, so you don't have to manually move to next line
+                if self.current_line < self.max_lines:
+                    self.current_line += 1
+
+            self.q.put(1)
+
+    def del_line(self, idx):
+        """Deletes line"""
+        # Get line
+        try:
+            self.lines_A[idx].pop(0).remove()
+            self.lines_A[idx] = None
+            self.lines_pyplis[idx] = None
+        except AttributeError:
+            pass
+
+        # Update pyplis object lines
+        self.pyplis_worker.light_dil_lines = self.lines_pyplis
+
+        self.q.put(1)
+
+    def draw_roi(self, eclick, erelease):
+        """Draws ROI rectangle for ambient intensity"""
+        try:  # Delete previous rectangle, if it exists
+            self.rect.remove()
+        except AttributeError:
+            pass
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+        self.rect = self.ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y),
+                                                        crop_X, crop_Y, edgecolor='green', fill=False, linewidth=3))
+
+        # Only update roi_abs if use_roi is true
+        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.pyplis_worker.ambient_roi = self.amb_roi
+
         self.q.put(1)
 
     def gather_vars(self):
@@ -2607,6 +2839,13 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Gathers all parameters and sets them to pyplis worker
         :return:
         """
+        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.pyplis_worker.I0_MIN = self.I0_MIN
+
+    def run_dil_corr(self):
+        """Wrapper for pyplis_worker light dilution correction function"""
+        self.gather_vars()
+        self.pyplis_worker.model_light_dilution()
 
     def close_frame(self):
         """
@@ -2614,13 +2853,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.in_frame = False
-
-        # Ensure current values are correct
-        for key in self.vars:
-            setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
-
-        # Close drawing function (it is started again on opening the frame
-        self.q.put(2)
 
         # Close frame
         self.frame.destroy()
@@ -2631,8 +2863,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             update = self.q.get(block=False)
             if update == 1:
                 if self.in_frame:
-                    self.img_A_canvas.draw()
-                    self.img_B_canvas.draw()
+                    self.img_canvas.draw()
             else:
                 return
         except queue.Empty:
