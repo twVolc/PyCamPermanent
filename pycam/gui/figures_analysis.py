@@ -23,7 +23,7 @@ from tkinter import filedialog
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import matplotlib.cm as cm
 import matplotlib.widgets as widgets
 import matplotlib.patches as patches
@@ -350,23 +350,24 @@ class ImageSO2:
         self.frame_analysis = ttk.LabelFrame(self.frame, text='Analysis')
 
         # Number of lines
+        row = 0
         label = ttk.Label(self.frame_analysis, text='Num. ICAs:')
-        label.grid(row=0, column=0, sticky='w')
+        label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._num_ica, from_=1, to=self.max_lines,
                                     increment=1, command=self.update_ica_num)
-        self.ica_spin.grid(row=0, column=1, sticky='ew')
+        self.ica_spin.grid(row=row, column=1, sticky='ew')
 
         # Line to edit
+        row += 1
         label = ttk.Label(self.frame_analysis, text='Edit ICA:')
-        label.grid(row=1, column=0, sticky='w')
+        label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_edit_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._current_ica, from_=1, to=self.num_ica,
                                          increment=1)
-        self.ica_edit_spin.grid(row=1, column=1, sticky='ew')
+        self.ica_edit_spin.grid(row=row, column=1, sticky='ew')
 
         # Flip ICA normal button
         self.ica_flip_butt = ttk.Button(self.frame_analysis, text='Flip ICA normal', command=self.flip_ica_normal)
-        self.ica_flip_butt.grid(row=1, column=2, sticky='nsew', padx=2, pady=2)
-
+        self.ica_flip_butt.grid(row=row, column=2, sticky='nsew', padx=2, pady=2)
 
     def _build_options(self):
         """Builds options widget"""
@@ -705,7 +706,7 @@ class GeomSettings:
     This object should be instantiated on startup, so a conf file needs to do this, and then the generate_frame() method
     should be used at the point at which it is required
     """
-    def __init__(self, parent=None, geom_path=FileLocator.CAM_GEOM, fig_setts=gui_setts):
+    def __init__(self, parent=None, generate_frame=False, geom_path=FileLocator.CAM_GEOM, fig_setts=gui_setts):
         self.parent = parent
         self.frame = None
         self.geom_path = geom_path
@@ -715,6 +716,12 @@ class GeomSettings:
         self.q = queue.Queue()
 
         self.pyplis_worker = pyplis_worker
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
 
     def initiate_variables(self):
         """Initiates object, and builds frame if parent is a tk.Frame"""
@@ -744,15 +751,22 @@ class GeomSettings:
             self.filename = f.readline()
         self.load_instrument_setup(self.filename)
 
-        # If class is instantiated with a Frame we generate the widgets
-        if self.parent is not None:
-            self.generate_frame(self.parent)
-
-    def generate_frame(self, parent):
-        """Generates the GUI for this frame, given the parent frame. This method of generating the frame means that
+    def generate_frame(self):
+        """Generates the GUI for this frame. This method of generating the frame means that
         the object can exist, with variables being instantiated, prior to building the frame"""
-        self.parent = parent
-        self.frame = ttk.Frame(self.parent)
+        # If we are already in the frame, just lift the frame
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
+        # Generate top level frame
+        self.frame = tk.Toplevel()
+        self.frame.title('Measurement geometry configuration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        self.in_frame = True
+
         # ----------------------------------------------------------------------
         # Tkinter widgets
         self.frame_geom = ttk.LabelFrame(self.frame, text='Instrument geometry', borderwidth=2)
@@ -1077,6 +1091,11 @@ class GeomSettings:
         self.elev = np.round(elev_cam, 1)
         self.azim = np.round(az_cam, 1)
 
+    def close_frame(self):
+        """Closes frame"""
+        self.frame.destroy()
+        self.in_frame = False
+
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
@@ -1181,6 +1200,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def __init__(self, generate_frame=False):
         super().__init__()
         self.frame = None
+        self.in_frame = False
 
         if generate_frame:
             self.initiate_variables()
@@ -1189,35 +1209,85 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def initiate_variables(self):
         """Prepares all tk variables"""
         self.vars = {'bg_mode': int,
-                     'auto_param': int}
+                     'auto_param': int,
+                     'polyfit_2d_thresh': int,
+                     'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
+                     'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
+                     'ref_check_mode': int}
 
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
+        self._polyfit_2d_thresh = tk.IntVar()
+        self._ref_check_lower = tk.DoubleVar()
+        self._ref_check_upper = tk.DoubleVar()
+        self._ref_check_mode = tk.IntVar()
 
         self.load_defaults()
 
     def generate_frame(self):
         """Generates frame and associated widgets"""
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.frame = tk.Toplevel()
         self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
         self.frame.title('Background intensity settings')
 
+        self.in_frame = True
+
         # Options widget
         self.opt_frame = ttk.LabelFrame(self.frame, text='Settings')
-        self.opt_frame.pack(side=tk.LEFT)
+        self.opt_frame.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Mode option menu
         row = 0
+        label = tk.Label(self.opt_frame, text='Intensity threshold (mode 0):')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_thresh, from_=0,
+                           to=pyplis_worker.cam_specs._max_DN, increment=1)
+        spin.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+
+        row += 1
         label = tk.Label(self.opt_frame, text='Pyplis background model:')
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode,
                                       pyplis_worker.plume_bg.mode, *pyplis_worker.BG_CORR_MODES)
-        self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         # Automatic reference areas
         row += 1
         self.auto = ttk.Checkbutton(self.opt_frame, text='Automatic reference areas', variable=self._auto_param)
         self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
+
+        # Reference are check
+        row += 1
+        ref_check_frame = ttk.LabelFrame(self.opt_frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
+        ref_check_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+
+        check = ttk.Checkbutton(ref_check_frame, text='Use thresholds to omit data', variable=self._ref_check_mode)
+        check.grid(row=0, column=0, columnspan=3, sticky='w')
+
+        lab = ttk.Label(ref_check_frame, text='Threshold lower [molecules/cm2]:')
+        lab.grid(row=1, column=0, sticky='w')
+        thresh_spin = ttk.Spinbox(ref_check_frame, textvariable=self._ref_check_lower, from_=-100, to=0, increment=1,
+                                  width=4)
+        thresh_spin.grid(row=1, column=1, sticky='w')
+        thresh_spin.set('{}'.format(int(self._ref_check_lower.get())))
+        lab = ttk.Label(ref_check_frame, text='e16')
+        lab.grid(row=1, column=2, sticky='w')
+
+        lab = ttk.Label(ref_check_frame, text='Threshold upper [molecules/cm2]:')
+        lab.grid(row=2, column=0, sticky='w')
+        thresh_spin = ttk.Spinbox(ref_check_frame, textvariable=self._ref_check_upper, from_=0, to=100, increment=1,
+                                  width=4)
+        thresh_spin.grid(row=2, column=1, sticky='w')
+        thresh_spin.set('{}'.format(int(self._ref_check_upper.get())))
+        lab = ttk.Label(ref_check_frame, text='e16')
+        lab.grid(row=2, column=2, sticky='w')
+
+        ref_check_frame.grid_columnconfigure(2, weight=1)
 
         # Buttons
         row += 1
@@ -1256,9 +1326,45 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def auto_param(self, value):
         self._auto_param.set(value)
 
+    @property
+    def polyfit_2d_thresh(self):
+        return self._polyfit_2d_thresh.get()
+
+    @polyfit_2d_thresh.setter
+    def polyfit_2d_thresh(self, value):
+        self._polyfit_2d_thresh.set(value)
+
+    @property
+    def ref_check_lower(self):
+        return self._ref_check_lower.get() * 10 ** 16
+
+    @ref_check_lower.setter
+    def ref_check_lower(self, value):
+        self._ref_check_lower.set(value / 10 ** 16)
+
+    @property
+    def ref_check_upper(self):
+        return self._ref_check_upper.get() * 10 ** 16
+
+    @ref_check_upper.setter
+    def ref_check_upper(self, value):
+        self._ref_check_upper.set(value / 10 ** 16)
+
+    @property
+    def ref_check_mode(self):
+        return self._ref_check_mode.get()
+
+    @ref_check_mode.setter
+    def ref_check_mode(self, value):
+        self._ref_check_mode.set(value)
+
     def gather_vars(self):
         pyplis_worker.plume_bg.mode = self.bg_mode
         pyplis_worker.auto_param_bg = self.auto_param
+        pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_thresh
+        pyplis_worker.ref_check_lower = self.ref_check_lower
+        pyplis_worker.ref_check_upper = self.ref_check_upper
+        pyplis_worker.ref_check_mode = self.ref_check_mode
 
     def run_process(self):
         """Main processing for background modelling and displaying the results"""
@@ -1271,7 +1377,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
         """Restore current settings"""
         self.bg_mode = pyplis_worker.plume_bg.mode
         self.auto_param = pyplis_worker.auto_param_bg
+        self.polyfit_2d_thresh = pyplis_worker.polyfit_2d_mask_thresh
+        self.ref_check_lower = pyplis_worker.ref_check_lower
+        self.ref_check_upper = pyplis_worker.ref_check_upper
+        self.ref_check_mode = pyplis_worker.ref_check_mode
         self.frame.destroy()
+        self.in_frame = False
 
 
 class ProcessSettings(LoadSaveProcessingSettings):
@@ -1338,6 +1449,11 @@ class ProcessSettings(LoadSaveProcessingSettings):
         Builds tkinter frame for settings
         :return:
         """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.frame = tk.Toplevel()
         self.frame.protocol('WM_DELETE_WINDOW', self.close_window)
         self.frame.title('Post-processing settings')
@@ -1659,6 +1775,11 @@ class DOASFOVSearchFrame:
         Generates frame
         :return:
         """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.frame = tk.Toplevel()
         self.frame.title('DOAS FOV alignment')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
@@ -1779,6 +1900,11 @@ class CellCalibFrame:
         Generates frame
         :return:
         """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.frame = tk.Toplevel()
         self.frame.title('Cell calibration')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
@@ -2107,6 +2233,11 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         Generates widget settings frame
         :return:
         """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.in_frame = True
 
         self.frame = tk.Toplevel()
@@ -2573,10 +2704,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.draw_meth = 1
 
         self.vars = {'amb_roi': list,
-                     'I0_MIN': int}
+                     'I0_MIN': int,
+                     'tau_thresh': float}
 
         self.amb_roi = [0, 0, 0, 0]
         self._I0_MIN = tk.IntVar()
+        self._tau_thresh = tk.DoubleVar()
 
         # Load default values
         self.load_defaults()
@@ -2588,6 +2721,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     @I0_MIN.setter
     def I0_MIN(self, value):
         self._I0_MIN.set(value)
+
+    @property
+    def tau_thresh(self):
+        return self._tau_thresh.get()
+
+    @tau_thresh.setter
+    def tau_thresh(self, value):
+        self._tau_thresh.set(value)
 
     @property
     def current_line(self):
@@ -2610,25 +2751,25 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Generates widget settings frame
         :return:
         """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.in_frame = True
 
         self.frame = tk.Toplevel()
         self.frame.title('Optical flow settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
-
+        frame_setts = ttk.Frame(self.frame)
+        frame_setts.grid(row=0, column=0, sticky='nsew')
 
         # Line settings
-        line_frame = ttk.LabelFrame(self.frame, text='Settings', borderwidth=5)
-        line_frame.grid(row=0, column=0, sticky='nw')
+        line_frame = ttk.LabelFrame(frame_setts, text='Settings', borderwidth=5)
+        line_frame.grid(row=0, column=0, padx=2, pady=2, sticky='nsew')
 
         row = 0
-        lab = ttk.Label(line_frame, text='Minimum intensity:')
-        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(line_frame, textvariable=self._I0_MIN, from_=0, to=self.cam_specs._max_DN, increment=1)
-        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-
-        row += 1
         lab = ttk.Label(line_frame, text='Edit line:')
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(line_frame, textvariable=self._current_line, from_=1, to=self.max_lines)
@@ -2646,24 +2787,46 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         check_butt_2.grid(row=row, column=1)
         self.draw_meth = 1
 
+        right_frame = ttk.Frame(self.frame)
+        right_frame.grid(row=0, column=1)
+
+        # # Threshold value for plume mask
+        thresh_frame = ttk.LabelFrame(right_frame, text='Image thresholds')
+        thresh_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        row = 0
+        lab = ttk.Label(thresh_frame, text='Minimum intensity:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(thresh_frame, textvariable=self._I0_MIN, from_=0, to=self.cam_specs._max_DN, increment=1)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+
+        row += 1
+        label = ttk.Label(thresh_frame, text='\u03C4 threshold:')
+        label.grid(row=row, column=0, sticky='w', padx=2)
+        self.ica_edit_spin = ttk.Spinbox(thresh_frame, textvariable=self._tau_thresh, from_=0, to=1,
+                                         increment=0.005)
+        self.ica_edit_spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+
         # Buttons frame
-        butt_frame = ttk.Frame(self.frame)
-        butt_frame.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt_frame = ttk.Frame(right_frame)
+        butt_frame.grid(row=1, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Run button
         butt = ttk.Button(butt_frame, text='Run', command=self.run_dil_corr)
-        butt.grid(row=0, column=0, sticky='sw', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Save defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='sw', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         # -------------------------
         # Build light dilution flow figure
         # -------------------------
-        self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
         self._build_fig_img()
-        self._build_fig_rads()
+        self.frame_xtra_figs = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_xtra_figs.grid(row=0, column=2, rowspan=2, sticky='nsew')
+        self.fig_canvas_xtra = [[None, None], [None, None]]
 
         self.__draw_canv__()
 
@@ -2682,8 +2845,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
 
         # Image display
-        self.img_A = self.pyplis_worker.img_A.img
-        self.img_disp = self.ax.imshow(self.img_A, cmap=cm.gray, interpolation='none', vmin=0,
+        self.img_B = self.pyplis_worker.vigncorr_B_warped.img
+        self.img_disp = self.ax.imshow(self.img_B, cmap=cm.gray, interpolation='none', vmin=0,
                                        vmax=self.cam_specs._max_DN, aspect='equal')
         self.ax.set_title('Light dilution', color='white')
 
@@ -2705,16 +2868,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Draw canvas
         self.q.put(1)
-
-    def _build_fig_rads(self):
-        """Builds radiance figures"""
-        self.fig_rad_on = plt.Figure()
-        self.fig_rad_off = plt.Figure()
-
-        self.rads_canvas = FigureCanvasTkAgg(self.fig_rad_on, master=self.frame_fig)
-        self.rads_canvas.get_tk_widget().grid(row=1, column=0)
-
-
 
     def event_select(self):
         """Controls plot interactive events"""
@@ -2841,11 +2994,58 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         """
         self.pyplis_worker.ambient_roi = self.amb_roi
         self.pyplis_worker.I0_MIN = self.I0_MIN
+        self.pyplis_worker.tau_thresh = self.tau_thresh
 
     def run_dil_corr(self):
         """Wrapper for pyplis_worker light dilution correction function"""
+        if all(x is None for x in self.lines_pyplis):
+            messagebox.showerror('Run error',
+                                 'At least one line must be drawn for light dilution modelling to be performed')
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
         self.gather_vars()
         self.pyplis_worker.model_light_dilution()
+
+    def update_figs(self, figs):
+        """
+        Takes a dictionary of figures and puts them into canvases in current window
+        :param figs:    dict     Dictionary of figures
+        :return:
+        """
+        # First delete any pre-existing canvases
+        for row in self.fig_canvas_xtra:
+            for fig in row:
+                if fig is not None:
+                    fig.grid_forget()
+
+
+        # Loop through figures placing them into the figure array
+        figs_list = list(figs.keys())
+        if self.in_frame:
+            for i in range(2):
+                for x in range(2):
+                    idx = (i * 2) + x
+                    fig = figs[figs_list[idx]]
+
+                    if fig is not None:
+                        # Finalise canvas and gridding
+                        fig_frame = ttk.Frame(self.frame_xtra_figs)
+                        fig_frame.grid(row=i, column=x)
+
+                        # Adjust figure size
+                        fig.set_size_inches(self.fig_setts.fig_dil[0], self.fig_setts.fig_dil[1], forward=True)
+
+                        self.fig_canvas_xtra[i][x] = FigureCanvasTkAgg(fig, master=fig_frame)
+                        self.fig_canvas_xtra[i][x].get_tk_widget().pack(side=tk.TOP)
+                        self.fig_canvas_xtra[i][x].draw()
+
+                        # Add toolbar so figures can be saved
+                        toolbar = NavigationToolbar2Tk(self.fig_canvas_xtra[i][x], fig_frame)
+                        toolbar.update()
+                        self.fig_canvas_xtra[i][x]._tkcanvas.pack(side=tk.TOP)
+
 
     def close_frame(self):
         """

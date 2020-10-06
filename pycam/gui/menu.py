@@ -70,7 +70,7 @@ class PyMenu:
         self.menus[tab].add_separator()
 
         # Geometry setup
-        self.menus[tab].add_command(label='Geometry configuration', command=MeasGeomWind)
+        self.menus[tab].add_command(label='Geometry configuration', command=geom_settings.generate_frame)
         # -------------------------------------------------------------------------------------------------
 
         # File tab
@@ -129,10 +129,10 @@ class Settings:
     def __init__(self):
         self.frame = tk.Toplevel()
         self.frame.title('PyCam Settings')
-        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth()/1.5),
-                                                 int(self.frame.winfo_screenheight()/1.5),
-                                                 int(self.frame.winfo_screenwidth()/5),
-                                                 int(self.frame.winfo_screenheight()/5)))
+        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth()/1.2),
+                                                 int(self.frame.winfo_screenheight()/1.2),
+                                                 int(self.frame.winfo_screenwidth()/10),
+                                                 int(self.frame.winfo_screenheight()/10)))
 
         # Setup notebook tabs
         self.windows = ttk.Notebook(self.frame)
@@ -145,15 +145,3 @@ class Settings:
         # Add the frames for each tab to the notebook
         self.windows.add(self.connection_gui.frame, text=self.connection_gui.name)
         self.windows.add(self.gui_settings.frame, text=self.gui_settings.name)
-
-
-
-class MeasGeomWind:
-    """TK top-level class to hold measurement geometry frame"""
-    def __init__(self):
-        self.frame = tk.Toplevel()
-        self.frame.title('Measurement geometry configuration')
-
-        self.geom_wind = geom_settings
-        self.geom_wind.generate_frame(self.frame)
-        self.geom_wind.frame.pack()

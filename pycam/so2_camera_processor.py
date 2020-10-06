@@ -14,7 +14,7 @@ from pyplis.custom_image_import import load_picam_png
 from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
-from pyplis.dilutioncorr import DilutionCorr
+from pyplis.dilutioncorr import DilutionCorr, correct_img
 import pydoas
 
 from tkinter import filedialog, messagebox
@@ -84,13 +84,22 @@ class PyplisWorker:
                               6,    # Scaling + quadr. gradient correction in x & y direction
                               99]
         self.auto_param_bg = True   # Whether the line parameters for BG modelling are generated automatically
-        self.POLYFIT_2D_MASK_THRESH = 100
+        self.ref_check_lower = 0
+        self.ref_check_upper = 0    # Background check to ensure no gas is present in ref region
+        self.ref_check_mode = True
+        self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
         self.maxrad_doas = self.spec_specs.fov * 1.1        # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
+        self.tau_thresh = 0.01          # Threshold used for generating pixel mask
         self.light_dil_lines = []
         self.ambient_roi = [0, 0, 0, 0]    # Ambient intensity ROI coordinates for light dilution
         self.I0_MIN = 0     # Minimum intensity for dilution fit
+        self.ext_off = None     # Extinction coefficient for off-band
+        self.ext_on = None      # Extinction coefficient for on-band
+        self.got_light_dil = False  # Flags whether we have light dilution for this sequence
+        self.lightcorr_A = None     # Light dilution corrected image
+        self.lightcorr_B = None     # Light dilution corrected image
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -156,13 +165,13 @@ class PyplisWorker:
 
         # Load background image if we are provided with one
         self.bg_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.vign_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vign_A = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_A_path = None
 
         # Load background image if we are provided with one
         self.bg_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.vign_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
+        self.vign_B = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
 
@@ -320,6 +329,7 @@ class PyplisWorker:
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.got_cal_doas = False
         self.got_cal_cell = False
+        self.got_light_dil = False
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -425,11 +435,7 @@ class PyplisWorker:
 
         # Add to plot queue if requested
         if plot:
-            if band == 'B':
-                # Plot warped image if we are off-band
-                self.fig_B.update_plot(np.array(img.img_warped, dtype=np.uint16), img_path)
-            else:
-                self.fig_A.update_plot(np.array(img.img, dtype=np.uint16), img_path)
+            getattr(self, 'fig_{}'.format(band)).update_plot(img_path)
 
     def find_dark_img(self, img_dir, ss, band='on'):
         """
@@ -776,6 +782,16 @@ class PyplisWorker:
 
         return mask
 
+    def compute_plume_dists(self):
+        """
+        Computes plume distances for each pixel and associated error
+        :return:
+        """
+        # TODO may not want to use this as it could be done in model light dilution
+        self.plume_dists = self.meas.meas_geometry.plume_dist()
+
+        self.plume_dist_err = self.meas.meas_geometry.plume_dist_err()
+
     def model_light_dilution(self, lines=None, draw=True, **kwargs):
         """
         Models light dilution and applies correction to images
@@ -792,7 +808,7 @@ class PyplisWorker:
         self.light_dil_lines = [f for f in self.light_dil_lines if isinstance(f, LineOnImage)]
 
         # Compute distances to plume
-        pix_dists, _, plume_dists = self.meas.meas_geometry.compute_all_integration_step_lengths()
+        pix_dists, _, self.plume_dists = self.meas.meas_geometry.compute_all_integration_step_lengths()
 
         # Create the pyplis light dilution object
         dil = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
@@ -803,18 +819,20 @@ class PyplisWorker:
 
         # Estimate ambient intensity using defined ROI
         amb_int_on = self.vigncorr_A.crop(self.ambient_roi, True).mean()
-        amb_int_off = self.vigncorr_B.crop(self.ambient_roi, True).mean()
+        amb_int_off = self.vigncorr_B_warped.crop(self.ambient_roi, True).mean()
 
         # perform dilution anlysis and retrieve extinction coefficients (on-band)
-        ext_on, _, _, ax0 = dil.apply_dilution_fit(img=self.vigncorr_A,
+        self.ext_on, _, _, ax0 = dil.apply_dilution_fit(img=self.vigncorr_A,
                                                    rad_ambient=amb_int_on,
                                                    i0_min=self.I0_MIN,
                                                    plot=draw)
         # Off-band
-        ext_off, _, _, ax1 = dil.apply_dilution_fit(img=self.vigncorr_B,
+        self.ext_off, _, _, ax1 = dil.apply_dilution_fit(img=self.vigncorr_B_warped,
                                                    rad_ambient=amb_int_off,
                                                    i0_min=self.I0_MIN,
                                                    plot=draw)
+
+        self.got_light_dil = True
 
         # Update light dilution plots if requested
         if draw:
@@ -822,10 +840,63 @@ class PyplisWorker:
             basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
             basemap.fig.show()
 
+            # Pass figures to LightDilutionSettings object to be plotted
             ax0.set_ylabel("Terrain radiances (on band)")
             ax1.set_ylabel("Terrain radiances (off band)")
-            ax0.figure.show()
-            ax1.figure.show()
+            fig_dict = {'1': ax0.figure,
+                        '2': ax1.figure,
+                        '3': None,
+                        '4': None}
+            self.fig_dilution.update_figs(fig_dict)
+
+    def corr_light_dilution(self, img, tau_uncorr, band='A'):
+        """
+        Corrects images for light dilution - uses simlar structure to pyplis.ImageList.correct_dilution()
+        :return:
+        """
+        # Check that we have a light dilution model
+        if not self.got_light_dil:
+            warnings.warn("No light dilution model is present, cannot correct for light dilution")
+            return
+
+        # Get all appropriate images anf parameters based on
+        if band.upper() == 'A' or 'ON':
+            ext_coeff = self.ext_on
+        elif band.upper() == 'B' or 'OFF':
+            ext_coeff = self.ext_off
+        else:
+            print('Unrecognised definition of <band>, cannot perform light dilution correction')
+            return
+
+        # Compute plume background in image (don't fully understand this line)
+        plume_bg_vigncorr = img * np.exp(tau_uncorr.img)
+
+        # Calculate plume pixel mask
+        plume_pix_mask = self.calc_plume_pix_mask(tau_uncorr, tau_thresh=self.tau_thresh)
+
+        # Perform light dilution correction using pyplis function
+        corr_img = correct_img(img, ext_coeff, plume_bg_vigncorr, self.plume_dists, plume_pix_mask)
+
+        return corr_img
+
+    def calc_plume_pix_mask(self, od_img, tau_thresh=0.05, erosion_kernel_size=0, dilation_kernel_size=0):
+        """
+        Calculates mask for plume pixels based on tau image and threshold.
+        From pyplis.ImageList.calc_plumepix_thresh()
+        """
+        if not od_img.is_tau:
+            raise ValueError("Input image must be optical density image "
+                             "(or similar, e.g. calibrated CD image)")
+
+        mask = od_img.to_binary(threshold=tau_thresh,
+                                new_img=True)
+        if erosion_kernel_size > 0:
+            mask.erode(np.ones((erosion_kernel_size,
+                             erosion_kernel_size), dtype=np.uint8))
+        if dilation_kernel_size > 0:
+            mask.dilate(np.ones((dilation_kernel_size,
+                              dilation_kernel_size), dtype=np.uint8))
+        return mask
 
 
     def update_doas_buff(self, doas_dict):
@@ -926,6 +997,10 @@ class PyplisWorker:
         self.vigncorr_A.edit_log['vigncorr'] = True
         self.vigncorr_B.edit_log['vigncorr'] = True
 
+        # Create a warped version - required for light dilution work
+        self.vigncorr_B_warped = pyplis.Img(self.img_reg.register_image(self.vigncorr_A.img, self.vigncorr_B.img))
+        self.vigncorr_B_warped.edit_log['vigncorr'] = True
+
         if self.auto_param_bg and params is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
             params = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
@@ -944,9 +1019,9 @@ class PyplisWorker:
         if self.plume_bg.mode == 0:
             # mask for corr mode 0 (i.e. 2D polyfit)
             mask_A = np.ones(self.vigncorr_A.img.shape, dtype=np.float32)
-            mask_A[self.vigncorr_A.img < self.POLYFIT_2D_MASK_THRESH] = 0
+            mask_A[self.vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
             mask_B = np.ones(self.vigncorr_B.img.shape, dtype=np.float32)
-            mask_B[self.vigncorr_B.img < self.POLYFIT_2D_MASK_THRESH] = 0
+            mask_B[self.vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
 
             # First method: retrieve tau image using poly surface fit
             tau_A = self.plume_bg.get_tau_image(self.vigncorr_A,
@@ -1005,6 +1080,9 @@ class PyplisWorker:
         :param img_B: pyplis.image.Img      Off-band image
         :returns img_aa:    Optical depth image
         """
+        # Set last image to img_tau_prev, as it is used in optical flow computation
+        self.img_tau_prev = self.img_tau
+
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
 
@@ -1012,8 +1090,10 @@ class PyplisWorker:
         img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
         self.tau_B_warped = pyplis.image.Img(img)
 
-        # Set last image to img_tau_prev, as it is used in optical flow computation
-        self.img_tau_prev = self.img_tau
+        # Perform light dilution if we have a correction
+        if self.got_light_dil:
+            self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
+            self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='A')
 
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True

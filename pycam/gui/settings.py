@@ -53,6 +53,7 @@ class GUISettings:
         self.fig_cell_fit = tuple()
         self.fig_cell_abs = tuple()
         self.fig_sens_mask = tuple()
+        self.fig_dil = tuple()
 
         # Load settings if given a file on instantiation
         if self.config_file is not None:
@@ -197,6 +198,8 @@ class SettingsFrame:
         self._cell_abs_y = tk.DoubleVar()
         self._sens_mask_x = tk.DoubleVar()
         self._sens_mask_y = tk.DoubleVar()
+        self._dil_x = tk.DoubleVar()
+        self._dil_y = tk.DoubleVar()
 
         # Gather settings currently being used in Settings object
         self.collect_settings()
@@ -273,6 +276,9 @@ class SettingsFrame:
 
         sens_mask_setts = FigureSizeSettings(self.fig_frame, 'Sensitivity mask:', self._sens_mask_x,
                                              self._sens_mask_y, row=12, pdx=self.pdx, pdy=self.pdy)
+
+        light_dil_setts = FigureSizeSettings(self.fig_frame, 'Light dilution:', self._dil_x,
+                                             self._dil_y, row=13, pdx=self.pdx, pdy=self.pdy)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -419,6 +425,15 @@ class SettingsFrame:
     def fig_sens_mask(self, value):
         self._sens_mask_x.set(value[0])
         self._sens_mask_y.set(value[1])
+
+    @property
+    def fig_dil(self):
+        return (self._dil_x.get(), self._dil_y.get())
+
+    @fig_dil.setter
+    def fig_dil(self, value):
+        self._dil_x.set(value[0])
+        self._dil_y.set(value[1])
 
     def collect_settings(self):
         """Sets tk variables to those of the settings object"""

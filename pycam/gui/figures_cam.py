@@ -68,20 +68,39 @@ class ImageFigure:
         self._row = tk.IntVar()
         self._col = tk.IntVar()
 
+        self._img_type = tk.IntVar()
+        self.img_type = 1
+
         # Build figure
         self._build_img_fig()
 
         # Build cross-section control panel
         self._build_xsect_panel()
 
+        self.img_type_frame = ttk.LabelFrame(self.frame, text='Image display')
+        self.img_type_frame.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=5, pady=5)
+
+        rad_1 = ttk.Radiobutton(self.img_type_frame, text='Raw image', variable=self._img_type, value=1,
+                                command=self.update_plot)
+        rad_2 = ttk.Radiobutton(self.img_type_frame, text='Vignette corrected', variable=self._img_type, value=2,
+                                command=self.update_plot)
+        rad_3 = ttk.Radiobutton(self.img_type_frame, text='Light dilution corrected', variable=self._img_type, value=3,
+                                command=self.update_plot)
+        rad_1.grid(row=0, column=0, pady=5, sticky='w')
+        rad_2.grid(row=0, column=1, pady=5)
+        rad_3.grid(row=0, column=2, pady=5)
+        self.img_type_frame.grid_columnconfigure(0, weight=1)
+        self.img_type_frame.grid_columnconfigure(1, weight=1)
+        self.img_type_frame.grid_columnconfigure(2, weight=1)
+
         # Grid each frame
-        self.xsect_frame.grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        self.fig_frame.grid(row=1, column=0, columnspan=3, padx=5, pady=5)
+        self.xsect_frame.grid(row=1, column=0, padx=5, pady=5, sticky='w')
+        self.fig_frame.grid(row=2, column=0, columnspan=3, padx=5, pady=5)
 
         self.save_butt = ttk.Button(self.frame, text='Save\n Control Points', command=self.cp_update)
-        self.save_butt.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
+        self.save_butt.grid(row=1, column=1, padx=5, pady=5, sticky='nsew')
         self.reset_butt = ttk.Button(self.frame, text='Reset\n Control Points', command=self.cp_reset)
-        self.reset_butt.grid(row=0, column=2, padx=5, pady=5, sticky='nsew')
+        self.reset_butt.grid(row=1, column=2, padx=5, pady=5, sticky='nsew')
 
         if start_update_thread:
             self.start_update_thread()
@@ -107,6 +126,14 @@ class ImageFigure:
     @col.setter
     def col(self, value):
         self._col.set(value)
+
+    @property
+    def img_type(self):
+        return self._img_type.get()
+
+    @img_type.setter
+    def img_type(self, value):
+        self._img_type.set(value)
 
     def _build_img_fig(self):
         """Builds image figure using matplotlib"""
@@ -237,19 +264,39 @@ class ImageFigure:
             #         self.img_canvas.draw()
             #         self.draw_time = time.time()
 
-    def update_plot(self, img, img_path, draw=True):
+    def update_plot(self, img_path=None, draw=True):
         """
-        Updates image figure and all associated subplots
+        Automatically updates image figure and all associated subplots. Bases update on img_type flag
         :param img: np.ndarray  Image array
         :param img_path: str    Image name to be set as title
         :return:
         """
-        self.image = img
-        filename = img_path.split('\\')[-1].split('/')[-1]     # Extract filename from full path
+        # Only upate image path if provided with one
+        if img_path is not None:
+            filename = img_path.split('\\')[-1].split('/')[-1]  # Extract filename from full path
+            self.ax.set_title(filename)
 
-        # Update main image display and title
-        self.img_disp.set_data(img)
-        self.ax.set_title(filename)
+        # Select correct image
+        if self.img_type == 3:
+            if pyplis_worker.got_light_dil:
+                self.image = getattr(pyplis_worker, 'lightcorr_{}'.format(self.band)).img
+            else:
+                self.img_type = 1
+
+        if self.img_type == 1:
+            if self.band == 'A':
+                self.image = pyplis_worker.img_A.img
+            elif self.band == 'B':
+                self.image = pyplis_worker.img_B.img_warped
+
+        elif self.img_type == 2:
+            if self.band == 'A':
+                self.image = pyplis_worker.vigncorr_A.img
+            elif self.band == 'B':
+                self.image = pyplis_worker.vigncorr_B_warped.img
+
+        # Update image
+        self.img_disp.set_data(self.image)
 
         # Update subplots - this includes a call to draw() so the figure will be updated after this
         self.x_sect_plot(draw)

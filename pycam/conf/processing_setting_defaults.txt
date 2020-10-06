@@ -19,6 +19,10 @@ plot_iter=1
 # Plume background model
 bg_mode=4
 auto_param=1
+polyfit_2d_thresh=100
+ref_check_lower=-5e16
+ref_check_upper=5e16
+ref_check_mode=1
 
 # DOAS
 ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'
@@ -41,3 +45,4 @@ roi_abs=[23, 36, 605, 236]
 # Light dilution
 amb_roi=[550, 20, 600, 70]
 I0_MIN=0
+tau_thresh=0.05
