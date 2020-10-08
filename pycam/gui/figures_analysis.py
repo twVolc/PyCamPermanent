@@ -1239,7 +1239,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Options widget
         self.opt_frame = ttk.LabelFrame(self.frame, text='Settings')
-        self.opt_frame.pack(side=tk.LEFT, padx=5, pady=5)
+        self.opt_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Mode option menu
         row = 0
@@ -1263,10 +1263,11 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Reference are check
         row += 1
-        ref_check_frame = ttk.LabelFrame(self.opt_frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
-        ref_check_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        ref_check_frame = ttk.LabelFrame(self.frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
+        # ref_check_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        ref_check_frame.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        check = ttk.Checkbutton(ref_check_frame, text='Use thresholds to omit data', variable=self._ref_check_mode)
+        check = ttk.Checkbutton(ref_check_frame, text='Use thresholds to omit images', variable=self._ref_check_mode)
         check.grid(row=0, column=0, columnspan=3, sticky='w')
 
         lab = ttk.Label(ref_check_frame, text='Threshold lower [molecules/cm2]:')
@@ -1291,8 +1292,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Buttons
         row += 1
-        butt_frame = ttk.Frame(self.opt_frame)
-        butt_frame.grid(row=row, column=0, columnspan=2)
+        butt_frame = ttk.Frame(self.frame)
+        butt_frame.pack(side=tk.TOP, padx=5, pady=5, fill=tk.BOTH, expand=True)
 
         butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)

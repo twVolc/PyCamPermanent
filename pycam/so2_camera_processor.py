@@ -119,8 +119,12 @@ class PyplisWorker:
         self.doas_fov_x = None          # X FOV of DOAS (from pyplis results)
         self.doas_fov_y = None          # Y FOV of DOAS
         self.doas_fov_extent = None     # DOAS FOV radius
+        self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
+        self.doas_file_num = 1                  # File number for current filename of doas calib data
 
         self.img_dir = img_dir
+        self.proc_name = 'Processed_{}'     # Directory name for processing
+        self.processed_dir = None           # Full path for processing directory
         self.dark_dict = {'on': {},
                           'off': {}}     # Dictionary containing all retrieved dark images with their ss as the key
         self.dark_dir = None
@@ -141,6 +145,10 @@ class PyplisWorker:
         self.img_tau.img = self.img_A           # Set image to zeors as it may be used to generate empty figure
         self.img_tau_prev = pyplis.image.Img()
         self.img_tau_prev.img = self.img_A
+        self.img_cal = pyplis.image.Img()   # Calibrated image
+        self.img_cal.img = self.img_A  # Set image to zeors as it may be used to generate empty figure
+        self.img_cal_prev = pyplis.image.Img()
+        self.img_cal_prev.img = self.img_A
 
         # Calibration attributes
         self.got_cal_doas = False
@@ -330,6 +338,7 @@ class PyplisWorker:
         self.got_cal_doas = False
         self.got_cal_cell = False
         self.got_light_dil = False
+        self.doas_file_num = 1
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -353,6 +362,14 @@ class PyplisWorker:
 
         # Update image list
         self.img_list = self.get_img_list()
+
+        # Update processing directory and create it
+        i = 1
+        self.processed_dir = os.path.join(self.img_dir, self.proc_name.format(i))
+        while os.path.exists(self.processed_dir):
+            i += 1
+            self.processed_dir = os.path.join(self.img_dir, self.proc_name.format(i))
+        os.mkdir(self.processed_dir)
 
         # Display first images of sequence
         if len(self.img_list) > 0:
@@ -942,7 +959,7 @@ class PyplisWorker:
         doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 
-    def doas_fov_search(self, img_stack, doas_results, plot=True):
+    def doas_fov_search(self, img_stack, doas_results, polyorder=1, save=True, plot=True):
         """
         Performs FOV search for doas
         :param img_stack:
@@ -953,10 +970,19 @@ class PyplisWorker:
         s.maxrad = self.maxrad_doas   # Set maximum radius of FOV to close to that expected from optical calculations
         s.g2dasym = False                       # Allow only circular FOV (not eliptical)
         self.calib_pears = s.perform_fov_search(method='pearson')
-        self.calib_pears.fit_calib_data(polyorder=1, through_origin=True)
+        self.calib_pears.fit_calib_data(polyorder=polyorder)
         self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
         self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.got_cal_doas = True     # Flag that we now have a calibration
+
+        # Save as FITS file if requested
+        if save:
+            # Get filename which doesn't exist yet by incrementing number
+            full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+            while os.path.exists(full_path):
+                self.doas_file_num += 1
+                full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+            self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
 
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
@@ -988,17 +1014,28 @@ class PyplisWorker:
         full_paths = [os.path.join(self.img_dir, f) for f in self.img_list]
         self.pyplis_img_list = pyplis.imagelists.ImgList(full_paths, cam=self.cam)
 
+    def update_meta(self, meta_image, new_image):
+        """
+        Updates some useful metadata of image when passed a loaded image which already contains that data
+        """
+        new_image.meta['start_acq'] = meta_image.meta['start_acq']
+        new_image.meta['pix_width'] = meta_image.meta['pix_width']
+        new_image.meta['pix_height'] = meta_image.meta['pix_height']
+
     def model_background(self, mode=None, params=None, plot=True):
         """
         Models plume background for image provided.
         """
         self.vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
+        self.update_meta(self.img_A, self.vigncorr_A)
         self.vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
+        self.update_meta(self.img_B, self.vigncorr_B)
         self.vigncorr_A.edit_log['vigncorr'] = True
         self.vigncorr_B.edit_log['vigncorr'] = True
 
         # Create a warped version - required for light dilution work
         self.vigncorr_B_warped = pyplis.Img(self.img_reg.register_image(self.vigncorr_A.img, self.vigncorr_B.img))
+        self.update_meta(self.vigncorr_B, self.vigncorr_B_warped)
         self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
         if self.auto_param_bg and params is None:
@@ -1067,7 +1104,9 @@ class PyplisWorker:
             self.fig_bg_ref.show()
 
         self.tau_A = tau_A
+        self.update_meta(self.img_A, self.tau_A)
         self.tau_B = tau_B
+        self.update_meta(self.img_B, self.tau_B)
 
         return tau_A, tau_B
 
@@ -1082,6 +1121,7 @@ class PyplisWorker:
         """
         # Set last image to img_tau_prev, as it is used in optical flow computation
         self.img_tau_prev = self.img_tau
+        self.img_cal_prev = self.img_cal
 
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
@@ -1089,32 +1129,53 @@ class PyplisWorker:
         # Register off-band image
         img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
         self.tau_B_warped = pyplis.image.Img(img)
+        self.update_meta(self.tau_B, self.tau_B_warped)
 
         # Perform light dilution if we have a correction
         if self.got_light_dil:
             self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
-            self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='A')
+            self.update_meta(self.vigncorr_A, self.lightcorr_A)
+            self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='B')
+            self.update_meta(self.vigncorr_B_warped, self.lightcorr_B)
 
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
-        self.img_tau.meta['start_acq'] = self.img_A.meta['start_acq']
+        self.update_meta(self.img_A, self.img_tau)
 
         # Adjust for changing FOV sensitivity if requested
         if self.use_sensitivity_mask:
             self.img_tau.img = self.img_tau.img / self.sensitivity_mask
 
-        if self.got_cal_doas and self.cal_type in [1, 2]:
-            #TODO perform calibration here if we have a calibration line.
-            pass
-
-        if self.cal_type == 0:
-            # TODO perform cell calibration here
-            pass
+        # Calibrate the image
+        self.img_cal = self.calibrate_image(self.img_tau)
 
         if plot:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
             self.fig_tau.update_plot(np.array(self.img_tau.img))
+
+    def calibrate_image(self, img):
+        """
+        Takes tau image and calibrates it using correct calibration mode
+        :param img: pyplis.Img or pyplis.ImgStack      Tau image
+        :return:
+        """
+        # TODO test function - I have not confirmed that all types of calibration work yet.
+        cal_img = None
+
+        # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
+        if self.got_cal_doas and self.cal_type in [1, 2]:
+            cal_img = self.calib_pears.calibrate(img)
+
+        elif self.cal_type == 0:
+            if isinstance(img, pyplis.Img):
+                cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
+            elif isinstance(img, pyplis.ImgStack):
+                cal_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, img.num_of_imgs])
+                for i in range(img.num_of_imgs):
+                    cal_img[:, :, i] = img.stack[i] * self.cell_fit[0]
+
+        return cal_img
 
     def update_opt_flow_settings(self, **settings):
         """
@@ -1231,7 +1292,7 @@ class PyplisWorker:
             # Wait for defined amount of time to allow plotting of data without freezing up
             time.sleep(self.wait_time)
 
-        if self.cal_type in [1,2]:
+        if self.cal_type in [1, 2]:
             # TODO Edit this test to use proper data (currently uses dummy random values)
             # Current test for performing DOAS FOV search
             stack = self.make_stack()
