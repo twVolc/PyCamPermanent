@@ -13,7 +13,7 @@ bg_dark_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\Dat
 cell_cal_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\'
 cal_type_int=2
 use_sensitivity_mask=1
-
+min_cd=5e16
 plot_iter=1
 
 # Plume background model
@@ -36,11 +36,16 @@ poly_n=5
 poly_sigma=1.1
 min_length=1.0
 min_count_frac=0.1
-hist_dir_gnum_max=10
+hist_dir_gnum_max=5
 hist_dir_binres=10
 hist_sigma_tol=2
 use_roi=1
 roi_abs=[23, 36, 605, 236]
+flow_glob=0
+flow_raw=0
+flow_histo=1
+flow_hybrid=0
+use_multi_gauss=1
 
 # Light dilution
 amb_roi=[550, 20, 600, 70]

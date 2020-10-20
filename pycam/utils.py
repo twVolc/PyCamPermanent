@@ -169,3 +169,15 @@ def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):
     rad_square_max *= 1 + tol
 
     return  np.where((rad_grid >= rad_square_min) & (rad_grid <= rad_square_max), True, False)
+
+
+def calc_dt(img_prev, img_curr):
+    """
+    Calculates time difference between two pyplis.Img objects
+    :param img_prev: pyplis.Img
+    :param img_curr: pyplis.Img
+    :return: Time difference in seconds between the two images
+    """
+    t_delt = img_curr["start_acq"] - img_prev["start_acq"]
+
+    return t_delt.total_seconds()

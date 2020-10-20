@@ -12,7 +12,7 @@ from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line
 
-from pyplis import LineOnImage
+from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask
 from geonum import GeoPoint
 
@@ -666,6 +666,9 @@ class ImageSO2:
             self.disp_cal_rad.configure(state=tk.DISABLED)
         else:
             self.disp_cal_rad.configure(state=tk.NORMAL)
+            # If we have been passed a pyplis.Img then we need to extract the array
+            if isinstance(self.image_cal, Img):
+                self.image_cal = self.image_cal.img
 
         # Update main image display and title
         if self.disp_cal and img_cal is not None:
@@ -1429,7 +1432,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
-                     'use_sensitivity_mask': int
+                     'use_sensitivity_mask': int,
+                     'min_cd': float
                      }
 
         self._plot_iter = tk.IntVar()
@@ -1441,6 +1445,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._cal_type = tk.StringVar()
         self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
         self._use_sensitivity_mask = tk.IntVar()
+        self._min_cd = tk.DoubleVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -1519,6 +1524,19 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Plot iteratively checkbutton
         self.plot_check = ttk.Checkbutton(self.frame, text='Use sensitivity mask', variable=self._use_sensitivity_mask)
         self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Minimum column density used in analysis
+        lab = ttk.Label(self.frame, text='Min. CD analysed [molecules/cm2]:')
+        lab.grid(row=2, column=0, sticky='w')
+        ans_frame = ttk.Frame(self.frame)
+        ans_frame.grid(row=row, column=1)
+        thresh_spin = ttk.Spinbox(ans_frame, textvariable=self._min_cd, from_=0, to=100, increment=1,
+                                  width=4)
+        thresh_spin.grid(row=0, column=0, sticky='w')
+        thresh_spin.set('{}'.format(int(self._min_cd.get())))
+        lab = ttk.Label(ans_frame, text='e16')
+        lab.grid(row=0, column=1, sticky='w')
         row += 1
 
         # Plot iteratively checkbutton
@@ -1645,6 +1663,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Returns shorter label for bg_B file"""
         return '...' + self.bg_B[-self.path_str_length:]
 
+    @property
+    def min_cd(self):
+        return self._min_cd.get() * 10 ** 16
+
+    @min_cd.setter
+    def min_cd(self, value):
+        self._min_cd.set(value / 10 ** 16)
+
     def get_dark_img_dir(self):
         """Gives user options for retrieving dark image directory"""
         dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
@@ -1713,6 +1739,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
+        pyplis_worker.min_cd = self.min_cd
 
     def save_close(self):
         """Gathers all variables and then closes"""
@@ -1731,6 +1758,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
         self.cal_type_int = pyplis_worker.cal_type
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
+        self.min_cd = pyplis_worker.min_cd
 
         self.in_frame = False
         self.frame.destroy()
@@ -2210,8 +2238,28 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'hist_dir_binres': int,
                      'hist_sigma_tol': int,
                      'use_roi': int,
-                     'roi_abs': list
+                     'roi_abs': list,
+                     'flow_glob': int,
+                     'flow_raw': int,
+                     'flow_histo': int,
+                     'flow_hybrid': int,
+                     'use_multi_gauss': int
                      }
+
+        self.settings_vars = {'pyr_scale': float,       # Alternative vars dict containing only those values which
+                              'levels': int,            # pertain directly to optical flow settings which will be
+                              'winsize': int,           # passed straight to the pyplis optical flow object
+                              'iterations': int,
+                              'poly_n': int,
+                              'poly_sigma': float,
+                              'min_length': float,
+                              'min_count_frac': float,
+                              'hist_dir_gnum_max': int,
+                              'hist_dir_binres': int,
+                              'hist_sigma_tol': int,
+                              'use_roi': int,
+                              'roi_abs': list
+                              }
 
         self._pyr_scale = tk.DoubleVar()
         self._levels = tk.IntVar()
@@ -2225,6 +2273,13 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._hist_dir_binres = tk.IntVar()
         self._hist_sigma_tol = tk.IntVar()
         self._use_roi = tk.IntVar()
+        self._use_multi_gauss = tk.IntVar()
+
+        # Flow options
+        self._flow_glob = tk.IntVar()
+        self._flow_raw = tk.IntVar()
+        self._flow_histo = tk.IntVar()
+        self._flow_hybrid = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -2323,7 +2378,24 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # USe ROI
         roi_check = ttk.Checkbutton(self.analysis_frame, text='Use ROI', variable=self._use_roi)
-        roi_check.grid(row=row, column=0, sticky='w', padx=2, pady=2 )
+        roi_check.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        gauss_check = ttk.Checkbutton(self.analysis_frame, text='Use Multi-Gauss', variable=self._use_multi_gauss)
+        gauss_check.grid(row=row, column=1, sticky='w', padx=2, pady=2)
+
+        # -----------------------------------
+        # Flow modes in use
+        row += 1
+        self.flow_frame = ttk.LabelFrame(self.analysis_frame, text='Flow modes', relief=tk.RAISED, borderwidth=5)
+        self.flow_frame.grid(row=row, column=0, columnspan=3, sticky='nsew', padx=2, pady=2)
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Cross-correlation', variable=self._flow_glob)
+        check_glob.grid(row=0, column=0, padx=2, pady=2, sticky='w')
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Raw', variable=self._flow_raw)
+        check_glob.grid(row=0, column=1, padx=2, pady=2, sticky='w')
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Histogram', variable=self._flow_histo)
+        check_glob.grid(row=0, column=2, padx=2, pady=2, sticky='w')
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Hybrid', variable=self._flow_hybrid)
+        check_glob.grid(row=0, column=3, padx=2, pady=2, sticky='w')
+        # ----------------------------------
 
         # Set buttons
         butt_frame = ttk.Frame(self.frame)
@@ -2436,6 +2508,46 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
     def use_roi(self, value):
         self._use_roi.set(value)
 
+    @property
+    def flow_glob(self):
+        return self._flow_glob.get()
+
+    @flow_glob.setter
+    def flow_glob(self, value):
+        self._flow_glob.set(value)
+
+    @property
+    def flow_raw(self):
+        return self._flow_raw.get()
+
+    @flow_raw.setter
+    def flow_raw(self, value):
+        self._flow_raw.set(value)
+
+    @property
+    def flow_histo(self):
+        return self._flow_histo.get()
+
+    @flow_histo.setter
+    def flow_histo(self, value):
+        self._flow_histo.set(value)
+
+    @property
+    def flow_hybrid(self):
+        return self._flow_hybrid.get()
+
+    @flow_hybrid.setter
+    def flow_hybrid(self, value):
+        self._flow_hybrid.set(value)
+
+    @property
+    def use_multi_gauss(self):
+        return self._use_multi_gauss.get()
+
+    @use_multi_gauss.setter
+    def use_multi_gauss(self, value):
+        self._use_multi_gauss.set(value)
+
     def gather_vars(self, run=False):
         """
         Gathers all optical flow settings and updates pyplis worker settings
@@ -2443,7 +2555,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         """
         # Pack all settings into a settings dictionary
         settings = {}
-        for key in self.vars:
+        for key in self.settings_vars:
             settings[key] = getattr(self, key)
 
         # If not using ROI, we set the roi_abs to full resolution
@@ -2452,6 +2564,11 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # Pass settings to pyplis worker update function
         self.pyplis_worker.update_opt_flow_settings(**settings)
+        self.pyplis_worker.use_multi_gauss = self.use_multi_gauss
+
+        # Loop through flow options and set them
+        for key in self.pyplis_worker.velo_modes:
+            self.pyplis_worker.velo_modes[key] = bool(getattr(self, key))
 
         if run:
             self.run_flow()
@@ -2626,8 +2743,11 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.in_frame = False
 
         # Ensure current values are correct
-        for key in self.vars:
+        for key in self.settings_vars:
             setattr(self, key, getattr(self.pyplis_worker.opt_flow.settings, key))
+        for key in self.pyplis_worker.velo_modes:
+            setattr(self, key, self.pyplis_worker.velo_modes[key])
+        self.use_multi_gauss = self.pyplis_worker.use_multi_gauss
 
         # Close drawing function (it is started again on opening the frame
         self.q.put(2)

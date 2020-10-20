@@ -6,7 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
-from pycam.utils import make_circular_mask_line
+from pycam.utils import make_circular_mask_line, calc_dt
 
 import pyplis
 from pyplis import LineOnImage
@@ -15,6 +15,7 @@ from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
 from pyplis.dilutioncorr import DilutionCorr, correct_img
+from pyplis.fluxcalc import det_emission_rate
 import pydoas
 
 from tkinter import filedialog, messagebox
@@ -39,7 +40,7 @@ class PyplisWorker:
     :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
     def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
-        self.q = queue.Queue()      # Queue object for images. Images are passed in a pair for fltrA and fltrB
+        self.q = queue.Queue()          # Queue object for images. Images are passed in a pair for fltrA and fltrB
         self.q_doas = queue.Queue()     # Queue where processed doas values are placed (dictionary containing al relevant data)
 
         self.cam_specs = cam_specs  #
@@ -55,10 +56,10 @@ class PyplisWorker:
         self.idx_current = 0    # Used to track what the current index is for saving to image buffer
 
         self.doas_buff_size = 500
-        self.column_densities = np.zeros(self.doas_buff_size, dtype=np.float32)    # Column densities array
-        self.std_errs = np.zeros(self.doas_buff_size, dtype=np.float32)    # Array of standard error on column denisties
-        self.cd_times = [None] * self.doas_buff_size                             # Times of column densities data points
-        self.idx_current_doas = 0       # Current index for doas spectra
+        self.column_densities = np.zeros(self.doas_buff_size, dtype=np.float32) # Column densities array
+        self.std_errs = np.zeros(self.doas_buff_size, dtype=np.float32)         # Array of standard error on CDs
+        self.cd_times = [None] * self.doas_buff_size                            # Times of column densities data points
+        self.idx_current_doas = 0                                               # Current index for doas spectra
 
         test_doas_start = self.get_img_time('2018-03-26T144404')
         self.test_doas_times = [test_doas_start + datetime.timedelta(seconds=x) for x in range(0, 600, 4)]
@@ -89,17 +90,33 @@ class PyplisWorker:
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
-        self.maxrad_doas = self.spec_specs.fov * 1.1        # Max radius used for doas FOV search (degrees)
+        self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
-        self.tau_thresh = 0.01          # Threshold used for generating pixel mask
-        self.light_dil_lines = []
-        self.ambient_roi = [0, 0, 0, 0]    # Ambient intensity ROI coordinates for light dilution
-        self.I0_MIN = 0     # Minimum intensity for dilution fit
-        self.ext_off = None     # Extinction coefficient for off-band
-        self.ext_on = None      # Extinction coefficient for on-band
-        self.got_light_dil = False  # Flags whether we have light dilution for this sequence
-        self.lightcorr_A = None     # Light dilution corrected image
-        self.lightcorr_B = None     # Light dilution corrected image
+        self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
+        # Velocity modes
+        self.velo_modes = {"flow_glob": False,          # Cross-correlation
+                           "flow_raw": False,           # Raw optical flow output
+                           "flow_histo": True,          # Histogram analysis
+                           "flow_hybrid": False}        # Hybrid histogram
+        self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
+                                 'old': None}           # Old plume LineOnImage for cross-correlation
+        self.got_cross_corr_vel = False                 # Flag for if we have a cross correlation velocity
+        self.vel_glob = None                            # Global velocity (m/s)
+        self.vel_glob_err = None                        # Global velocity error
+        self.optflow_err_rel_veff = 0.15                # Empirically determined optical flow error (from pyplis)
+        self.tau_thresh = 0.01                          # Threshold used for generating pixel mask
+        self.min_cd = 0                                 # Minimum column density used in analysis
+        self.light_dil_lines = []                       # Lines for light dilution correction
+        self.ambient_roi = [0, 0, 0, 0]                 # Ambient intensity ROI coordinates for light dilution
+        self.I0_MIN = 0                                 # Minimum intensity for dilution fit
+        self.ext_off = None                             # Extinction coefficient for off-band
+        self.ext_on = None                              # Extinction coefficient for on-band
+        self.got_light_dil = False                      # Flags whether we have light dilution for this sequence
+        self.lightcorr_A = None                         # Light dilution corrected image
+        self.lightcorr_B = None                         # Light dilution corrected image
+
+        # Some pyplis tracking parameters
+        self.ts, self.bg_mean, self.bg_std = [], [], []
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -115,18 +132,23 @@ class PyplisWorker:
         self.fig_opt = None             # Figure for displaying optical flow
         self.fig_dilution = None        # Figure for displaying light dilution
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
-        self.calib_pears = None         # Pyplis object holding functions to plot results
-        self.doas_fov_x = None          # X FOV of DOAS (from pyplis results)
-        self.doas_fov_y = None          # Y FOV of DOAS
-        self.doas_fov_extent = None     # DOAS FOV radius
+
+        # Calibration attributes
+        self.calib_pears = None                 # Pyplis object holding functions to plot results
+        self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
+        self.doas_fov_y = None                  # Y FOV of DOAS
+        self.doas_fov_extent = None             # DOAS FOV radius
         self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
         self.doas_file_num = 1                  # File number for current filename of doas calib data
+        self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
+        self.doas_recal_fov = True              # If True DOAS FOV is recalibrated every doas_recal_num images
+        self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_tau_buff_size)
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
         self.processed_dir = None           # Full path for processing directory
         self.dark_dict = {'on': {},
-                          'off': {}}     # Dictionary containing all retrieved dark images with their ss as the key
+                          'off': {}}        # Dictionary containing all retrieved dark images with their ss as the key
         self.dark_dir = None
         self.img_list = None
         self.num_img_pairs = 0      # Total number of plume pairs
@@ -139,9 +161,8 @@ class PyplisWorker:
         self.img_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_A_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_aa = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # Optical depth image
-        self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])     # SO2 calibrated image
-        self.img_tau = pyplis.image.Img()
+        self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])       # SO2 calibrated image
+        self.img_tau = pyplis.image.Img()       # Apparent absorbance image (tau_A - tau_B)
         self.img_tau.img = self.img_A           # Set image to zeors as it may be used to generate empty figure
         self.img_tau_prev = pyplis.image.Img()
         self.img_tau_prev.img = self.img_A
@@ -338,7 +359,11 @@ class PyplisWorker:
         self.got_cal_doas = False
         self.got_cal_cell = False
         self.got_light_dil = False
+        self.got_cross_corr_vel = False
         self.doas_file_num = 1
+
+        # Some pyplis tracking parameters
+        self.ts, self.bg_mean, self.bg_std = [], [], []
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -806,8 +831,10 @@ class PyplisWorker:
         """
         # TODO may not want to use this as it could be done in model light dilution
         self.plume_dists = self.meas.meas_geometry.plume_dist()
-
         self.plume_dist_err = self.meas.meas_geometry.plume_dist_err()
+
+        # Compute integration step sizes
+        self.dist_img_step = self.meas.meas_geometry.compute_all_integration_step_lengths()[0]
 
     def model_light_dilution(self, lines=None, draw=True, **kwargs):
         """
@@ -915,7 +942,6 @@ class PyplisWorker:
                               dilation_kernel_size), dtype=np.uint8))
         return mask
 
-
     def update_doas_buff(self, doas_dict):
         """
         Updates doas buffer
@@ -948,50 +974,7 @@ class PyplisWorker:
         # Increment doas index
         self.idx_current_doas += 1
 
-    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
-        """
-        Makes pydoas DOASResults object from timeseries
-        :param times:   arraylike           Datetimes of column densities
-        :param column_densities: arraylike  Column densities
-        :param stds:    arraylike           Standard errors in the column density values
-        :param species: str                 Gas species
-        """
-        doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
-        return doas_results
-
-    def doas_fov_search(self, img_stack, doas_results, polyorder=1, save=True, plot=True):
-        """
-        Performs FOV search for doas
-        :param img_stack:
-        :param doas_results:
-        :return:
-        """
-        s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
-        s.maxrad = self.maxrad_doas   # Set maximum radius of FOV to close to that expected from optical calculations
-        s.g2dasym = False                       # Allow only circular FOV (not eliptical)
-        self.calib_pears = s.perform_fov_search(method='pearson')
-        self.calib_pears.fit_calib_data(polyorder=polyorder)
-        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
-        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
-        self.got_cal_doas = True     # Flag that we now have a calibration
-
-        # Save as FITS file if requested
-        if save:
-            # Get filename which doesn't exist yet by incrementing number
-            full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-            while os.path.exists(full_path):
-                self.doas_file_num += 1
-                full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-            self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-
-        # Plot results if requested, first checking that we have the tkinter frame generated
-        if plot:
-            if not self.fig_doas_fov.in_frame:
-                self.fig_doas_fov.generate_frame()  # Generating the frame will create the plot automatically
-            else:
-                self.fig_doas_fov.update_plot()
-
-    def make_stack(self):
+    def make_img_stack(self):
         """
         Generates image stack from self.img_tau_buff (tau images)
         :return stack:  ImgStack        Stack with all loaded images
@@ -1001,8 +984,14 @@ class PyplisWorker:
                                            np.float32, 'tau', camera=self.cam, img_prep={'is_tau': True})
 
         # Add all images of the current image buffer to stack
-        # (only take images from the buffer stack up to the current index - the images which have been loaded thusfar)
-        for i in range(self.idx_current):
+        # (only take images from the buffer stack up to the current index - the images which have been loaded thusfar,
+        # or if we are over the buffer size we take all images in the buffer)
+        if self.idx_current < self.img_tau_buff_size:
+            buff_len = self.idx_current
+        else:
+            buff_len = self.img_tau_buff_size
+
+        for i in range(buff_len):
             stack.add_img(self.img_tau_buff[:, :, i], self.img_tau_buff_time[i])
 
         stack.img_prep['pyrlevel'] = 0
@@ -1110,18 +1099,25 @@ class PyplisWorker:
 
         return tau_A, tau_B
 
-    def generate_optical_depth(self, plot=True, plot_bg=True):
+    def generate_optical_depth(self, plot=True, plot_bg=True, run_cal=False, img_path_A=None):
         """
-        Performs the full catalogue of image procesing on a single image pair to generate optical depth image
+        Performs the full catalogue of image procesing on a single image pair to generate optical depth image and
+        calibrate it if a calibration is present or calibration is requested
         Processing beyond this point is left ot another function, since it requires use of a second set of images
 
-        :param img_A: pyplis.image.Img      On-band image
-        :param img_B: pyplis.image.Img      Off-band image
-        :returns img_aa:    Optical depth image
+        :param run_cal: bool    If true, and DOAS calibration is selected, we run the doas calibration procedure
+        :param img_path_A: str  If not None, the this indicates it is a new image and that the img_tau_buff should be updated
+        :returns
         """
         # Set last image to img_tau_prev, as it is used in optical flow computation
-        self.img_tau_prev = self.img_tau
-        self.img_cal_prev = self.img_cal
+        # TODO I need to think abiout this this may be being called during times when we want to change processing and
+        # TODO we haven't necessarily loaded a new image, so in this case, I think we don't want to shift the old
+        # TODO image back one, as it may end up duplicating images??
+        # TODO I think this edit, to use img_path_A as a guide makes this work. img_path_A is only not None if we need
+        # TODO to update the img_buffer. So if the buffer is updating, the tau_prev needs updating too, I think...
+        if img_path_A is not None:
+            self.img_tau_prev = self.img_tau
+            self.img_cal_prev = self.img_cal
 
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
@@ -1147,19 +1143,44 @@ class PyplisWorker:
         if self.use_sensitivity_mask:
             self.img_tau.img = self.img_tau.img / self.sensitivity_mask
 
+        # Update image buffer, only if img_path_A is not None
+        if img_path_A is not None:
+            self.update_img_buff(self.img_tau.img, img_path_A)
+
         # Calibrate the image
         self.img_cal = self.calibrate_image(self.img_tau)
 
         if plot:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
-            self.fig_tau.update_plot(np.array(self.img_tau.img))
+            self.fig_tau.update_plot(np.array(self.img_tau.img), img_cal=self.img_cal)
 
-    def calibrate_image(self, img):
+    def calibrate_image(self, img, run_cal_doas=False):
         """
         Takes tau image and calibrates it using correct calibration mode
         :param img: pyplis.Img or pyplis.ImgStack      Tau image
+        :param run_cal_doas: bool   If True the DOAS FOV calibration is performed
         :return:
         """
+        # Perform DOAS calibration if we are at the set calibration size
+        # idx_current will have been incremented by 1 in process_pair so the current image idx is actually
+        # idx_current - 1, but because the idx starts at 0, we need idx + 1 to find when we should be calibrating,
+        # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
+        # Since this comes after
+        if self.cal_type in [1, 2]:
+            if self.idx_current % self.doas_recal_num == 0 or run_cal_doas:
+                # TODO ========================================
+                # TODO
+                # TODO IMPORTANT!!!!
+                # TODO Currently using the test/dummy DOAS data so this needs editing!!!
+                # TODO I also need to think about recalibrating the FOV vs just adding the new data to the calibration
+                # TODO and leaving the FOV the same
+                # TODO
+                # TODO ======================================
+                stack = self.make_img_stack()
+                doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                                                      stds=self.test_doas_stds)
+                self.doas_fov_search(stack, doas_results)
+
         # TODO test function - I have not confirmed that all types of calibration work yet.
         cal_img = None
 
@@ -1175,7 +1196,70 @@ class PyplisWorker:
                 for i in range(img.num_of_imgs):
                     cal_img[:, :, i] = img.stack[i] * self.cell_fit[0]
 
+            cal_img["gascalib"] = True
+
         return cal_img
+
+    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
+        """
+        Makes pydoas DOASResults object from timeseries
+        :param times:   arraylike           Datetimes of column densities
+        :param column_densities: arraylike  Column densities
+        :param stds:    arraylike           Standard errors in the column density values
+        :param species: str                 Gas species
+        """
+        doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
+        return doas_results
+
+    def doas_fov_search(self, img_stack, doas_results, polyorder=1, save=True, plot=True):
+        """
+        Performs FOV search for doas
+        :param img_stack:
+        :param doas_results:
+        :return:
+        """
+        s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
+        s.maxrad = self.maxrad_doas  # Set maximum radius of FOV to close to that expected from optical calculations
+        s.g2dasym = False  # Allow only circular FOV (not eliptical)
+        self.calib_pears = s.perform_fov_search(method='pearson')
+        self.calib_pears.fit_calib_data(polyorder=polyorder)
+        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.got_cal_doas = True  # Flag that we now have a calibration
+
+        # Save as FITS file if requested
+        if save:
+            # Get filename which doesn't exist yet by incrementing number
+            full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+            while os.path.exists(full_path):
+                self.doas_file_num += 1
+                full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+            self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+
+        # Plot results if requested, first checking that we have the tkinter frame generated
+        if plot:
+            if not self.fig_doas_fov.in_frame:
+                self.fig_doas_fov.generate_frame()  # Generating the frame will create the plot automatically
+            else:
+                self.fig_doas_fov.update_plot()
+
+    def doas_update_results(self, update_fov_search=False):
+        """
+        Updates DOAS results to include more data, if update_fov_search is True then the FOV location is also updates
+        :return:
+        """
+        pass
+        # TODO write script to update DOAS calibration with or without DOAS FOV update
+
+    def generate_cross_corr(self):
+        """
+        Runs cross correlation procedure to get a global velocity and assign it to self.vel_glob
+        :return:
+        """
+        # TODO ============================================================================
+        # TODO perform all global velocity analysis and update any appropriate parameters
+        # TODO ============================================================================
+        self.vel_glob = None
 
     def update_opt_flow_settings(self, **settings):
         """
@@ -1207,20 +1291,239 @@ class PyplisWorker:
         self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
 
         if plot:
-            self.fig_tau.update_plot(self.img_tau.img)
+            self.fig_tau.update_plot(self.img_tau.img, img_cal=self.img_cal)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
 
         return self.flow, self.velo_img
 
-    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False):
+    def calculate_emission_rate(self):
         """
-        Processes full image pair when passed images (need to think about how to deal with dark images)
+        Generates emission rate for current calibrated image/optical flow etc
+        :return:
+        """
+        # If we don't have 2 or more images loaded we won't have optical flow so can't calculate emission rate
+        if self.idx_current < 2:
+            raise IndexError('Not enough images loaded, cannot calculate emission rate')
+
+        # Try to get calibration error
+        try:
+            cd_err = self.calib_pears.err()
+        except ValueError as e:
+            warnings.warn("Calibration error could not be accessed: {}".format(repr(e)))
+            cd_err = None
+
+        # Compute distances to plume in each pixel
+        self.compute_plume_dists()
+
+        # Set image to previous calibrated image (this will be the one that current optical flow speeds apply to)
+        img = self.img_cal_prev
+        self.ts.append(img["start_acq"])
+        # dt = calc_dt(img, self.img_cal)     # Time incremement betweeen current 2 successive images (probably not needed as I think it is containined in the optical flow object)
+        flow = self.opt_flow                # Local pointer to optical flow object
+
+        # Test image background region to make sure image is ok (this is pyplis code again...)
+        try:
+            sub = img.crop(self.ambient_roi, new_img=True)
+            avg = sub.mean()
+            self.bg_mean.append(avg)
+            self.bg_std.append(sub.std())
+            # If we are in check mode we need to see what the ROI CD values are, if they are too high we cannot process
+            # This image
+            if self.ref_check_mode:
+                if not self.ref_check_lower < avg < self.ref_check_upper:
+                    warnings.warn("Image contains CDs in ambient region above designated acceptable limit"
+                                  "Processing of this image is not being performed")
+                    return None
+        except BaseException:
+            warnings.warn("Failed to retrieve data within background ROI (bg_roi)"
+                 "writing NaN")
+            self.bg_std.append(np.nan)
+            self.bg_mean.append(np.nan)
+            # If we are in check mode, then we return if we failed to check the CD of the ambient ROI
+            if self.ref_check_mode:
+                return None
+
+        # Hold emission rate and associated parameters in list of dictionaries for each LineOnImage
+        # Just making the list full of empty dictionaries here
+        emission_rates_results = [{} for _ in range(len([a for a in self.PCS_lines if isinstance(a, LineOnImage)]))]
+
+        # Run processing for each LineOnImage objects
+        for i, line in enumerate(self.PCS_lines):
+            if isinstance(line, LineOnImage):
+                res_dict = emission_rates_results[i]    # Get correct results dictionary for this line
+
+                # Get distance along line and associated parameters
+                dists = line.get_line_profile(self.dist_img_step)
+                col = line.center_pix[0]
+                dist_errs = self.meas.meas_geometry.pix_dist_err(col)
+
+                # Get column densities from image for current line, and do some other pyplis stuff which I don't understand...
+                n = line.normal_vector
+                cds = line.get_line_profile(img)
+                cond = cds > self.min_cd
+                cds = cds[cond]
+                distarr = dists[cond]
+                disterr = dist_errs
+                props = line.plume_props    # PLume properties local to line
+                verr = None                 # Used and redefined later in flow_histo/flow_hybrid
+                dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
+
+                # Cross-correlation emission rate retrieval
+                if self.velo_modes['flow_glob']:
+                    if not self.got_cross_corr_vel:
+                        res_dict['flow_glob'] = None
+                    else:
+                        phi, phi_err = det_emission_rate(cds, self.vel_glob, distarr,
+                                                         cd_err, self.vel_glob_err, disterr)
+                        # Pack results into dictionary
+                        res_dict['flow_glob'] = {'time': img['start_acq'],
+                                                 'phi': phi,
+                                                 'phi_err': phi_err,
+                                                 'velo_eff': self.vel_glob,
+                                                 'velo_eff_err': self.vel_glob_err}
+
+                # Raw farneback velocity field emission rate retrieval
+                if self.velo_modes['flow_raw']:
+                    delt = flow.del_t
+
+                    # retrieve diplacement vectors along line
+                    dx = line.get_line_profile(flow.flow[:, :, 0])
+                    dy = line.get_line_profile(flow.flow[:, :, 1])
+
+                    # detemine array containing effective velocities
+                    # through the line using dot product with line normal
+                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+
+                    # Calculate mean of effective velocity through l and
+                    # uncertainty using 2 sigma confidence of standard
+                    # deviation
+                    veff_avg = veff_arr.mean()
+                    veff_err = veff_avg * self.optflow_err_rel_veff
+
+                    # Get emission rate
+                    phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
+
+                    # Update results dictionary
+                    res_dict['flow_raw'] = {'time': img['start_acq'],
+                                            'phi': phi,
+                                            'phi_err': phi_err,
+                                            'velo_eff': veff_avg,
+                                            'velo_eff_err': veff_err}
+
+                # Histogram analysis of farneback velocity field for emission rate retrieval
+                if self.velo_modes['flow_histo']:
+                    # get mask specifying plume pixels
+                    mask = img.get_thresh_mask(self.min_cd)
+                    props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
+                                                        dir_multi_gauss=self.use_multi_gauss)
+                    idx = -1
+
+                    # get effective velocity through the pcs based on
+                    # results from histogram analysis
+                    (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
+                                                   sigma_tol=flow.settings.hist_sigma_tol)
+                    phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
+
+                    # Update results dictionary
+                    res_dict['flow_histo'] = {'time': img['start_acq'],
+                                              'phi': phi,
+                                              'phi_err': phi_err,
+                                              'velo_eff': v,
+                                              'velo_eff_err': verr}
+
+                # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
+                if self.velo_modes['flow_hybrid']:
+                    # get results from local plume properties analysis
+                    if not self.velo_modes['flow_histo']:
+                        mask = img.get_thresh_mask(self.min_cd)
+                        props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
+                                                            dir_multi_gauss=self.use_multi_gauss)
+                        idx = -1
+
+                    if dx is None:
+                        # extract raw diplacement vectors along line
+                        dx = line.get_line_profile(flow.flow[:, :, 0])
+                        dy = line.get_line_profile(flow.flow[:, :, 1])
+
+                    if verr is None:
+                        # get effective velocity through the pcs based on
+                        # results from histogram analysis
+                        (_, verr) = props.get_velocity(idx, distarr.mean(), disterr,
+                                                       line.normal_vector, sigma_tol=flow.settings.hist_sigma_tol)
+
+                    # determine orientation angles and magnitudes along
+                    # raw optflow output
+                    phis = np.rad2deg(np.arctan2(dx, -dy))[cond]
+                    mag = np.sqrt(dx ** 2 + dy ** 2)[cond]
+
+                    # get expectation values of predominant displacement
+                    # vector
+                    min_len = (props.len_mu[idx] - props.len_sigma[idx])
+
+                    min_len = max([min_len, flow.settings.min_length])
+
+                    dir_min = (props.dir_mu[idx] -
+                               flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+                    dir_max = (props.dir_mu[idx] + flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+
+                    # get bool mask for indices along the pcs
+                    bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
+
+                    frac_bad = sum(bad) / float(len(bad))
+                    indices = np.arange(len(bad))[bad]
+                    # now check impact of ill-constraint motion vectors
+                    # on ICA
+                    ica_fac_ok = sum(cds[~bad] / sum(cds))
+
+                    vec = props.displacement_vector(idx)
+
+                    flc = flow.replace_trash_vecs(displ_vec=vec, min_len=min_len, dir_low=dir_min, dir_high=dir_max)
+
+                    delt = flow.del_t
+                    dx = line.get_line_profile(flc.flow[:, :, 0])
+                    dy = line.get_line_profile(flc.flow[:, :, 1])
+                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+
+                    # Calculate mean of effective velocity through l and
+                    # uncertainty using 2 sigma confidence of standard
+                    # deviation
+                    veff_avg = veff_arr.mean()
+                    fl_err = veff_avg * self.optflow_err_rel_veff
+
+                    # neglect uncertainties in the successfully constraint
+                    # flow vectors along the pcs by initiating an zero
+                    # array ...
+                    veff_err_arr = np.ones(len(veff_arr)) * fl_err
+                    # ... and set the histo errors for the indices of
+                    # ill-constraint flow vectors on the pcs (see above)
+                    veff_err_arr[indices] = verr
+
+                    # Determine emission rate
+                    phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
+                    veff_err_avg = veff_err_arr.mean()
+
+                    res_dict['flow_hybrid'] = {'time': img['start_acq'],
+                                               'phi': phi,
+                                               'phi_err': phi_err,
+                                               'velo_eff': veff_avg,
+                                               'velo_eff_err': veff_err_avg,
+                                               'frac_optflow_ok': 1 - frac_bad,
+                                               'frac_optflow_ok_ica': ica_fac_ok}
+
+        return res_dict
+
+    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False):
+        """
+        Processes full image pair when passed images
 
         :param img_path_A: str  path to on-band image
         :param img_path_B: str  path to corresponding off-band image
         :param plot: bool       defines whether the loaded images are plotted
         :param plot_bg: bool    defines whether the background models are plotted
+        :param force_cal: bool  If True, calibration is performed after image load, and then calibration is applied -
+                                Use case, if we are at the end of an image sequence and have not yet reached the
+                                buffer size to perform a DOAS calibration
         :return:
         """
 
@@ -1231,15 +1534,8 @@ class PyplisWorker:
         if img_path_B is not None:
             self.load_img(img_path_B, band='B', plot=plot)
 
-        # Generate optical depth image
-        self.generate_optical_depth(plot=plot, plot_bg=plot_bg)
-
-        # Only update buffer if this is a new image (if it is a new image the path will be given to it)
-        # Really we only want to update the image buffer when processing a full sequence, which will always pass
-        # the img_path parameter to this function, so will update the buffer correctly.
-        if img_path_A is not None:
-            # Add tau image to buffer and update image time too
-            self.update_img_buff(self.img_tau.img, img_path_A)
+        # Generate optical depth image (and calibrate if available)
+        self.generate_optical_depth(plot=plot, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -1272,6 +1568,7 @@ class PyplisWorker:
             # TODO Need to create an option in cell calibration frame to change use_cell_bg as an option
             # TODO this bool defines whetehr cal_dir is used for automatically finding the clear sky image for bg modelling
             self.perform_cell_calibration(plot=False, set_bg_img=self.use_cell_bg)
+        force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
         # Loop through img_list and process data
         self.first_image = True
@@ -1281,9 +1578,14 @@ class PyplisWorker:
             if i == len(self.img_list) - 1:
                 plot_iter = True
 
+            # If we have a short image list we need to force calibration on the last image
+            if len(self.img_list) < self.doas_recal_num and i == len(self.img_list) - 1:
+                if self.cal_type in [1, 2]:
+                    force_cal = True
+
             # Process image pair
             self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
-                              plot=plot_iter)
+                              plot=plot_iter, force_cal=force_cal)
 
             # Once first image is processed we update the first_image bool
             if i == 0:
@@ -1292,12 +1594,13 @@ class PyplisWorker:
             # Wait for defined amount of time to allow plotting of data without freezing up
             time.sleep(self.wait_time)
 
-        if self.cal_type in [1, 2]:
-            # TODO Edit this test to use proper data (currently uses dummy random values)
-            # Current test for performing DOAS FOV search
-            stack = self.make_stack()
-            doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
-            self.doas_fov_search(stack, doas_results)
+
+        # if self.cal_type in [1, 2]:
+        #     # TODO Edit this test to use proper data (currently uses dummy random values) - I think this test is now automatic in process_pair/generate_optical_depth
+        #     # Current test for performing DOAS FOV search
+        #     stack = self.make_img_stack()
+        #     doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
+        #     self.doas_fov_search(stack, doas_results)
 
     def start_processing(self):
         """Public access thread starter for _processing"""
