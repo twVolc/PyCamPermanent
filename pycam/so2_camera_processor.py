@@ -7,6 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
+from pycam.io import save_img
 
 import pyplis
 from pyplis import LineOnImage
@@ -15,7 +16,7 @@ from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
 from pyplis.dilutioncorr import DilutionCorr, correct_img
-from pyplis.fluxcalc import det_emission_rate
+from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A
 import pydoas
 
 from tkinter import filedialog, messagebox
@@ -40,6 +41,9 @@ class PyplisWorker:
     :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
     def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+        self._conversion_factor = 2.663 * 1e-6     # Conversion for ppm.m into Kg m-2
+        self.ppmm_conv = (self._conversion_factor * N_A) / (1000 * 100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
+
         self.q = queue.Queue()          # Queue object for images. Images are passed in a pair for fltrA and fltrB
         self.q_doas = queue.Queue()     # Queue where processed doas values are placed (dictionary containing al relevant data)
 
@@ -425,7 +429,7 @@ class PyplisWorker:
 
         # Dark subtraction - first extract ss then hunt for dark image
         ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)
+        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
@@ -460,7 +464,7 @@ class PyplisWorker:
 
         # Dark subtraction - first extract ss then hunt for dark image
         ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)
+        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
@@ -484,7 +488,8 @@ class PyplisWorker:
         Searches for suitable dark image in designated directory. First it filters the images for the correct filter,
         then searches for an image with the same shutter speed defined
         :param: ss  int,str     Shutter speed value to hunt for. Can be either int or str
-        :return: dark_img
+        :returns: dark_img      Coadded dark image for this shutter speed
+        :returns: dark_paths    List of strings representing paths to all dark images used to generate dark_img
         """
         # If band is given in terms of A/B we convert to on/off
         if band == 'A':
@@ -522,7 +527,7 @@ class PyplisWorker:
         dark_full = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, len(ss_images)])
         for i, ss_image in enumerate(ss_images):
             # Load image. Coadd.
-            dark_full[:, :, i], meta = pyplis.custom_image_import.load_picam_png(img_dir + ss_image)
+            dark_full[:, :, i], meta = pyplis.custom_image_import.load_picam_png(os.path.join(img_dir, ss_image))
 
         # Coadd images to creat single image
         dark_img = np.mean(dark_full, axis=2)
@@ -530,7 +535,10 @@ class PyplisWorker:
         # Update lookup dictionary for fast retrieval of dark image later
         self.dark_dict[band][str(ss_rounded)] = dark_img
 
-        return dark_img
+        # Generate dark list of images as second return value in case this is wanted
+        dark_paths = [os.path.join(img_dir, f) for f in ss_images]
+
+        return dark_img, dark_paths
 
     def register_image(self, **kwargs):
         """
@@ -579,7 +587,104 @@ class PyplisWorker:
 
         setattr(self, 'vign_{}'.format(band), img / np.amax(img))
 
-    def perform_cell_calibration(self, plot=True, set_bg_img=True):
+    def perform_cell_calibration_pyplis(self, plot=True, set_bg_img=True):
+        """Performs cell calibration with pyplis object"""
+        # Create updated cell calib engine (includes current cam geometry - may not be necessary)
+        self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
+
+        # Get all dark corrected images in sequence
+        img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
+                         self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext in x]
+
+        # If we don't have any images it may be that the first calibration procedure hasn't been run yet
+        if len(img_list_full) == 0:
+            # Run first calibration, with saving the darkcorr images set to True
+            self.perform_cell_calibration(plot=False, set_bg_img=set_bg_img, save_corr=True)
+
+            # Try again, if we fail then the calibration directory doesn't contain valid images, so we exit
+            # Get all dark corrected images in sequence
+            img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
+                             self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext in x]
+
+            if len(img_list_full) == 0:
+                print('Calibration directory: {} \n'
+                      ' is lacking necessary files to perform calibration. '
+                      'Please use a different directory or move images to this directory'.format(self.cell_cal_dir))
+                return
+
+        # Clear sky.
+        clear_list_A = [x for x in img_list_full
+                        if self.cam_specs.file_filterids['on'] in x and
+                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+        clear_list_B = [x for x in img_list_full
+                        if self.cam_specs.file_filterids['off'] in x and
+                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+        bg_on_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_A]
+        bg_off_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_B]
+
+        # Set pyplis background images
+        self.cell_calib.set_bg_images(img_paths=bg_on_paths, filter_id="on")
+        self.cell_calib.set_bg_images(img_paths=bg_off_paths, filter_id="off")
+
+        # -------------------------------
+        # READ IN CALIBRATION CELL IMAGES
+        # -------------------------------
+        # Calibration file listssky
+        cal_list_A = [x for x in img_list_full
+                      if self.cam_specs.file_filterids['on'] in x and
+                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+        cal_list_B = [x for x in img_list_full
+                      if self.cam_specs.file_filterids['off'] in x and
+                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+        num_cal_A = len(cal_list_A)
+        num_cal_B = len(cal_list_B)
+
+        if num_cal_A == 0 or num_cal_B == 0:
+            print('Calibration directory does not contain expected image. Aborting calibration load!')
+            return
+
+        cell_vals_A = [
+            x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+            for x in cal_list_A]
+        cell_vals_B = [
+            x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+            for x in cal_list_B]
+        cell_vals = list(set(cell_vals_A))
+
+        # Ensure that we only calibrate with cells which have both on and off band images. So first we determine values
+        # which are in one list but not the other, removing them from cell_vals
+        cell_vals_B = list(set(cell_vals_B))
+        missing_vals = np.setdiff1d(cell_vals, cell_vals_B, assume_unique=True)
+        for val in missing_vals:
+            try:
+                cell_vals.remove(val)
+            except ValueError:
+                pass
+            print('Cell {}ppmm is not present in both on- and off-band images, so is not being processed.')
+
+        # Loop through ppmm values and assign cells to pyplis object
+        filter_ids = {'A': 'on',
+                      'B': 'off'}
+        for ppmm in cell_vals:
+            # Set id for this cell (based on its filename)
+            cal_id = ppmm + self.cam_specs.file_img_type['cal']
+
+            # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
+            cd_val = int(ppmm) * self.ppmm_conv
+
+            for band in ['A', 'B']:
+                # Make list for specific calibration cell
+                cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
+                full_paths = [os.path.join(self.cell_cal_dir, f) for f in cell_list]
+
+                self.cell_calib.set_cell_images(img_paths=full_paths, cell_gas_cd=cd_val,
+                                                cell_id=cal_id, filter_id=filter_ids[band])
+
+        # Perform calibration
+        self.cell_calib.prepare_calib_data(on_id="on", off_id="off", darkcorr=False)
+
+
+    def perform_cell_calibration(self, plot=True, set_bg_img=True, save_corr=True):
         """
         Loads in cell calibration images and performs the calibration so that it is ready if needed
         :param plot:        bool    States whether the results are plotted
@@ -591,11 +696,15 @@ class PyplisWorker:
 
         img_list_full = [x for x in os.listdir(self.cell_cal_dir) if self.cam_specs.file_ext in x]
 
-        # Clear sky
+        # Clear sky. We use file_ext too to avoid using any darkcorr images which are created/saved by this function
         clear_list_A = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['on'] in x  and self.cam_specs.file_img_type['clear'] in x]
+                        if self.cam_specs.file_filterids['on'] in x  and
+                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
         clear_list_B = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
+                        if self.cam_specs.file_filterids['off'] in x and
+                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+        clear_list_A.sort()
+        clear_list_B.sort()
         num_clear_A = len(clear_list_A)
         num_clear_B = len(clear_list_B)
         img_array_clear_A = np.zeros((self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, num_clear_A), dtype=np.float32)
@@ -611,7 +720,7 @@ class PyplisWorker:
 
             # Find associated dark image by extracting shutter speed, then subtract this image
             ss = meta['texp'] / self.cam_specs.file_ss_units
-            img_array_clear_A[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='A')
+            img_array_clear_A[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='A')[0]
 
             # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
             img_array_clear_A[:, :, i] *= (1 / meta['texp'])
@@ -625,7 +734,7 @@ class PyplisWorker:
 
             # Find associated dark image by extracting shutter speed, then subtract this image
             ss = meta['texp'] / self.cam_specs.file_ss_units
-            img_array_clear_B[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='B')
+            img_array_clear_B[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='B')[0]
 
             # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
             img_array_clear_B[:, :, i] *= (1 / meta['texp'])
@@ -648,9 +757,13 @@ class PyplisWorker:
         # -------------------------------
         # Calibration file listssky
         cal_list_A = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
+                      if self.cam_specs.file_filterids['on'] in x and
+                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
         cal_list_B = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
+                      if self.cam_specs.file_filterids['off'] in x and
+                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+        cal_list_A.sort()
+        cal_list_B.sort()
         num_cal_A = len(cal_list_A)
         num_cal_B = len(cal_list_B)
 
@@ -697,7 +810,7 @@ class PyplisWorker:
 
                     # Find associated dark image by extracting shutter speed, then subtract this image
                     ss = meta['texp'] / self.cam_specs.file_ss_units
-                    cell_array[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band=band)
+                    cell_array[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band=band)[0]
 
                     # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
                     cell_array[:, :, i] *= (1 / meta['texp'])
@@ -758,6 +871,31 @@ class PyplisWorker:
 
         # Flag that we now have a cell calibration
         self.got_cal_cell = True
+
+        # Save coadded/dark-corrected images if requested to do so
+        if save_corr:
+            for band in ['A', 'B']:
+                # Clear image
+                img = np.uint16(np.round(locals()['img_clear_{}'.format(band)]))
+                filename = locals()['clear_list_{}'.format(band)][-1].split(self.cam_specs.file_ext)[0] + \
+                           '_' + self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext
+                save_img(img, filename)
+
+                # Loop through cells and save those image
+                for ppmm in cell_vals:
+                    # Set id for this cell (based on its filename)
+                    cal_id = ppmm + self.cam_specs.file_img_type['cal']
+
+                    # Make list for specific calibration cell and retrieve the most recent filename - this will be used
+                    # as the filename for the darkcorr coadded image
+                    cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
+                    cell_list.sort()
+                    filename = cell_list[-1].split(self.cam_specs.file_ext)[0] + \
+                               '_' + self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext
+
+                    # Get image and round it to int for saving
+                    img = np.uint16(np.round(getattr(self, 'cell_dict_{}'.format(band))[ppmm].copy()))
+                    save_img(img, filename)
 
         # Plot calibration
         if plot:
@@ -1376,6 +1514,11 @@ class PyplisWorker:
                     else:
                         phi, phi_err = det_emission_rate(cds, self.vel_glob, distarr,
                                                          cd_err, self.vel_glob_err, disterr)
+
+                        # Convert to kg/s (pyplis exports in g/s
+                        phi /= 1000
+                        phi_err /= 1000
+
                         # Pack results into dictionary
                         res_dict['flow_glob'] = {'time': img['start_acq'],
                                                  'phi': phi,
@@ -1404,6 +1547,10 @@ class PyplisWorker:
                     # Get emission rate
                     phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
+                    # Convert to kg/s (pyplis exports in g/s
+                    phi /= 1000
+                    phi_err /= 1000
+
                     # Update results dictionary
                     res_dict['flow_raw'] = {'time': img['start_acq'],
                                             'phi': phi,
@@ -1424,6 +1571,10 @@ class PyplisWorker:
                     (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
                                                    sigma_tol=flow.settings.hist_sigma_tol)
                     phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
+
+                    # Convert to kg/s (pyplis exports in g/s
+                    phi /= 1000
+                    phi_err /= 1000
 
                     # Update results dictionary
                     res_dict['flow_histo'] = {'time': img['start_acq'],
@@ -1502,6 +1653,10 @@ class PyplisWorker:
                     # Determine emission rate
                     phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
                     veff_err_avg = veff_err_arr.mean()
+
+                    # Convert to kg/s (pyplis exports in g/s
+                    phi /= 1000
+                    phi_err /= 1000
 
                     res_dict['flow_hybrid'] = {'time': img['start_acq'],
                                                'phi': phi,

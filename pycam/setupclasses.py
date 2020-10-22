@@ -122,7 +122,11 @@ class CameraSpecs:
         self.file_ss = '{}ss'                                   # Shutter speed format spec
         self.file_ss_loc = 3                                    # Shutter speed location in filename
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
-        self.file_img_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
+        self.file_img_type = {'meas': 'Plume',
+                              'dark': 'Dark',
+                              'cal': 'ppmm',
+                              'clear': 'Clear',
+                              'dark_corr': 'darkcorr'}
         self.file_type_loc = 4                                  # Img type location in filename
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
