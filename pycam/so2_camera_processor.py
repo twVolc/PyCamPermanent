@@ -257,7 +257,7 @@ class PyplisWorker:
     def cell_cal_dir(self, value):
         """When the cell calibration directory is changed we automatically load it in and process the data"""
         self._cell_cal_dir = value
-        self.perform_cell_calibration(plot=False, set_bg_img=False)
+        self.perform_cell_calibration_pyplis(plot=False, set_bg_img=False)
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
@@ -594,17 +594,17 @@ class PyplisWorker:
 
         # Get all dark corrected images in sequence
         img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
-                         self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext in x]
+                         self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext in x]
 
         # If we don't have any images it may be that the first calibration procedure hasn't been run yet
         if len(img_list_full) == 0:
-            # Run first calibration, with saving the darkcorr images set to True
+            # Run first calibration, with saving the dark_corr images set to True
             self.perform_cell_calibration(plot=False, set_bg_img=set_bg_img, save_corr=True)
 
             # Try again, if we fail then the calibration directory doesn't contain valid images, so we exit
             # Get all dark corrected images in sequence
             img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
-                             self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext in x]
+                             self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext in x]
 
             if len(img_list_full) == 0:
                 print('Calibration directory: {} \n'
@@ -614,11 +614,9 @@ class PyplisWorker:
 
         # Clear sky.
         clear_list_A = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['on'] in x and
-                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+                        if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['clear'] in x]
         clear_list_B = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['off'] in x and
-                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+                        if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
         bg_on_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_A]
         bg_off_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_B]
 
@@ -631,11 +629,9 @@ class PyplisWorker:
         # -------------------------------
         # Calibration file listssky
         cal_list_A = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['on'] in x and
-                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+                      if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
         cal_list_B = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['off'] in x and
-                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+                      if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
         num_cal_A = len(cal_list_A)
         num_cal_B = len(cal_list_B)
 
@@ -670,7 +666,10 @@ class PyplisWorker:
             cal_id = ppmm + self.cam_specs.file_img_type['cal']
 
             # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
-            cd_val = int(ppmm) * self.ppmm_conv
+            # Pyplis doesn't like 0 cell CD so if we are using the 0 cell we just make it have a very small value
+            if int(ppmm) == 0:
+                ppmm = 0.001
+            cd_val = float(ppmm) * self.ppmm_conv
 
             for band in ['A', 'B']:
                 # Make list for specific calibration cell
@@ -682,6 +681,27 @@ class PyplisWorker:
 
         # Perform calibration
         self.cell_calib.prepare_calib_data(on_id="on", off_id="off", darkcorr=False)
+
+        # Flag that we now have a cell calibration
+        self.got_cal_cell = True
+
+        # Generate mask - if calibrating with just cell we use centre of image, otherwise we use
+        # DOAS FOV for normalisation region. We use the second lowest calibration cell for this - don't want to stray
+        # into non-linearity but don't want a 0 cell
+        cell_vals_float = [float(x) for x in cell_vals]
+        cell_vals.sort()
+        self.sens_mask_ppmm = str(int(cell_vals[1]))
+        if self.cal_type in [1, 2] and self.got_cal_doas:
+            mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
+                                                             pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
+                                                             radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=2)
+        else:
+            mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=2)
+        self.sensitivity_mask = mask.img
+
+        # Plot if requested
+        if plot:
+            self.plot_cell_cal()
 
 
     def perform_cell_calibration(self, plot=True, set_bg_img=True, save_corr=True):
@@ -696,7 +716,7 @@ class PyplisWorker:
 
         img_list_full = [x for x in os.listdir(self.cell_cal_dir) if self.cam_specs.file_ext in x]
 
-        # Clear sky. We use file_ext too to avoid using any darkcorr images which are created/saved by this function
+        # Clear sky. We use file_ext too to avoid using any dark_corr images which are created/saved by this function
         clear_list_A = [x for x in img_list_full
                         if self.cam_specs.file_filterids['on'] in x  and
                         self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
@@ -842,7 +862,6 @@ class PyplisWorker:
 
             # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
             # DOAS FOV for normalisation region
-
             if self.cal_type in [1, 2] and self.got_cal_doas:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
                                                                        pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
@@ -878,8 +897,9 @@ class PyplisWorker:
                 # Clear image
                 img = np.uint16(np.round(locals()['img_clear_{}'.format(band)]))
                 filename = locals()['clear_list_{}'.format(band)][-1].split(self.cam_specs.file_ext)[0] + \
-                           '_' + self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext
-                save_img(img, filename)
+                           '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
+                pathname = self.cell_cal_dir + filename
+                save_img(img, pathname)
 
                 # Loop through cells and save those image
                 for ppmm in cell_vals:
@@ -887,19 +907,28 @@ class PyplisWorker:
                     cal_id = ppmm + self.cam_specs.file_img_type['cal']
 
                     # Make list for specific calibration cell and retrieve the most recent filename - this will be used
-                    # as the filename for the darkcorr coadded image
+                    # as the filename for the dark_corr coadded image
                     cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
                     cell_list.sort()
                     filename = cell_list[-1].split(self.cam_specs.file_ext)[0] + \
-                               '_' + self.cam_specs.file_img_type['darkcorr'] + self.cam_specs.file_ext
+                               '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
+                    pathname = self.cell_cal_dir + filename
 
                     # Get image and round it to int for saving
                     img = np.uint16(np.round(getattr(self, 'cell_dict_{}'.format(band))[ppmm].copy()))
-                    save_img(img, filename)
+                    save_img(img, pathname)
 
         # Plot calibration
         if plot:
             self.fig_cell_cal.update_plot()
+
+    def plot_cell_cal(self):
+        """
+        Plots cell calibration from pyplis object
+        :return:
+        """
+        ax = self.cell_calib.plot_all_calib_curves()
+        ax.figure.show()
 
     def generate_sensitivity_mask(self, img_tau, pos_x=None, pos_y=None, radius=1, pyr_lvl=2):
         # TODO check pyr_lvl is working correctly, and pos_x/y and radius are scaled correctly following pyr
@@ -1720,9 +1749,7 @@ class PyplisWorker:
 
         # Perform calibration work
         if self.cal_type in [0, 2]:
-            # TODO Need to create an option in cell calibration frame to change use_cell_bg as an option
-            # TODO this bool defines whetehr cal_dir is used for automatically finding the clear sky image for bg modelling
-            self.perform_cell_calibration(plot=False, set_bg_img=self.use_cell_bg)
+            self.perform_cell_calibration_pyplis(plot=False, set_bg_img=self.use_cell_bg)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
         # Loop through img_list and process data

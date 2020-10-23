@@ -1527,10 +1527,10 @@ class ProcessSettings(LoadSaveProcessingSettings):
         row += 1
 
         # Minimum column density used in analysis
-        lab = ttk.Label(self.frame, text='Min. CD analysed [molecules/cm2]:')
-        lab.grid(row=2, column=0, sticky='w')
         ans_frame = ttk.Frame(self.frame)
         ans_frame.grid(row=row, column=1)
+        lab = ttk.Label(self.frame, text='Min. CD analysed [molecules/cm2]:')
+        lab.grid(row=0, column=0, sticky='w')
         thresh_spin = ttk.Spinbox(ans_frame, textvariable=self._min_cd, from_=0, to=100, increment=1,
                                   width=4)
         thresh_spin.grid(row=0, column=0, sticky='w')
@@ -1977,9 +1977,9 @@ class CellCalibFrame:
 
         self._use_cell_bg = tk.IntVar()
         self.use_cell_bg = int(self.pyplis_worker.use_cell_bg)
-        crop_sens_check = ttk.Checkbutton(self.frame_setts, text='Automatically set background images',
+        use_cell_bg_check = ttk.Checkbutton(self.frame_setts, text='Automatically set background images',
                                           variable=self._use_cell_bg, command=self.gather_vars)
-        crop_sens_check.grid(row=4, column=0, columnspan=2, sticky='w')
+        use_cell_bg_check.grid(row=4, column=0, columnspan=2, sticky='w')
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
@@ -2119,7 +2119,7 @@ class CellCalibFrame:
         self.pyplis_worker.cal_crop = bool(self.cal_crop)
         self.pyplis_worker.crop_sens_mask = bool(self.sens_crop)
         self.pyplis_worker.cal_crop_region, self.pyplis_worker.cal_crop_line_mask = self.generate_cropped_region()
-        self.pyplis_worker.perform_cell_calibration(plot=True)
+        self.pyplis_worker.perform_cell_calibration_pyplis(plot=True)
 
     def scale_imgs(self, draw=True):
         """
@@ -2127,8 +2127,8 @@ class CellCalibFrame:
         :param draw:
         :return:
         """
-        self.abs_im.set_clim(vmin=0,
-                             vmax=np.percentile(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm], 99))
+        # self.abs_im.set_clim(vmin=0,
+        #                      vmax=np.percentile(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm], 99))
         self.mask_im.set_clim(vmin=np.percentile(self.pyplis_worker.sensitivity_mask, 1),
                               vmax=np.percentile(self.pyplis_worker.sensitivity_mask, 99))
 
@@ -2152,19 +2152,20 @@ class CellCalibFrame:
         # except AttributeError:
         #     pass
 
-        # Plot calibration fit line
-        self.scat.remove()
-        self.scat = self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
-                                        marker='x', color='white', s=50)
-        max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
-        self.line_plt.pop(0).remove()
-        self.line_plt = self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
+        # # Plot calibration fit line
+        # self.scat.remove()
+        # self.scat = self.ax_fit.scatter(self.pyplis_worker.cell_cal_vals[:, 1], self.pyplis_worker.cell_cal_vals[:, 0],
+        #                                 marker='x', color='white', s=50)
+        # max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
+        # self.line_plt.pop(0).remove()
+        # self.line_plt = self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
+        self.pyplis_worker.cell_calib.plot_all_calib_curves(self.ax_fit)
 
-        # Plot absorbance of 2nd smallest cell
-        abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
-        self.abs_im.set_data(abs_img)
-        self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
-        self.cbar_abs.draw_all()
+        # # Plot absorbance of 2nd smallest cell
+        # abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
+        # self.abs_im.set_data(abs_img)
+        # self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
+        # self.cbar_abs.draw_all()
 
         # Plot sensitivity mask
         self.mask_im.set_data(self.pyplis_worker.sensitivity_mask)
