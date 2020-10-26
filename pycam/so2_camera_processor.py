@@ -189,8 +189,10 @@ class PyplisWorker:
         self.cal_crop = False       # Bool defining if calibration region is cropped
         self.cal_crop_region = None # Bool Array defining crop region for calibration
         self.cal_crop_line_mask = None  # Bool array of the line for crop region (used to find mean of area to set everything outside to that value
+        self.cal_crop_rad = 1
         self.crop_sens_mask = False     # Whether cal crop region is used to crop the sensitivity mask
         self.cell_cal_vals = np.zeros(2)
+        self.cell_err = 0.1         # Cell CD error (fractional). Currently just assumed to be 10%, typical manufacturer error
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
         self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
@@ -257,7 +259,7 @@ class PyplisWorker:
     def cell_cal_dir(self, value):
         """When the cell calibration directory is changed we automatically load it in and process the data"""
         self._cell_cal_dir = value
-        self.perform_cell_calibration_pyplis(plot=False, set_bg_img=False)
+        self.perform_cell_calibration_pyplis(plot=True)
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
@@ -587,19 +589,17 @@ class PyplisWorker:
 
         setattr(self, 'vign_{}'.format(band), img / np.amax(img))
 
-    def perform_cell_calibration_pyplis(self, plot=True, set_bg_img=True):
+    def perform_cell_calibration_pyplis(self, plot=True, load_dat=True):
+        # TODO COMPLETE MERGE OF THIS AND THE OTHER CALIBRATION FUNCTION
+        # TODO There is definitely duplicated processing done in the other script, which probably slows this one down
         """Performs cell calibration with pyplis object"""
-        # Create updated cell calib engine (includes current cam geometry - may not be necessary)
-        self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
+        if load_dat:
+            # Create updated cell calib engine (includes current cam geometry - may not be necessary)
+            self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
 
-        # Get all dark corrected images in sequence
-        img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
-                         self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext in x]
-
-        # If we don't have any images it may be that the first calibration procedure hasn't been run yet
-        if len(img_list_full) == 0:
             # Run first calibration, with saving the dark_corr images set to True
-            self.perform_cell_calibration(plot=False, set_bg_img=set_bg_img, save_corr=True)
+            # This will also generate the cell optical depth image needed for plotting in Cell GUI frame
+            self.perform_cell_calibration(plot=False, save_corr=True)
 
             # Try again, if we fail then the calibration directory doesn't contain valid images, so we exit
             # Get all dark corrected images in sequence
@@ -612,75 +612,91 @@ class PyplisWorker:
                       'Please use a different directory or move images to this directory'.format(self.cell_cal_dir))
                 return
 
-        # Clear sky.
-        clear_list_A = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['clear'] in x]
-        clear_list_B = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
-        bg_on_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_A]
-        bg_off_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_B]
+            # Clear sky.
+            clear_list_A = [x for x in img_list_full
+                            if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['clear'] in x]
+            clear_list_B = [x for x in img_list_full
+                            if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
+            bg_on_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_A]
+            bg_off_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_B]
 
-        # Set pyplis background images
-        self.cell_calib.set_bg_images(img_paths=bg_on_paths, filter_id="on")
-        self.cell_calib.set_bg_images(img_paths=bg_off_paths, filter_id="off")
+            # Set pyplis background images
+            self.cell_calib.set_bg_images(img_paths=bg_on_paths, filter_id="on")
+            self.cell_calib.set_bg_images(img_paths=bg_off_paths, filter_id="off")
 
-        # -------------------------------
-        # READ IN CALIBRATION CELL IMAGES
-        # -------------------------------
-        # Calibration file listssky
-        cal_list_A = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
-        cal_list_B = [x for x in img_list_full
-                      if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
-        num_cal_A = len(cal_list_A)
-        num_cal_B = len(cal_list_B)
+            # -------------------------------
+            # READ IN CALIBRATION CELL IMAGES
+            # -------------------------------
+            # Calibration file listssky
+            cal_list_A = [x for x in img_list_full
+                          if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
+            cal_list_B = [x for x in img_list_full
+                          if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
+            num_cal_A = len(cal_list_A)
+            num_cal_B = len(cal_list_B)
 
-        if num_cal_A == 0 or num_cal_B == 0:
-            print('Calibration directory does not contain expected image. Aborting calibration load!')
-            return
+            if num_cal_A == 0 or num_cal_B == 0:
+                print('Calibration directory does not contain expected image. Aborting calibration load!')
+                return
 
-        cell_vals_A = [
-            x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
-            for x in cal_list_A]
-        cell_vals_B = [
-            x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
-            for x in cal_list_B]
-        cell_vals = list(set(cell_vals_A))
+            cell_vals_A = [
+                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                for x in cal_list_A]
+            cell_vals_B = [
+                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                for x in cal_list_B]
+            cell_vals = list(set(cell_vals_A))
 
-        # Ensure that we only calibrate with cells which have both on and off band images. So first we determine values
-        # which are in one list but not the other, removing them from cell_vals
-        cell_vals_B = list(set(cell_vals_B))
-        missing_vals = np.setdiff1d(cell_vals, cell_vals_B, assume_unique=True)
-        for val in missing_vals:
-            try:
-                cell_vals.remove(val)
-            except ValueError:
-                pass
-            print('Cell {}ppmm is not present in both on- and off-band images, so is not being processed.')
+            # Ensure that we only calibrate with cells which have both on and off band images. So first we determine values
+            # which are in one list but not the other, removing them from cell_vals
+            cell_vals_B = list(set(cell_vals_B))
+            missing_vals = np.setdiff1d(cell_vals, cell_vals_B, assume_unique=True)
+            for val in missing_vals:
+                try:
+                    cell_vals.remove(val)
+                except ValueError:
+                    pass
+                print('Cell {}ppmm is not present in both on- and off-band images, so is not being processed.')
 
-        # Loop through ppmm values and assign cells to pyplis object
-        filter_ids = {'A': 'on',
-                      'B': 'off'}
-        for ppmm in cell_vals:
-            # Set id for this cell (based on its filename)
-            cal_id = ppmm + self.cam_specs.file_img_type['cal']
+            # Loop through ppmm values and assign cells to pyplis object
+            filter_ids = {'A': 'on',
+                          'B': 'off'}
+            for ppmm in cell_vals:
+                # Set id for this cell (based on its filename)
+                cal_id = ppmm + self.cam_specs.file_img_type['cal']
 
-            # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
-            # Pyplis doesn't like 0 cell CD so if we are using the 0 cell we just make it have a very small value
-            if int(ppmm) == 0:
-                ppmm = 0.001
-            cd_val = float(ppmm) * self.ppmm_conv
+                # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
+                # Pyplis doesn't like 0 cell CD so if we are using the 0 cell we just make it have a very small value
+                if int(ppmm) == 0:
+                    ppmm = 0.001
+                cd_val = float(ppmm) * self.ppmm_conv
 
-            for band in ['A', 'B']:
-                # Make list for specific calibration cell
-                cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
-                full_paths = [os.path.join(self.cell_cal_dir, f) for f in cell_list]
+                for band in ['A', 'B']:
+                    # Make list for specific calibration cell
+                    cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
+                    full_paths = [os.path.join(self.cell_cal_dir, f) for f in cell_list]
 
-                self.cell_calib.set_cell_images(img_paths=full_paths, cell_gas_cd=cd_val,
-                                                cell_id=cal_id, filter_id=filter_ids[band])
+                    self.cell_calib.set_cell_images(img_paths=full_paths, cell_gas_cd=cd_val,
+                                                    cell_id=cal_id, filter_id=filter_ids[band])
 
-        # Perform calibration
-        self.cell_calib.prepare_calib_data(on_id="on", off_id="off", darkcorr=False)
+        # Perform calibration - with cropping if requested
+        if self.cal_crop:
+            pos_x_abs = self.cam_specs.pix_num_x / 2
+            pos_y_abs = self.cam_specs.pix_num_y / 2
+            radius_abs = self.cal_crop_rad
+        else:
+            pos_x_abs = None
+            pos_y_abs = None
+            radius_abs = 1
+
+        self.cell_calib.prepare_calib_data(pos_x_abs=pos_x_abs, pos_y_abs=pos_y_abs, radius_abs=radius_abs,
+                                           on_id="on", off_id="off", darkcorr=False)
+
+        # Update cell column density error in each cell
+        for key in self.cell_calib.calib_data:
+            for i in range(len(self.cell_calib.calib_data[key].cd_vec_err)):
+                self.cell_calib.calib_data[key].cd_vec_err[i] = self.cell_calib.calib_data[key].cd_vec[i] * \
+                                                                self.cell_err
 
         # Flag that we now have a cell calibration
         self.got_cal_cell = True
@@ -688,27 +704,36 @@ class PyplisWorker:
         # Generate mask - if calibrating with just cell we use centre of image, otherwise we use
         # DOAS FOV for normalisation region. We use the second lowest calibration cell for this - don't want to stray
         # into non-linearity but don't want a 0 cell
-        cell_vals_float = [float(x) for x in cell_vals]
-        cell_vals.sort()
-        self.sens_mask_ppmm = str(int(cell_vals[1]))
+        cell_vals_float = self.cell_cal_vals[:, 0].copy()
+        cell_vals_float.sort()
+        self.sens_mask_ppmm = str(int(cell_vals_float[2]))
+        # TODO I'm not sure why but the pyplis implementation of get_sensitivity_corr_mask produces some interesting
+        # TODO results. My hack of that function looks like it gives a more reasonable result at the moment (with
+        # TODO villarica data)
+        # TODO I have checked this with pacaya data too, and my implementation seems better, perhaps because I can use
+        # TODO pyr_lvl 2, I think that is better than 1 used by pyplis. Also I only use one tau image, pyplis uses the
+        # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
         if self.cal_type in [1, 2] and self.got_cal_doas:
-            mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
-                                                             pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
-                                                             radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=2)
+            # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
+            #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
+            #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
+            mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm],
+                                                  pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
+                                                  radius=self.doas_fov_extent, pyr_lvl=2)
         else:
-            mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=2)
+            # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=1)
+            mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm], radius=3, pyr_lvl=2)
         self.sensitivity_mask = mask.img
 
         # Plot if requested
         if plot:
-            self.plot_cell_cal()
+            self.fig_cell_cal.update_plot()
 
-
-    def perform_cell_calibration(self, plot=True, set_bg_img=True, save_corr=True):
+    def perform_cell_calibration(self, plot=True, save_corr=True):
         """
         Loads in cell calibration images and performs the calibration so that it is ready if needed
         :param plot:        bool    States whether the results are plotted
-        :param set_bg_img:  bool    States whether bg image should be set to coadded clears loaded herein
+        :param save_corr:   bool    If True, dark corrected images are saved as new PNGs
         :return:
         """
         # Create updated cell calib engine (includes current cam geometry - may not be necessary)
@@ -740,7 +765,7 @@ class PyplisWorker:
 
             # Find associated dark image by extracting shutter speed, then subtract this image
             ss = meta['texp'] / self.cam_specs.file_ss_units
-            img_array_clear_A[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='A')[0]
+            img_array_clear_A[:, :, i] -= self.find_dark_img(self.cell_cal_dir, ss=ss, band='A')[0]
 
             # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
             img_array_clear_A[:, :, i] *= (1 / meta['texp'])
@@ -754,7 +779,7 @@ class PyplisWorker:
 
             # Find associated dark image by extracting shutter speed, then subtract this image
             ss = meta['texp'] / self.cam_specs.file_ss_units
-            img_array_clear_B[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band='B')[0]
+            img_array_clear_B[:, :, i] -= self.find_dark_img(self.cell_cal_dir, ss=ss, band='B')[0]
 
             # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
             img_array_clear_B[:, :, i] *= (1 / meta['texp'])
@@ -766,7 +791,7 @@ class PyplisWorker:
         self.mask_B = self.generate_vign_mask(img_clear_B, 'B')
 
         # If requested, we update bg images to those from calibration, rather than explicitly defined bg images
-        if set_bg_img:
+        if self.use_cell_bg:
             self.bg_A = pyplis.image.Img(img_clear_A)
             self.bg_B = pyplis.image.Img(img_clear_B)
             self.bg_A_path = 'Coadded. ...{}'.format(self.cell_cal_dir[-8])
@@ -830,7 +855,7 @@ class PyplisWorker:
 
                     # Find associated dark image by extracting shutter speed, then subtract this image
                     ss = meta['texp'] / self.cam_specs.file_ss_units
-                    cell_array[:, :, i] -= self.find_dark_img(self.dark_dir, ss=ss, band=band)[0]
+                    cell_array[:, :, i] -= self.find_dark_img(self.cell_cal_dir, ss=ss, band=band)[0]
 
                     # Scale image to 1 second exposure (so that we can deal with images of different shutter speeds
                     cell_array[:, :, i] *= (1 / meta['texp'])
@@ -870,7 +895,7 @@ class PyplisWorker:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm], radius=3, pyr_lvl=2)
 
             # Correct cell images for sensitivity using mask
-            self.cell_tau_dict[ppmm] = self.cell_tau_dict[ppmm] / self.cell_masks[ppmm].img
+            # self.cell_tau_dict[ppmm] = self.cell_tau_dict[ppmm] / self.cell_masks[ppmm].img
 
             # Finally calculate average cell optical depth
             if not self.cal_crop:
@@ -898,8 +923,9 @@ class PyplisWorker:
                 img = np.uint16(np.round(locals()['img_clear_{}'.format(band)]))
                 filename = locals()['clear_list_{}'.format(band)][-1].split(self.cam_specs.file_ext)[0] + \
                            '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
-                pathname = self.cell_cal_dir + filename
-                save_img(img, pathname)
+                pathname = os.path.join(self.cell_cal_dir, filename)
+                if not os.path.exists(pathname):
+                    save_img(img, pathname)
 
                 # Loop through cells and save those image
                 for ppmm in cell_vals:
@@ -912,23 +938,16 @@ class PyplisWorker:
                     cell_list.sort()
                     filename = cell_list[-1].split(self.cam_specs.file_ext)[0] + \
                                '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
-                    pathname = self.cell_cal_dir + filename
+                    pathname = os.path.join(self.cell_cal_dir, filename)
 
                     # Get image and round it to int for saving
                     img = np.uint16(np.round(getattr(self, 'cell_dict_{}'.format(band))[ppmm].copy()))
-                    save_img(img, pathname)
+                    if not os.path.exists(pathname):
+                        save_img(img, pathname)
 
         # Plot calibration
         if plot:
             self.fig_cell_cal.update_plot()
-
-    def plot_cell_cal(self):
-        """
-        Plots cell calibration from pyplis object
-        :return:
-        """
-        ax = self.cell_calib.plot_all_calib_curves()
-        ax.figure.show()
 
     def generate_sensitivity_mask(self, img_tau, pos_x=None, pos_y=None, radius=1, pyr_lvl=2):
         # TODO check pyr_lvl is working correctly, and pos_x/y and radius are scaled correctly following pyr
@@ -971,7 +990,14 @@ class PyplisWorker:
         # Fit 2D model to tau image
         try:
             # This returns an array with 2 too many rows, so take from second to second last
-            cell_img = PolySurfaceFit(img_tau, pyrlevel=pyr_lvl).model[1:-1, :]
+            if pyr_lvl == 2:
+                cell_img = PolySurfaceFit(img_tau, pyrlevel=pyr_lvl).model[1:-1, :]
+            elif pyr_lvl == 1 or pyr_lvl == 0:
+                cell_img = PolySurfaceFit(img_tau, pyrlevel=pyr_lvl).model
+            else:
+                # I've currently only implemented these pyramid levels. Otherwise the model returns an array with the
+                # wrong dimensions for some reason (seems to be an issue with pyplis)
+                raise
         except:
             warnings.warn("2D polyfit failed while determination of sensitivity "
                  "correction mask, using original cell tau image for mask "

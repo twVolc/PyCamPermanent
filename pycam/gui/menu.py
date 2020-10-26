@@ -100,7 +100,8 @@ class PyMenu:
         # More windows cascade
         self.submenu_windows = tk.Menu(self.frame, tearoff=0)
         self.submenu_windows.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
-        self.submenu_windows.add_command(label='Cell calibration', command=cell_calib.update_plot)
+        self.submenu_windows.add_command(label='Cell calibration',
+                                         command=lambda: cell_calib.update_plot(generate_frame=True))
         self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
         self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)

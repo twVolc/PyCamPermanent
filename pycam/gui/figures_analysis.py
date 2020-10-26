@@ -1949,8 +1949,8 @@ class CellCalibFrame:
 
         label = ttk.Label(self.frame_setts, text='Calibration directory:')
         label.grid(row=0, column=0, sticky='w', padx=5)
-        dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
-        dir_lab.grid(row=0, column=1, padx=5)
+        self.cal_dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
+        self.cal_dir_lab.grid(row=0, column=1, padx=5)
         change_butt = ttk.Button(self.frame_setts, text='Change directory',
                                  command=lambda: self.process_setts.get_cell_cal_dir(set_var=True))
         change_butt.grid(row=0, column=2, padx=5)
@@ -1978,7 +1978,7 @@ class CellCalibFrame:
         self._use_cell_bg = tk.IntVar()
         self.use_cell_bg = int(self.pyplis_worker.use_cell_bg)
         use_cell_bg_check = ttk.Checkbutton(self.frame_setts, text='Automatically set background images',
-                                          variable=self._use_cell_bg, command=self.gather_vars)
+                                          variable=self._use_cell_bg, command=self.run_cal)
         use_cell_bg_check.grid(row=4, column=0, columnspan=2, sticky='w')
 
         # Create figure
@@ -1996,7 +1996,8 @@ class CellCalibFrame:
         self.ax_abs = self.fig_abs.subplots(1, 1)
         self.ax_abs.set_aspect(1)
         abs_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.abs_im = self.ax_abs.imshow(abs_img, interpolation='none', vmin=0, vmax=np.percentile(abs_img, 99))
+        self.abs_im = self.ax_abs.imshow(abs_img, interpolation='none', vmin=0, vmax=np.percentile(abs_img, 99),
+                                         cmap=cm.plasma)
         divider = make_axes_locatable(self.ax_abs)
         cax = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar_abs = plt.colorbar(self.abs_im, cax=cax)
@@ -2011,7 +2012,8 @@ class CellCalibFrame:
         mask_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.mask_im = self.ax_mask.imshow(mask_img, interpolation='none',
                                            vmin=np.percentile(mask_img, 1),
-                                           vmax=np.percentile(mask_img, 99))
+                                           vmax=np.percentile(mask_img, 99),
+                                           cmap=cm.seismic)
         divider = make_axes_locatable(self.ax_mask)
         cax = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar_mask = plt.colorbar(self.mask_im, cax=cax)
@@ -2085,7 +2087,7 @@ class CellCalibFrame:
         return (make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
                                    self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2, radius=self.radius),
                 make_circular_mask_line(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                        self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2,radius=self.radius))
+                                        self.cam_specs.pix_num_x / 2, self.cam_specs.pix_num_y / 2, radius=self.radius))
 
     def draw_circle(self, draw=True, run_cal=True):
         """
@@ -2116,10 +2118,12 @@ class CellCalibFrame:
 
     def run_cal(self):
         """Runs calibration with current settings"""
+        self.pyplis_worker.use_cell_bg = self.use_cell_bg
         self.pyplis_worker.cal_crop = bool(self.cal_crop)
         self.pyplis_worker.crop_sens_mask = bool(self.sens_crop)
         self.pyplis_worker.cal_crop_region, self.pyplis_worker.cal_crop_line_mask = self.generate_cropped_region()
-        self.pyplis_worker.perform_cell_calibration_pyplis(plot=True)
+        self.pyplis_worker.cal_crop_rad = self.radius
+        self.pyplis_worker.perform_cell_calibration_pyplis(plot=True, load_dat=False)
 
     def scale_imgs(self, draw=True):
         """
@@ -2127,30 +2131,34 @@ class CellCalibFrame:
         :param draw:
         :return:
         """
-        # self.abs_im.set_clim(vmin=0,
-        #                      vmax=np.percentile(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm], 99))
-        self.mask_im.set_clim(vmin=np.percentile(self.pyplis_worker.sensitivity_mask, 1),
-                              vmax=np.percentile(self.pyplis_worker.sensitivity_mask, 99))
+        self.abs_im.set_clim(vmin=0,
+                             vmax=np.percentile(self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm], 99))
+
+        # For sensitivity mask we want 0 to be the center as we are using the seismic colour map
+        vmax_mask = abs(np.percentile(self.pyplis_worker.sensitivity_mask, 99))
+        vmax = vmax_mask + 1
+        vmin = -vmax_mask + 1
+        self.mask_im.set_clim(vmin=vmin, vmax=vmax)
 
         if draw:
             self.abs_canvas.draw()
             self.mask_canvas.draw()
             self.mask_canvas.draw()
 
-    def update_plot(self):
+    def update_plot(self, generate_frame=False):
         """
         Updates plot
         :return:
         """
-        # Generate frame if it is not already present
+        # If we aren't in the frame we just leave it for now
         if not self.in_frame:
-            self.generate_frame(update_plot=False)
+            if generate_frame:
+                self.generate_frame(update_plot=False)
+            else:
+                return
 
-        # try:
-        #     self.cbar_abs.remove()
-        #     self.cbar_mask.remove()
-        # except AttributeError:
-        #     pass
+        # Configure label first
+        self.cal_dir_lab.configure(text=self.cal_dir_short)
 
         # # Plot calibration fit line
         # self.scat.remove()
@@ -2159,13 +2167,16 @@ class CellCalibFrame:
         # max_tau = np.max(self.pyplis_worker.cell_cal_vals[:, 1])
         # self.line_plt.pop(0).remove()
         # self.line_plt = self.ax_fit.plot([0, max_tau],  self.pyplis_worker.cell_pol([0, max_tau]), '-', color='white')
+
+        self.ax_fit.clear()
+        self.ax_fit.set_title('Cell CD vs apparent absorbance')
         self.pyplis_worker.cell_calib.plot_all_calib_curves(self.ax_fit)
 
         # # Plot absorbance of 2nd smallest cell
-        # abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
-        # self.abs_im.set_data(abs_img)
-        # self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
-        # self.cbar_abs.draw_all()
+        abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]
+        self.abs_im.set_data(abs_img)
+        self.ax_abs.set_title('Cell absorbance: {} ppm.m'.format(self.pyplis_worker.sens_mask_ppmm))
+        self.cbar_abs.draw_all()
 
         # Plot sensitivity mask
         self.mask_im.set_data(self.pyplis_worker.sensitivity_mask)
