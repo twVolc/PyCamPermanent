@@ -2171,6 +2171,9 @@ class CellCalibFrame:
         self.ax_fit.clear()
         self.ax_fit.set_title('Cell CD vs apparent absorbance')
         self.pyplis_worker.cell_calib.plot_all_calib_curves(self.ax_fit)
+        # self.pyplis_worker.cell_calib.plot_calib_curve('aa', ax=self.ax_fit)  # Plotting individual curves - not as tidy
+        # self.pyplis_worker.cell_calib.plot_calib_curve('on', ax=self.ax_fit)
+        # self.pyplis_worker.cell_calib.plot_calib_curve('off', ax=self.ax_fit)
 
         # # Plot absorbance of 2nd smallest cell
         abs_img = self.pyplis_worker.cell_tau_dict[self.pyplis_worker.sens_mask_ppmm]

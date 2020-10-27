@@ -27,6 +27,7 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
+warnings.simplefilter("ignore", UserWarning)
 from math import log10, floor
 import datetime
 import time
@@ -42,7 +43,7 @@ class PyplisWorker:
     """
     def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self._conversion_factor = 2.663 * 1e-6     # Conversion for ppm.m into Kg m-2
-        self.ppmm_conv = (self._conversion_factor * N_A) / (1000 * 100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
+        self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
         self.q = queue.Queue()          # Queue object for images. Images are passed in a pair for fltrA and fltrB
         self.q_doas = queue.Queue()     # Queue where processed doas values are placed (dictionary containing al relevant data)
@@ -593,6 +594,9 @@ class PyplisWorker:
         # TODO COMPLETE MERGE OF THIS AND THE OTHER CALIBRATION FUNCTION
         # TODO There is definitely duplicated processing done in the other script, which probably slows this one down
         """Performs cell calibration with pyplis object"""
+        filter_ids = {'A': 'on',        # Definition of filter ids. I use A/B pyplis uses on/off
+                      'B': 'off'}
+
         if load_dat:
             # Create updated cell calib engine (includes current cam geometry - may not be necessary)
             self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
@@ -659,8 +663,7 @@ class PyplisWorker:
                 print('Cell {}ppmm is not present in both on- and off-band images, so is not being processed.')
 
             # Loop through ppmm values and assign cells to pyplis object
-            filter_ids = {'A': 'on',
-                          'B': 'off'}
+
             for ppmm in cell_vals:
                 # Set id for this cell (based on its filename)
                 cal_id = ppmm + self.cam_specs.file_img_type['cal']
@@ -676,8 +679,10 @@ class PyplisWorker:
                     cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
                     full_paths = [os.path.join(self.cell_cal_dir, f) for f in cell_list]
 
-                    self.cell_calib.set_cell_images(img_paths=full_paths, cell_gas_cd=cd_val,
-                                                    cell_id=cal_id, filter_id=filter_ids[band])
+                    with warnings.catch_warnings():
+                        warnings.simplefilter('ignore')
+                        self.cell_calib.set_cell_images(img_paths=full_paths, cell_gas_cd=cd_val,
+                                                        cell_id=cal_id, filter_id=filter_ids[band])
 
         # Perform calibration - with cropping if requested
         if self.cal_crop:
@@ -687,10 +692,18 @@ class PyplisWorker:
         else:
             pos_x_abs = None
             pos_y_abs = None
-            radius_abs = 1
+            # If no crop we just make the radius as large as possible
+            radius_abs = max(self.cam_specs.pix_num_x, self.cam_specs.pix_num_y)
 
         self.cell_calib.prepare_calib_data(pos_x_abs=pos_x_abs, pos_y_abs=pos_y_abs, radius_abs=radius_abs,
-                                           on_id="on", off_id="off", darkcorr=False)
+                                           on_id=filter_ids['A'], off_id=filter_ids['B'], darkcorr=False)
+
+        slope, offs = self.cell_calib.calib_data['aa'].calib_coeffs
+        print('Calibration parameters AA: {}, {}'.format(slope, offs))
+        slope, offs = self.cell_calib.calib_data['on'].calib_coeffs
+        print('Calibration parameters on-band: {}, {}'.format(slope, offs))
+        slope, offs = self.cell_calib.calib_data['off'].calib_coeffs
+        print('Calibration parameters off-band: {}, {}'.format(slope, offs))
 
         # Update cell column density error in each cell
         for key in self.cell_calib.calib_data:
