@@ -15,6 +15,7 @@ cal_type_int=2
 use_sensitivity_mask=1
 min_cd=5e16
 plot_iter=1
+buff_size=200
 
 # Plume background model
 bg_mode=4

@@ -54,10 +54,21 @@ class PyplisWorker:
         self.wait_time = 0.2
 
         # Setup memory allocation for images (need to keep a large number for DOAS fov image search).
-        self.img_tau_buff_size = 200         # Buffer size for images (this number of images are held in memory)
-        self.img_tau_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_tau_buff_size],
+        self.img_buff_size = 200         # Buffer size for images (this number of images are held in memory)
+        # New style, list of dictionaries for buffer. TODO Initiate with all required keys and memory, perhaps
+        self.img_buff = [{'directory': '',
+                          'file_A': '',
+                          'file_B': '',
+                          'time': '',
+                          'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
+                                                          self.cam_specs.pix_num_x], dtype=np.float32)),
+                          'opt_flow': None      # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          }
+                         for x in range(self.img_buff_size)]
+        self.save_opt_flow = False
+        self.img_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_buff_size],
                                  dtype=np.float32)
-        self.img_tau_buff_time = [None] * self.img_tau_buff_size   # Names of images held within img_buff (on-band name held)
+        self.img_tau_buff_time = [None] * self.img_buff_size   # Names of images held within img_buff (on-band name held)
         self.idx_current = 0    # Used to track what the current index is for saving to image buffer
 
         self.doas_buff_size = 500
@@ -147,7 +158,7 @@ class PyplisWorker:
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
         self.doas_recal_fov = True              # If True DOAS FOV is recalibrated every doas_recal_num images
-        self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_tau_buff_size)
+        self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -358,9 +369,9 @@ class PyplisWorker:
         Resets aspects of self to ensure we start processing in the correct manner
         :return:
         """
-        self.img_tau_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_tau_buff_size],
-                                     dtype=np.float32)
-        self.img_tau_buff_time = [None] * self.img_tau_buff_size  # Names of images held within img_buff (on-band name held)
+        self.img_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_buff_size],
+                                 dtype=np.float32)
+        self.img_tau_buff_time = [None] * self.img_buff_size  # Names of images held within img_buff (on-band name held)
         self.idx_current = 0  # Used to track what the current index is for saving to image buffer
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.got_cal_doas = False
@@ -551,25 +562,33 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
-    def update_img_buff(self, img_tau, filename):
+    def update_img_buff(self, img_tau, filename, opt_flow=None):
         """
         Updates the image buffer and file time buffer
         :param img_tau:     np.array        n x m image matrix of tau image
         :param filname:     str             on- or off-band filename for image used to generate img_tau
         """
+        new_dict = {'directory': self.img_dir,
+                    'file_A': filename,
+                    'file_B': '',
+                    'time': self.get_img_time(filename),
+                    'img_tau': pyplis.Img(img_tau),
+                    'opt_flow': opt_flow
+                    }
+
         # Extract time from filename into datetime object
         img_time = self.get_img_time(filename)
 
         # If we haven't exceeded buffer size then we simply add new data to buffer
-        if self.idx_current < self.img_tau_buff_size:
-            self.img_tau_buff[:, :, self.idx_current] = img_tau
+        if self.idx_current < self.img_buff_size:
+            self.img_buff[:, :, self.idx_current] = img_tau
             self.img_tau_buff_time[self.idx_current] = img_time
 
         # If we are beyond the buffer size we need to shift all images down one and add the new image to the end
         # The oldest image is therefore lost from the buffer
         else:
-            self.img_tau_buff[:, :, :-1] = self.img_tau_buff[:, :, 1:]
-            self.img_tau_buff[:, :, -1] = img_tau
+            self.img_buff[:, :, :-1] = self.img_buff[:, :, 1:]
+            self.img_buff[:, :, -1] = img_tau
             self.img_tau_buff_time[:-1] = self.img_tau_buff_time[1:]
             self.img_tau_buff_time[-1] = img_time
 
@@ -1182,7 +1201,7 @@ class PyplisWorker:
 
     def make_img_stack(self):
         """
-        Generates image stack from self.img_tau_buff (tau images)
+        Generates image stack from self.img_buff (tau images)
         :return stack:  ImgStack        Stack with all loaded images
         """
         # Create empty pyplis ImgStack
@@ -1192,13 +1211,13 @@ class PyplisWorker:
         # Add all images of the current image buffer to stack
         # (only take images from the buffer stack up to the current index - the images which have been loaded thusfar,
         # or if we are over the buffer size we take all images in the buffer)
-        if self.idx_current < self.img_tau_buff_size:
+        if self.idx_current < self.img_buff_size:
             buff_len = self.idx_current
         else:
-            buff_len = self.img_tau_buff_size
+            buff_len = self.img_buff_size
 
         for i in range(buff_len):
-            stack.add_img(self.img_tau_buff[:, :, i], self.img_tau_buff_time[i])
+            stack.add_img(self.img_buff[:, :, i], self.img_tau_buff_time[i])
 
         stack.img_prep['pyrlevel'] = 0
 
@@ -1312,7 +1331,7 @@ class PyplisWorker:
         Processing beyond this point is left ot another function, since it requires use of a second set of images
 
         :param run_cal: bool    If true, and DOAS calibration is selected, we run the doas calibration procedure
-        :param img_path_A: str  If not None, the this indicates it is a new image and that the img_tau_buff should be updated
+        :param img_path_A: str  If not None, the this indicates it is a new image and that the img_buff should be updated
         :returns
         """
         # Set last image to img_tau_prev, as it is used in optical flow computation
@@ -1457,14 +1476,18 @@ class PyplisWorker:
         pass
         # TODO write script to update DOAS calibration with or without DOAS FOV update
 
-    def generate_cross_corr(self):
+    def generate_cross_corr(self, line_young, line_old):
         """
         Runs cross correlation procedure to get a global velocity and assign it to self.vel_glob
+        :param line_young:  LineOnImage  First line of the younger plume
+        :param line_old:    LineOnImage    Second line of the older plume
         :return:
         """
         # TODO ============================================================================
         # TODO perform all global velocity analysis and update any appropriate parameters
         # TODO ============================================================================
+
+
         self.vel_glob = None
 
     def update_opt_flow_settings(self, **settings):
@@ -1480,14 +1503,20 @@ class PyplisWorker:
             if key == 'roi_abs':
                 self.opt_flow.settings.roi_rad_abs = settings[key]
 
-    def generate_opt_flow(self, plot=False):
+    def generate_opt_flow(self, img_tau=None, img_tau_next=None, plot=False):
         """
         Generates optical flow vectors for current and previous image
+        :param img_tau:         pyplis.Img  First image
+        :param img_tau_next:    pyplis.Img  Subesequent image
         :return:
         """
+        if img_tau is None:
+            img_tau = self.img_tau_prev
+        if img_tau_next is None:
+            img_tau_next = self.img_tau
         # Update optical flow object to contain previous tau image and current image
         # This includes updating_contrast_range() and prep_images()
-        self.opt_flow.set_images(self.img_tau_prev, self.img_tau)
+        self.opt_flow.set_images(img_tau, img_tau_next)
 
         # Calculate optical flow vectors
         self.flow = self.opt_flow.calc_flow()
@@ -1497,15 +1526,23 @@ class PyplisWorker:
         self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
 
         if plot:
-            self.fig_tau.update_plot(self.img_tau.img, img_cal=self.img_cal)
+            # TODO Think about this plotting - I have currently left it as img_tau_next when really it should be img_tau
+            # TODO to show the flow field of where the gas is flowing to (maybe?). But more importantly, I have changed
+            # TODO the function to accept tau images rather than only using self, which means I can go back thourhg the
+            # TODO buffer and generate flow later if I want. But this means that the img_cal from self will be totally
+            # TODO wrong and won't always relate to img_tau_next (if going through the buffer), so I need to maybe
+            # TODO also accept img_cal too?
+            self.fig_tau.update_plot(img_tau_next, img_cal=self.img_cal)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
 
         return self.flow, self.velo_img
 
-    def calculate_emission_rate(self):
+    def calculate_emission_rate(self, img, flow=None):
         """
         Generates emission rate for current calibrated image/optical flow etc
+        :param img:         pyplis.Img          Image to have emission rate retrieved from (must be cal)
+        :param flow:        OptFlowFarneback    Optical flow image. Must not be None if optical flow is to be used
         :return:
         """
         # If we don't have 2 or more images loaded we won't have optical flow so can't calculate emission rate
@@ -1526,7 +1563,6 @@ class PyplisWorker:
         img = self.img_cal_prev
         self.ts.append(img["start_acq"])
         # dt = calc_dt(img, self.img_cal)     # Time incremement betweeen current 2 successive images (probably not needed as I think it is containined in the optical flow object)
-        flow = self.opt_flow                # Local pointer to optical flow object
 
         # Test image background region to make sure image is ok (this is pyplis code again...)
         try:
@@ -1571,7 +1607,7 @@ class PyplisWorker:
                 cds = cds[cond]
                 distarr = dists[cond]
                 disterr = dist_errs
-                props = line.plume_props    # PLume properties local to line
+                props = line.plume_props    # Plume properties local to line
                 verr = None                 # Used and redefined later in flow_histo/flow_hybrid
                 dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
 
@@ -1596,143 +1632,155 @@ class PyplisWorker:
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
-                    delt = flow.del_t
+                    if flow is None:
+                        res_dict['flow_raw'] = None
+                    else:
+                        delt = flow.del_t
 
-                    # retrieve diplacement vectors along line
-                    dx = line.get_line_profile(flow.flow[:, :, 0])
-                    dy = line.get_line_profile(flow.flow[:, :, 1])
+                        # retrieve diplacement vectors along line
+                        dx = line.get_line_profile(flow.flow[:, :, 0])
+                        dy = line.get_line_profile(flow.flow[:, :, 1])
 
-                    # detemine array containing effective velocities
-                    # through the line using dot product with line normal
-                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+                        # detemine array containing effective velocities
+                        # through the line using dot product with line normal
+                        veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
 
-                    # Calculate mean of effective velocity through l and
-                    # uncertainty using 2 sigma confidence of standard
-                    # deviation
-                    veff_avg = veff_arr.mean()
-                    veff_err = veff_avg * self.optflow_err_rel_veff
+                        # Calculate mean of effective velocity through l and
+                        # uncertainty using 2 sigma confidence of standard
+                        # deviation
+                        veff_avg = veff_arr.mean()
+                        veff_err = veff_avg * self.optflow_err_rel_veff
 
-                    # Get emission rate
-                    phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
+                        # Get emission rate
+                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
-                    # Convert to kg/s (pyplis exports in g/s
-                    phi /= 1000
-                    phi_err /= 1000
+                        # Convert to kg/s (pyplis exports in g/s
+                        phi /= 1000
+                        phi_err /= 1000
 
-                    # Update results dictionary
-                    res_dict['flow_raw'] = {'time': img['start_acq'],
-                                            'phi': phi,
-                                            'phi_err': phi_err,
-                                            'velo_eff': veff_avg,
-                                            'velo_eff_err': veff_err}
+                        # Update results dictionary
+                        res_dict['flow_raw'] = {'time': img['start_acq'],
+                                                'phi': phi,
+                                                'phi_err': phi_err,
+                                                'velo_eff': veff_avg,
+                                                'velo_eff_err': veff_err}
 
                 # Histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_histo']:
-                    # get mask specifying plume pixels
-                    mask = img.get_thresh_mask(self.min_cd)
-                    props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
-                                                        dir_multi_gauss=self.use_multi_gauss)
-                    idx = -1
+                    if flow is None:
+                        res_dict['flow_histo'] = None
+                    else:
 
-                    # get effective velocity through the pcs based on
-                    # results from histogram analysis
-                    (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
-                                                   sigma_tol=flow.settings.hist_sigma_tol)
-                    phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
-
-                    # Convert to kg/s (pyplis exports in g/s
-                    phi /= 1000
-                    phi_err /= 1000
-
-                    # Update results dictionary
-                    res_dict['flow_histo'] = {'time': img['start_acq'],
-                                              'phi': phi,
-                                              'phi_err': phi_err,
-                                              'velo_eff': v,
-                                              'velo_eff_err': verr}
-
-                # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
-                if self.velo_modes['flow_hybrid']:
-                    # get results from local plume properties analysis
-                    if not self.velo_modes['flow_histo']:
+                        # get mask specifying plume pixels
                         mask = img.get_thresh_mask(self.min_cd)
                         props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
                                                             dir_multi_gauss=self.use_multi_gauss)
                         idx = -1
 
-                    if dx is None:
-                        # extract raw diplacement vectors along line
-                        dx = line.get_line_profile(flow.flow[:, :, 0])
-                        dy = line.get_line_profile(flow.flow[:, :, 1])
-
-                    if verr is None:
                         # get effective velocity through the pcs based on
                         # results from histogram analysis
-                        (_, verr) = props.get_velocity(idx, distarr.mean(), disterr,
-                                                       line.normal_vector, sigma_tol=flow.settings.hist_sigma_tol)
+                        (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
+                                                       sigma_tol=flow.settings.hist_sigma_tol)
+                        phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
 
-                    # determine orientation angles and magnitudes along
-                    # raw optflow output
-                    phis = np.rad2deg(np.arctan2(dx, -dy))[cond]
-                    mag = np.sqrt(dx ** 2 + dy ** 2)[cond]
+                        # Convert to kg/s (pyplis exports in g/s
+                        phi /= 1000
+                        phi_err /= 1000
 
-                    # get expectation values of predominant displacement
-                    # vector
-                    min_len = (props.len_mu[idx] - props.len_sigma[idx])
+                        # Update results dictionary
+                        res_dict['flow_histo'] = {'time': img['start_acq'],
+                                                  'phi': phi,
+                                                  'phi_err': phi_err,
+                                                  'velo_eff': v,
+                                                  'velo_eff_err': verr}
 
-                    min_len = max([min_len, flow.settings.min_length])
+                # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
+                if self.velo_modes['flow_hybrid']:
+                    if flow is None:
+                        res_dict['flow_hybrid'] = None
+                    else:
+                        # get results from local plume properties analysis
+                        if not self.velo_modes['flow_histo']:
+                            mask = img.get_thresh_mask(self.min_cd)
+                            props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
+                                                                dir_multi_gauss=self.use_multi_gauss)
+                            idx = -1
 
-                    dir_min = (props.dir_mu[idx] -
-                               flow.settings.hist_sigma_tol * props.dir_sigma[idx])
-                    dir_max = (props.dir_mu[idx] + flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+                        if dx is None:
+                            # extract raw diplacement vectors along line
+                            dx = line.get_line_profile(flow.flow[:, :, 0])
+                            dy = line.get_line_profile(flow.flow[:, :, 1])
 
-                    # get bool mask for indices along the pcs
-                    bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
+                        if verr is None:
+                            # get effective velocity through the pcs based on
+                            # results from histogram analysis
+                            (_, verr) = props.get_velocity(idx, distarr.mean(), disterr,
+                                                           line.normal_vector,
+                                                           sigma_tol=flow.settings.hist_sigma_tol)
 
-                    frac_bad = sum(bad) / float(len(bad))
-                    indices = np.arange(len(bad))[bad]
-                    # now check impact of ill-constraint motion vectors
-                    # on ICA
-                    ica_fac_ok = sum(cds[~bad] / sum(cds))
+                        # determine orientation angles and magnitudes along
+                        # raw optflow output
+                        phis = np.rad2deg(np.arctan2(dx, -dy))[cond]
+                        mag = np.sqrt(dx ** 2 + dy ** 2)[cond]
 
-                    vec = props.displacement_vector(idx)
+                        # get expectation values of predominant displacement
+                        # vector
+                        min_len = (props.len_mu[idx] - props.len_sigma[idx])
 
-                    flc = flow.replace_trash_vecs(displ_vec=vec, min_len=min_len, dir_low=dir_min, dir_high=dir_max)
+                        min_len = max([min_len, flow.settings.min_length])
 
-                    delt = flow.del_t
-                    dx = line.get_line_profile(flc.flow[:, :, 0])
-                    dy = line.get_line_profile(flc.flow[:, :, 1])
-                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+                        dir_min = (props.dir_mu[idx] -
+                                   flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+                        dir_max = (props.dir_mu[idx] + flow.settings.hist_sigma_tol * props.dir_sigma[idx])
 
-                    # Calculate mean of effective velocity through l and
-                    # uncertainty using 2 sigma confidence of standard
-                    # deviation
-                    veff_avg = veff_arr.mean()
-                    fl_err = veff_avg * self.optflow_err_rel_veff
+                        # get bool mask for indices along the pcs
+                        bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
 
-                    # neglect uncertainties in the successfully constraint
-                    # flow vectors along the pcs by initiating an zero
-                    # array ...
-                    veff_err_arr = np.ones(len(veff_arr)) * fl_err
-                    # ... and set the histo errors for the indices of
-                    # ill-constraint flow vectors on the pcs (see above)
-                    veff_err_arr[indices] = verr
+                        frac_bad = sum(bad) / float(len(bad))
+                        indices = np.arange(len(bad))[bad]
+                        # now check impact of ill-constraint motion vectors
+                        # on ICA
+                        ica_fac_ok = sum(cds[~bad] / sum(cds))
 
-                    # Determine emission rate
-                    phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
-                    veff_err_avg = veff_err_arr.mean()
+                        vec = props.displacement_vector(idx)
 
-                    # Convert to kg/s (pyplis exports in g/s
-                    phi /= 1000
-                    phi_err /= 1000
+                        flc = flow.replace_trash_vecs(displ_vec=vec, min_len=min_len,
+                                                      dir_low=dir_min, dir_high=dir_max)
 
-                    res_dict['flow_hybrid'] = {'time': img['start_acq'],
-                                               'phi': phi,
-                                               'phi_err': phi_err,
-                                               'velo_eff': veff_avg,
-                                               'velo_eff_err': veff_err_avg,
-                                               'frac_optflow_ok': 1 - frac_bad,
-                                               'frac_optflow_ok_ica': ica_fac_ok}
+                        delt = flow.del_t
+                        dx = line.get_line_profile(flc.flow[:, :, 0])
+                        dy = line.get_line_profile(flc.flow[:, :, 1])
+                        veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+
+                        # Calculate mean of effective velocity through l and
+                        # uncertainty using 2 sigma confidence of standard
+                        # deviation
+                        veff_avg = veff_arr.mean()
+                        fl_err = veff_avg * self.optflow_err_rel_veff
+
+                        # neglect uncertainties in the successfully constraint
+                        # flow vectors along the pcs by initiating an zero
+                        # array ...
+                        veff_err_arr = np.ones(len(veff_arr)) * fl_err
+                        # ... and set the histo errors for the indices of
+                        # ill-constraint flow vectors on the pcs (see above)
+                        veff_err_arr[indices] = verr
+
+                        # Determine emission rate
+                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
+                        veff_err_avg = veff_err_arr.mean()
+
+                        # Convert to kg/s (pyplis exports in g/s
+                        phi /= 1000
+                        phi_err /= 1000
+
+                        res_dict['flow_hybrid'] = {'time': img['start_acq'],
+                                                   'phi': phi,
+                                                   'phi_err': phi_err,
+                                                   'velo_eff': veff_avg,
+                                                   'velo_eff_err': veff_err_avg,
+                                                   'frac_optflow_ok': 1 - frac_bad,
+                                                   'frac_optflow_ok_ica': ica_fac_ok}
 
         return res_dict
 
@@ -1764,6 +1812,50 @@ class PyplisWorker:
         if not self.first_image:
             self.generate_opt_flow(plot=plot)
             # TODO all of processing if not the first image pair
+
+    def get_emission_rate_from_buffer(self):
+        """
+        Script to go back through buffer and retrieve emission rates
+        :return:
+        """
+        img_buff = self.img_buff
+
+        # TODO I may want to think about deciding how far to loop through the buffer here
+        # Define number of images to loop through (I can try to go to last image, and if it contains optical flow data
+        # I will be able to process it too. Otherwise I can only process all but the final image, since I will need to
+        # generate the optical flow)
+        if self.idx_current < self.img_buff_size:
+            num_buff = self.idx_current - 1
+        else:
+            num_buff = self.img_buff_size
+
+        for i in range(num_buff):
+            buff_dict = img_buff[i]
+
+            img_tau = buff_dict['img_tau']
+
+            # Calibrate image if it hasn't already been
+            if not img_tau['gascalib']:
+                img_cal = self.calibrate_image(img_tau)
+            else:
+                img_cal = img_tau
+
+            # If we want optical flow output but we don't have it saved we need to reanalyse
+            if buff_dict['opt_flow'] is None:
+                if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                    # Try optical flow generation, if it failes because of an index error then the buffer has no
+                    # more images and we can't process this image (we must then be at the final image)
+                    try:
+                        self.generate_opt_flow(img_tau=img_tau, img_tau_next=img_buff[i+1]['img_tau'])
+                        flow = self.opt_flow
+                    except IndexError:
+                        continue
+            else:
+                flow = buff_dict['opt_flow']
+
+            # Calculate emission rate
+            results = self.calculate_emission_rate(img=img_cal, flow=flow)
+
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""

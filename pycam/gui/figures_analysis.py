@@ -1433,7 +1433,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'cell_cal_dir': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
                      'use_sensitivity_mask': int,
-                     'min_cd': float
+                     'min_cd': float,
+                     'buff_size': int
                      }
 
         self._plot_iter = tk.IntVar()
@@ -1446,6 +1447,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
         self._use_sensitivity_mask = tk.IntVar()
         self._min_cd = tk.DoubleVar()
+        self._buff_size = tk.IntVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -1465,87 +1467,105 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.frame.title('Post-processing settings')
         self.in_frame = True
 
+        path_frame = ttk.LabelFrame(self.frame, text='Setup paths')
+        path_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+
         row = 0
 
         # Background img A directory
-        label = ttk.Label(self.frame, text='On-band background:')
+        label = ttk.Label(path_frame, text='On-band background:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.bg_A_label = ttk.Label(self.frame, text=self.bg_A_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label = ttk.Label(path_frame, text=self.bg_A_short, width=self.path_widg_length, anchor='e')
         self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose file', command=lambda: self.get_bg_file('A'))
+        butt = ttk.Button(path_frame, text='Choose file', command=lambda: self.get_bg_file('A'))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Background img B directory
-        label = ttk.Label(self.frame, text='Off-band background:')
+        label = ttk.Label(path_frame, text='Off-band background:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.bg_A_label = ttk.Label(self.frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label = ttk.Label(path_frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e')
         self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose file', command=lambda: self.get_bg_file('B'))
+        butt = ttk.Button(path_frame, text='Choose file', command=lambda: self.get_bg_file('B'))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Dark directory
-        label = ttk.Label(self.frame, text='Dark image directory:')
+        label = ttk.Label(path_frame, text='Dark image directory:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_img_label = ttk.Label(self.frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
         self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_img_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_img_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Dark spec directory
-        label = ttk.Label(self.frame, text='Dark spectrum directory:')
+        label = ttk.Label(path_frame, text='Dark spectrum directory:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_spec_label = ttk.Label(self.frame, text=self.dark_spec_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length, anchor='e')
         self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_dark_spec_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_spec_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Cell calibration directory
-        label = ttk.Label(self.frame, text='Cell calibration directory:')
+        label = ttk.Label(path_frame, text='Cell calibration directory:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.cell_cal_label = ttk.Label(self.frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
+        self.cell_cal_label = ttk.Label(path_frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
                                          anchor='e')
         self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(self.frame, text='Choose Folder', command=self.get_cell_cal_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_cell_cal_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        # Calibration type
-        label = ttk.Label(self.frame, text='Calibration method:')
-        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.cal_type_widg = ttk.OptionMenu(self.frame, self._cal_type, self.cal_type, *self.cal_opts)
-        self.cal_type_widg.configure(width=15)
-        self.cal_type_widg.grid(row=row, column=1, sticky='e')
-        row += 1
+        # Processing
+        settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
+        settings_frame.grid(row=1, column=0, sticky='nsw', padx=5, pady=5)
+        row = 0
 
-        # Plot iteratively checkbutton
-        self.plot_check = ttk.Checkbutton(self.frame, text='Use sensitivity mask', variable=self._use_sensitivity_mask)
-        self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        # Minimum column density used in analysis
+        lab = ttk.Label(settings_frame, text='Buffer size [images]:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        buff_spin = ttk.Spinbox(settings_frame, textvariable=self._buff_size, from_=1, to=2000, increment=10,
+                                  width=4)
+        buff_spin.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Minimum column density used in analysis
-        ans_frame = ttk.Frame(self.frame)
-        ans_frame.grid(row=row, column=1)
-        lab = ttk.Label(self.frame, text='Min. CD analysed [molecules/cm2]:')
-        lab.grid(row=0, column=0, sticky='w')
+        lab = ttk.Label(settings_frame, text='Min. CD analysed [molecules/cm²]:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        ans_frame = ttk.Frame(settings_frame)
+        ans_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         thresh_spin = ttk.Spinbox(ans_frame, textvariable=self._min_cd, from_=0, to=100, increment=1,
                                   width=4)
-        thresh_spin.grid(row=0, column=0, sticky='w')
+        thresh_spin.grid(row=0, column=0, sticky='nsew')
         thresh_spin.set('{}'.format(int(self._min_cd.get())))
         lab = ttk.Label(ans_frame, text='e16')
-        lab.grid(row=0, column=1, sticky='w')
+        lab.grid(row=0, column=1, sticky='e')
+        ans_frame.grid_columnconfigure(0, weight=1)
+        row += 1
+
+        # Calibration type
+        label = ttk.Label(settings_frame, text='Calibration method:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts)
+        self.cal_type_widg.configure(width=15)
+        self.cal_type_widg.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Plot iteratively checkbutton
-        self.plot_check = ttk.Checkbutton(self.frame, text='Update plots iteratively', variable=self._plot_iter)
-        self.plot_check.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self.plot_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
+                                          variable=self._use_sensitivity_mask)
+        self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Plot iteratively checkbutton
+        self.plot_check = ttk.Checkbutton(settings_frame, text='Update plots iteratively', variable=self._plot_iter)
+        self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
 
         self.butt_frame = ttk.Frame(self.frame)
-        self.butt_frame.grid(row=row, columnspan=4, sticky='nsew')
+        self.butt_frame.grid(row=2, columnspan=4, sticky='nsew')
 
         # Save/set buttons
         butt = ttk.Button(self.butt_frame, text='Cancel', command=self.close_window)
@@ -1671,6 +1691,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def min_cd(self, value):
         self._min_cd.set(value / 10 ** 16)
 
+    @property
+    def buff_size(self):
+        return self._buff_size.get()
+
+    @buff_size.setter
+    def buff_size(self, value):
+        self._buff_size.set(value)
+
     def get_dark_img_dir(self):
         """Gives user options for retrieving dark image directory"""
         dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
@@ -1740,11 +1768,13 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
         pyplis_worker.min_cd = self.min_cd
+        pyplis_worker.img_buff_size = self.buff_size
 
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
         self.close_window()
+        # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
     def close_window(self):
@@ -1759,6 +1789,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_type_int = pyplis_worker.cal_type
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.min_cd = pyplis_worker.min_cd
+        self.buff_size = pyplis_worker.img_buff_size
 
         self.in_frame = False
         self.frame.destroy()
