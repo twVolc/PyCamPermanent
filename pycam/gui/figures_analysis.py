@@ -588,7 +588,7 @@ class ImageSO2:
         if self.disp_cal:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
-                self.vmax_cal = np.percentile(self.image_tau, 99.99)
+                self.vmax_cal = np.percentile(self.image_cal, 99.99)
             else:
                 self.vmax_cal = self.ppmm_max
             self.img_disp.set_clim(vmin=0, vmax=self.vmax_cal)
@@ -654,10 +654,16 @@ class ImageSO2:
     def update_plot(self, img_tau, img_cal=None, draw=True):
         """
         Updates image figure and all associated subplots
-        :param img: np.ndarray  Image array
-        :param draw:    bool    If True, the plot is drawn (use False when calling from a thread)
+        :param img:     np.ndarray/pyplis.Img   Image array
+        :param draw:    bool                    If True, the plot is drawn (use False when calling from a thread)
         :return:
         """
+        # Extract arrays if we aree given pyplis.Img objects
+        if isinstance(img_tau, Img):
+            img_tau = img_tau.img
+        if isinstance(img_cal, Img):
+            img_cal = np.copy(img_cal.img) / pyplis_worker.ppmm_conv
+
         self.image_tau = img_tau
         self.image_cal = img_cal
 
@@ -666,9 +672,6 @@ class ImageSO2:
             self.disp_cal_rad.configure(state=tk.DISABLED)
         else:
             self.disp_cal_rad.configure(state=tk.NORMAL)
-            # If we have been passed a pyplis.Img then we need to extract the array
-            if isinstance(self.image_cal, Img):
-                self.image_cal = self.image_cal.img
 
         # Update main image display and title
         if self.disp_cal and img_cal is not None:
@@ -1434,7 +1437,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
                      'use_sensitivity_mask': int,
                      'min_cd': float,
-                     'buff_size': int
+                     'buff_size': int,
+                     'save_opt_flow': int
                      }
 
         self._plot_iter = tk.IntVar()
@@ -1448,6 +1452,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._use_sensitivity_mask = tk.IntVar()
         self._min_cd = tk.DoubleVar()
         self._buff_size = tk.IntVar()
+        self._save_opt_flow = tk.IntVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -1523,6 +1528,12 @@ class ProcessSettings(LoadSaveProcessingSettings):
         settings_frame.grid(row=1, column=0, sticky='nsw', padx=5, pady=5)
         row = 0
 
+        # Optical flow to buffer checkbutton
+        self.opt_check = ttk.Checkbutton(settings_frame, text='Save optical flow to buffer',
+                                         variable=self._save_opt_flow)
+        self.opt_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        row += 1
+
         # Minimum column density used in analysis
         lab = ttk.Label(settings_frame, text='Buffer size [images]:')
         lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
@@ -1548,30 +1559,32 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Calibration type
         label = ttk.Label(settings_frame, text='Calibration method:')
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts)
+        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts,
+                                            command=self.update_sens_mask)
         self.cal_type_widg.configure(width=15)
         self.cal_type_widg.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Plot iteratively checkbutton
-        self.plot_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
+        self.sens_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
                                           variable=self._use_sensitivity_mask)
-        self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.sens_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Plot iteratively checkbutton
         self.plot_check = ttk.Checkbutton(settings_frame, text='Update plots iteratively', variable=self._plot_iter)
         self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
+        self.update_sens_mask()
 
         self.butt_frame = ttk.Frame(self.frame)
         self.butt_frame.grid(row=2, columnspan=4, sticky='nsew')
 
         # Save/set buttons
-        butt = ttk.Button(self.butt_frame, text='Cancel', command=self.close_window)
+        butt = ttk.Button(self.butt_frame, text='OK', command=self.save_close)
         butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.butt_frame, text='OK', command=self.save_close)
+        butt = ttk.Button(self.butt_frame, text='Cancel', command=self.close_window)
         butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(self.butt_frame, text='Apply', command=self.gather_vars)
@@ -1699,6 +1712,26 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def buff_size(self, value):
         self._buff_size.set(value)
 
+    @property
+    def save_opt_flow(self):
+        return self._save_opt_flow.get()
+
+    @save_opt_flow.setter
+    def save_opt_flow(self, value):
+        self._save_opt_flow.set(value)
+
+    def update_sens_mask(self, val=None):
+        """Updates sensitivity mask depending on currently selected calibration option"""
+        if self.cal_type == 'Cell':
+            self.sens_check.configure(state=tk.NORMAL)
+            self.use_sensitivity_mask = 1
+        elif self.cal_type == 'Cell + DOAS':
+            self.sens_check.configure(state=tk.DISABLED)
+            self.use_sensitivity_mask = 1
+        elif self.cal_type == 'DOAS':
+            self.sens_check.configure(state=tk.DISABLED)
+            self.use_sensitivity_mask = 0
+
     def get_dark_img_dir(self):
         """Gives user options for retrieving dark image directory"""
         dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
@@ -1769,6 +1802,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.load_BG_img(self.bg_B, band='B')
         pyplis_worker.min_cd = self.min_cd
         pyplis_worker.img_buff_size = self.buff_size
+        pyplis_worker.save_opt_flow = self.save_opt_flow
 
     def save_close(self):
         """Gathers all variables and then closes"""
@@ -1790,6 +1824,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.min_cd = pyplis_worker.min_cd
         self.buff_size = pyplis_worker.img_buff_size
+        self.save_opt_flow = pyplis_worker.save_opt_flow
 
         self.in_frame = False
         self.frame.destroy()

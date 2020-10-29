@@ -56,21 +56,12 @@ class PyplisWorker:
         # Setup memory allocation for images (need to keep a large number for DOAS fov image search).
         self.img_buff_size = 200         # Buffer size for images (this number of images are held in memory)
         # New style, list of dictionaries for buffer. TODO Initiate with all required keys and memory, perhaps
-        self.img_buff = [{'directory': '',
-                          'file_A': '',
-                          'file_B': '',
-                          'time': '',
-                          'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
-                                                          self.cam_specs.pix_num_x], dtype=np.float32)),
-                          'opt_flow': None      # OptFlowFarneback object. Only saved if self.save_opt_flow = True
-                          }
-                         for x in range(self.img_buff_size)]
-        self.save_opt_flow = False
-        self.img_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_buff_size],
-                                 dtype=np.float32)
-        self.img_tau_buff_time = [None] * self.img_buff_size   # Names of images held within img_buff (on-band name held)
-        self.idx_current = 0    # Used to track what the current index is for saving to image buffer
-
+        self.img_buff = {}
+        self.reset_buff()               # This defines the image buffer
+        self.save_opt_flow = False      # Whether to save optical flow to buffer
+        # self.img_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_buff_size],
+        #                          dtype=np.float32)
+        self.idx_current = -1    # Used to track what the current index is for saving to image buffer. The idx starts at -1 so will be 1 behind the real images loaded, this is because we only want to save to buffer once we have optical flow too
         self.doas_buff_size = 500
         self.column_densities = np.zeros(self.doas_buff_size, dtype=np.float32) # Column densities array
         self.std_errs = np.zeros(self.doas_buff_size, dtype=np.float32)         # Array of standard error on CDs
@@ -177,15 +168,12 @@ class PyplisWorker:
         self.img_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_A_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_cal = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])       # SO2 calibrated image
         self.img_tau = pyplis.image.Img()       # Apparent absorbance image (tau_A - tau_B)
         self.img_tau.img = self.img_A           # Set image to zeors as it may be used to generate empty figure
         self.img_tau_prev = pyplis.image.Img()
         self.img_tau_prev.img = self.img_A
-        self.img_cal = pyplis.image.Img()   # Calibrated image
-        self.img_cal.img = self.img_A  # Set image to zeors as it may be used to generate empty figure
-        self.img_cal_prev = pyplis.image.Img()
-        self.img_cal_prev.img = self.img_A
+        self.img_cal = None         # Calibrated image
+        self.img_cal_prev = None
 
         # Calibration attributes
         self.got_cal_doas = False
@@ -364,15 +352,28 @@ class PyplisWorker:
 
         return img_list
 
+    def reset_buff(self):
+        """
+        Resets image buffer
+        :return:
+        """
+        self.img_buff = [{'directory': '',
+                          'file_A': '',
+                          'file_B': '',
+                          'time': '',
+                          'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
+                                                          self.cam_specs.pix_num_x], dtype=np.float32)),
+                          'opt_flow': None  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          }
+                         for x in range(self.img_buff_size)]
+
     def reset_self(self):
         """
         Resets aspects of self to ensure we start processing in the correct manner
         :return:
         """
-        self.img_buff = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.img_buff_size],
-                                 dtype=np.float32)
-        self.img_tau_buff_time = [None] * self.img_buff_size  # Names of images held within img_buff (on-band name held)
-        self.idx_current = 0  # Used to track what the current index is for saving to image buffer
+        self.reset_buff()
+        self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.got_cal_doas = False
         self.got_cal_cell = False
@@ -422,11 +423,11 @@ class PyplisWorker:
 
             if len(self.img_list) > 1:
                 # Load second image too so that we have optical flow output generated
+                self.idx_current += 1
                 self.first_image = False
                 self.process_pair(self.img_dir + '\\' + self.img_list[1][0],
                                   self.img_dir + '\\' + self.img_list[1][1],
                                   plot=plot, plot_bg=plot_bg)
-
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
@@ -562,38 +563,62 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
-    def update_img_buff(self, img_tau, filename, opt_flow=None):
+    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None):
         """
         Updates the image buffer and file time buffer
         :param img_tau:     np.array        n x m image matrix of tau image
         :param filname:     str             on- or off-band filename for image used to generate img_tau
         """
+        # ----------------------------------------
+        # New dictionary style of buffering
+        # ----------------------------------------
+        # Convert img_tau to pyplis image if necessary
+        if not isinstance(img_tau, pyplis.Img):
+            img_tau = pyplis.Img(img_tau)
+
+        # Opt flow must be none if we are not flagging to save opt flow
+        if not self.save_opt_flow:
+            opt_flow = None
+
+        # Add all values to the buffer
         new_dict = {'directory': self.img_dir,
-                    'file_A': filename,
-                    'file_B': '',
-                    'time': self.get_img_time(filename),
-                    'img_tau': pyplis.Img(img_tau),
+                    'file_A': file_A,
+                    'file_B': file_B,
+                    'time': self.get_img_time(file_A),
+                    'img_tau': img_tau,
                     'opt_flow': opt_flow
                     }
 
-        # Extract time from filename into datetime object
-        img_time = self.get_img_time(filename)
-
         # If we haven't exceeded buffer size then we simply add new data to buffer
         if self.idx_current < self.img_buff_size:
-            self.img_buff[:, :, self.idx_current] = img_tau
-            self.img_tau_buff_time[self.idx_current] = img_time
+            self.img_buff[self.idx_current] = new_dict
 
         # If we are beyond the buffer size we need to shift all images down one and add the new image to the end
         # The oldest image is therefore lost from the buffer
         else:
-            self.img_buff[:, :, :-1] = self.img_buff[:, :, 1:]
-            self.img_buff[:, :, -1] = img_tau
-            self.img_tau_buff_time[:-1] = self.img_tau_buff_time[1:]
-            self.img_tau_buff_time[-1] = img_time
+            self.img_buff[:-1] = self.img_buff[1:]
+            self.img_buff[-1] = new_dict
+        # --------------------------------------------
 
-        # Increment current index
-        self.idx_current += 1
+        # # Extract time from filename into datetime object
+        # img_time = self.get_img_time(filename)
+        #
+        # # If we haven't exceeded buffer size then we simply add new data to buffer
+        # if self.idx_current < self.img_buff_size:
+        #     self.img_buff[:, :, self.idx_current] = img_tau
+        #     self.img_tau_buff_time[self.idx_current] = img_time
+        #
+        # # If we are beyond the buffer size we need to shift all images down one and add the new image to the end
+        # # The oldest image is therefore lost from the buffer
+        # else:
+        #     self.img_buff[:, :, :-1] = self.img_buff[:, :, 1:]
+        #     self.img_buff[:, :, -1] = img_tau
+        #     self.img_tau_buff_time[:-1] = self.img_tau_buff_time[1:]
+        #     self.img_tau_buff_time[-1] = img_time
+
+        # # Increment current index (I've commented this out as I now do it in the processing loops - this means that
+        # # edits can be made to the first image without the buffer slowly moving forwards)
+        # self.idx_current += 1
 
     def generate_vign_mask(self, img, band):
         """
@@ -612,7 +637,12 @@ class PyplisWorker:
     def perform_cell_calibration_pyplis(self, plot=True, load_dat=True):
         # TODO COMPLETE MERGE OF THIS AND THE OTHER CALIBRATION FUNCTION
         # TODO There is definitely duplicated processing done in the other script, which probably slows this one down
-        """Performs cell calibration with pyplis object"""
+        """
+        Performs cell calibration with pyplis object
+        :param load_dat:    bool
+            If True, the data is loaded afresh. Otherwise we are assuming we already have the necessary data and are
+            just re-running, perhaps with a crop in place.
+        """
         filter_ids = {'A': 'on',        # Definition of filter ids. I use A/B pyplis uses on/off
                       'B': 'off'}
 
@@ -819,11 +849,10 @@ class PyplisWorker:
         # Coadd images to create single clear image B
         img_clear_B = np.mean(img_array_clear_B, axis=2)  # Co-added final clear image
 
-        self.mask_A = self.generate_vign_mask(img_clear_A, 'A')
-        self.mask_B = self.generate_vign_mask(img_clear_B, 'B')
-
-        # If requested, we update bg images to those from calibration, rather than explicitly defined bg images
+        # If requested, we update bg images/masks to those from calibration, rather than explicitly defined bg images
         if self.use_cell_bg:
+            self.generate_vign_mask(img_clear_A, 'A')
+            self.generate_vign_mask(img_clear_B, 'B')
             self.bg_A = pyplis.image.Img(img_clear_A)
             self.bg_B = pyplis.image.Img(img_clear_B)
             self.bg_A_path = 'Coadded. ...{}'.format(self.cell_cal_dir[-8])
@@ -1217,7 +1246,7 @@ class PyplisWorker:
             buff_len = self.img_buff_size
 
         for i in range(buff_len):
-            stack.add_img(self.img_buff[:, :, i], self.img_tau_buff_time[i])
+            stack.add_img(self.img_buff[i]['img_tau'], self.img_buff[i]['time'])
 
         stack.img_prep['pyrlevel'] = 0
 
@@ -1340,9 +1369,12 @@ class PyplisWorker:
         # TODO image back one, as it may end up duplicating images??
         # TODO I think this edit, to use img_path_A as a guide makes this work. img_path_A is only not None if we need
         # TODO to update the img_buffer. So if the buffer is updating, the tau_prev needs updating too, I think...
-        if img_path_A is not None:
-            self.img_tau_prev = self.img_tau
-            self.img_cal_prev = self.img_cal
+        # if img_path_A is not None:
+        # TODO I think the above discussion doesn't actually matter - we shouldn't ever change processing settings half
+        # TODO way through processing, so we can probably always make this update and when in a proper processing loop
+        # TODO it will work as expected
+        self.img_tau_prev = self.img_tau
+        self.img_cal_prev = self.img_cal
 
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.model_background(plot=plot_bg)
@@ -1358,6 +1390,10 @@ class PyplisWorker:
             self.update_meta(self.vigncorr_A, self.lightcorr_A)
             self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='B')
             self.update_meta(self.vigncorr_B_warped, self.lightcorr_B)
+            # TODO Presumably I want to make img_tau the difference between lightcorr A and B instead of tau_A and B?
+            # TODO I haven't checked any of this yet though!! And I think maybe lightcorr A and B are the corrected
+            # TODO intensity images, not the corrected tau images? Need to check all of this
+
 
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
@@ -1368,12 +1404,12 @@ class PyplisWorker:
         if self.use_sensitivity_mask:
             self.img_tau.img = self.img_tau.img / self.sensitivity_mask
 
-        # Update image buffer, only if img_path_A is not None
-        if img_path_A is not None:
-            self.update_img_buff(self.img_tau.img, img_path_A)
+        # # Update image buffer, only if img_path_A is not None
+        # if img_path_A is not None:
+        #     self.update_img_buff(self.img_tau.img, img_path_A)
 
         # Calibrate the image
-        self.img_cal = self.calibrate_image(self.img_tau)
+        self.img_cal = self.calibrate_image(self.img_tau, run_cal_doas=run_cal)
 
         if plot:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
@@ -1391,7 +1427,7 @@ class PyplisWorker:
         # idx_current - 1, but because the idx starts at 0, we need idx + 1 to find when we should be calibrating,
         # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
         # Since this comes after
-        if self.cal_type in [1, 2]:
+        if self.cal_type in [1, 2] and self.idx_current > 0:
             if self.idx_current % self.doas_recal_num == 0 or run_cal_doas:
                 # TODO ========================================
                 # TODO
@@ -1415,13 +1451,15 @@ class PyplisWorker:
 
         elif self.cal_type == 0:
             if isinstance(img, pyplis.Img):
-                cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
+                # cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
+                cal_img = img * self.cell_calib.calib_data['aa'].calib_coeffs[0]
             elif isinstance(img, pyplis.ImgStack):
                 cal_img = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, img.num_of_imgs])
                 for i in range(img.num_of_imgs):
-                    cal_img[:, :, i] = img.stack[i] * self.cell_fit[0]
+                    # cal_img[:, :, i] = img.stack[i] * self.cell_fit[0]
+                    cal_img[:, :, i] = img.stack[i] * self.cell_calib.calib_data['aa'].calib_coeffs[0]
 
-            cal_img["gascalib"] = True
+            cal_img.edit_log["gascalib"] = True
 
         return cal_img
 
@@ -1545,23 +1583,18 @@ class PyplisWorker:
         :param flow:        OptFlowFarneback    Optical flow image. Must not be None if optical flow is to be used
         :return:
         """
-        # If we don't have 2 or more images loaded we won't have optical flow so can't calculate emission rate
-        if self.idx_current < 2:
-            raise IndexError('Not enough images loaded, cannot calculate emission rate')
-
         # Try to get calibration error
+        # TODO This is only getting error from DOAS. What if I have a cell calibration?
         try:
             cd_err = self.calib_pears.err()
-        except ValueError as e:
-            warnings.warn("Calibration error could not be accessed: {}".format(repr(e)))
+        except (ValueError, AttributeError) as e:
+            warnings.warn("DOAS calibration error could not be accessed: {}".format(repr(e)))
             cd_err = None
 
         # Compute distances to plume in each pixel
         self.compute_plume_dists()
 
-        # Set image to previous calibrated image (this will be the one that current optical flow speeds apply to)
-        img = self.img_cal_prev
-        self.ts.append(img["start_acq"])
+        self.ts.append(img.meta['start_acq'])
         # dt = calc_dt(img, self.img_cal)     # Time incremement betweeen current 2 successive images (probably not needed as I think it is containined in the optical flow object)
 
         # Test image background region to make sure image is ok (this is pyplis code again...)
@@ -1588,7 +1621,11 @@ class PyplisWorker:
 
         # Hold emission rate and associated parameters in list of dictionaries for each LineOnImage
         # Just making the list full of empty dictionaries here
-        emission_rates_results = [{} for _ in range(len([a for a in self.PCS_lines if isinstance(a, LineOnImage)]))]
+        emission_rates_results = [{'flow_glob': None,
+                                   'flow_raw': None,
+                                   'flow_histo': None,
+                                   'flow_hybrid': None}
+                                  for _ in range(len([a for a in self.PCS_lines if isinstance(a, LineOnImage)]))]
 
         # Run processing for each LineOnImage objects
         for i, line in enumerate(self.PCS_lines):
@@ -1624,7 +1661,7 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Pack results into dictionary
-                        res_dict['flow_glob'] = {'time': img['start_acq'],
+                        res_dict['flow_glob'] = {'time': img.meta['start_acq'],
                                                  'phi': phi,
                                                  'phi_err': phi_err,
                                                  'velo_eff': self.vel_glob,
@@ -1659,7 +1696,7 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Update results dictionary
-                        res_dict['flow_raw'] = {'time': img['start_acq'],
+                        res_dict['flow_raw'] = {'time': img.meta['start_acq'],
                                                 'phi': phi,
                                                 'phi_err': phi_err,
                                                 'velo_eff': veff_avg,
@@ -1688,7 +1725,7 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Update results dictionary
-                        res_dict['flow_histo'] = {'time': img['start_acq'],
+                        res_dict['flow_histo'] = {'time': img.meta['start_acq'],
                                                   'phi': phi,
                                                   'phi_err': phi_err,
                                                   'velo_eff': v,
@@ -1774,7 +1811,7 @@ class PyplisWorker:
                         phi /= 1000
                         phi_err /= 1000
 
-                        res_dict['flow_hybrid'] = {'time': img['start_acq'],
+                        res_dict['flow_hybrid'] = {'time': img.meta['start_acq'],
                                                    'phi': phi,
                                                    'phi_err': phi_err,
                                                    'velo_eff': veff_avg,
@@ -1782,7 +1819,7 @@ class PyplisWorker:
                                                    'frac_optflow_ok': 1 - frac_bad,
                                                    'frac_optflow_ok_ica': ica_fac_ok}
 
-        return res_dict
+        return emission_rates_results
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False):
         """
@@ -1810,8 +1847,27 @@ class PyplisWorker:
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
-            self.generate_opt_flow(plot=plot)
+
+            # Generate optical flow between img_tau_prev and img_tau
+            if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                self.generate_opt_flow(plot=plot)
+                opt_flow = self.opt_flow
+            else:
+                opt_flow = None
+
             # TODO all of processing if not the first image pair
+
+            if self.img_cal_prev is not None:
+                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
+                print('Emission rate flow hybrid: {} kg/s'.format(results[0]['flow_hybrid']['phi']))
+
+            # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
+            # too TODO sort out filename, I need to be saving filenames somewhere I guess
+            # I subtract 1 from current index since this is incremented in the processing loop so will already be 1
+            # ahead of where we want to be for storing in the buffer (we have to wait to store in the buffer since we
+            # need to load an extra image for optical flow calculation
+            self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
+                                 self.img_B_prev.filename, opt_flow=opt_flow)
 
     def get_emission_rate_from_buffer(self):
         """
@@ -1835,7 +1891,7 @@ class PyplisWorker:
             img_tau = buff_dict['img_tau']
 
             # Calibrate image if it hasn't already been
-            if not img_tau['gascalib']:
+            if not img_tau.is_calibrated:
                 img_cal = self.calibrate_image(img_tau)
             else:
                 img_cal = img_tau
@@ -1880,7 +1936,7 @@ class PyplisWorker:
 
         # Perform calibration work
         if self.cal_type in [0, 2]:
-            self.perform_cell_calibration_pyplis(plot=False, set_bg_img=self.use_cell_bg)
+            self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
         # Loop through img_list and process data
@@ -1903,6 +1959,9 @@ class PyplisWorker:
             # Once first image is processed we update the first_image bool
             if i == 0:
                 self.first_image = False
+
+            # Increment current index, so that buffer is in the right place
+            self.idx_current += 1
 
             # Wait for defined amount of time to allow plotting of data without freezing up
             time.sleep(self.wait_time)
@@ -1944,7 +2003,8 @@ class PyplisWorker:
             # TODO After a certain amount of time we need to perform doas calibration (maybe once DOAS buff is full?
             # TODO start of day will be uncalibrated until this point
 
-
+            # Incremement current index so that buffer is in the right place
+            self.idx_current += 1
 
 class ImageRegistration:
     """

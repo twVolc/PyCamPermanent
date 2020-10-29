@@ -16,6 +16,7 @@ use_sensitivity_mask=1
 min_cd=5e16
 plot_iter=1
 buff_size=200
+save_opt_flow=1
 
 # Plume background model
 bg_mode=4
