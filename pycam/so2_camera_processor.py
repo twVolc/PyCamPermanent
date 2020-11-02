@@ -16,7 +16,7 @@ from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
 from pyplis.dilutioncorr import DilutionCorr, correct_img
-from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A
+from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 import pydoas
 
 from tkinter import filedialog, messagebox
@@ -121,6 +121,8 @@ class PyplisWorker:
         self.got_light_dil = False                      # Flags whether we have light dilution for this sequence
         self.lightcorr_A = None                         # Light dilution corrected image
         self.lightcorr_B = None                         # Light dilution corrected image
+        self.results = {}
+        self.init_results()
 
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
@@ -130,6 +132,7 @@ class PyplisWorker:
         self.fig_A = None               # Figure displaying off-band raw image
         self.fig_B = None               # Figure displaying off-band raw image
         self.fig_tau = None             # Figure displaying absorbance image
+        self.fig_series = None          # Figure displaying time-series
         self.fig_bg_A = None            # Figure displaying modelled background of on-band
         self.fig_bg_B = None            # Figure displaying modelled background of off-band
         self.fig_bg_ref = None          # Figure displaying ?
@@ -209,6 +212,7 @@ class PyplisWorker:
         self.vign_B = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
+
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -383,6 +387,27 @@ class PyplisWorker:
 
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
+
+        # Initiate results
+        self.init_results()
+
+    def init_results(self):
+        """Initiates results dictionary"""
+        # Emission rate dictionary
+        self.results = {}
+        for line in self.PCS_lines:
+            if line is not None:
+                line_id = line.line_id
+                self.add_line_to_results(line_id)
+
+    def add_line_to_results(self, line_id):
+        """
+        Adds a line to the results dictionary
+        :param line_id: str     ID of LineOnImage object
+        """
+        self.results[line_id] = {}
+        for mode in self.velo_modes:
+            self.results[line_id][mode] = EmissionRates(line_id, mode)
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -1257,28 +1282,29 @@ class PyplisWorker:
         full_paths = [os.path.join(self.img_dir, f) for f in self.img_list]
         self.pyplis_img_list = pyplis.imagelists.ImgList(full_paths, cam=self.cam)
 
-    def update_meta(self, meta_image, new_image):
+    def update_meta(self, new_image, meta_image):
         """
         Updates some useful metadata of image when passed a loaded image which already contains that data
         """
         new_image.meta['start_acq'] = meta_image.meta['start_acq']
         new_image.meta['pix_width'] = meta_image.meta['pix_width']
         new_image.meta['pix_height'] = meta_image.meta['pix_height']
+        new_image.edit_log['darkcorr'] = meta_image.edit_log['darkcorr']
 
     def model_background(self, mode=None, params=None, plot=True):
         """
         Models plume background for image provided.
         """
         self.vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
-        self.update_meta(self.img_A, self.vigncorr_A)
+        self.update_meta(self.vigncorr_A, self.img_A)
         self.vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
-        self.update_meta(self.img_B, self.vigncorr_B)
+        self.update_meta(self.vigncorr_B, self.img_B)
         self.vigncorr_A.edit_log['vigncorr'] = True
         self.vigncorr_B.edit_log['vigncorr'] = True
 
         # Create a warped version - required for light dilution work
         self.vigncorr_B_warped = pyplis.Img(self.img_reg.register_image(self.vigncorr_A.img, self.vigncorr_B.img))
-        self.update_meta(self.vigncorr_B, self.vigncorr_B_warped)
+        self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
         self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
         if self.auto_param_bg and params is None:
@@ -1347,9 +1373,9 @@ class PyplisWorker:
             self.fig_bg_ref.show()
 
         self.tau_A = tau_A
-        self.update_meta(self.img_A, self.tau_A)
+        self.update_meta(self.tau_A, self.img_A)
         self.tau_B = tau_B
-        self.update_meta(self.img_B, self.tau_B)
+        self.update_meta(self.tau_B, self.img_B)
 
         return tau_A, tau_B
 
@@ -1382,23 +1408,25 @@ class PyplisWorker:
         # Register off-band image
         img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
         self.tau_B_warped = pyplis.image.Img(img)
-        self.update_meta(self.tau_B, self.tau_B_warped)
+        self.update_meta(self.tau_B_warped, self.tau_B)
 
         # Perform light dilution if we have a correction
         if self.got_light_dil:
             self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
-            self.update_meta(self.vigncorr_A, self.lightcorr_A)
+            self.update_meta(self.lightcorr_A, self.vigncorr_A)
             self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='B')
-            self.update_meta(self.vigncorr_B_warped, self.lightcorr_B)
+            self.update_meta(self.lightcorr_B, self.vigncorr_B_warped)
             # TODO Presumably I want to make img_tau the difference between lightcorr A and B instead of tau_A and B?
             # TODO I haven't checked any of this yet though!! And I think maybe lightcorr A and B are the corrected
             # TODO intensity images, not the corrected tau images? Need to check all of this
+            # TODO I may need to model background, then I can use the light corr image as input into the background
+            # TODO modelling, which will correctly generate tau images
 
 
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
-        self.update_meta(self.img_A, self.img_tau)
+        self.update_meta(self.img_tau, self.img_A)
 
         # Adjust for changing FOV sensitivity if requested
         if self.use_sensitivity_mask:
@@ -1576,7 +1604,7 @@ class PyplisWorker:
 
         return self.flow, self.velo_img
 
-    def calculate_emission_rate(self, img, flow=None):
+    def calculate_emission_rate(self, img, flow=None, plot=True):
         """
         Generates emission rate for current calibrated image/optical flow etc
         :param img:         pyplis.Img          Image to have emission rate retrieved from (must be cal)
@@ -1619,18 +1647,15 @@ class PyplisWorker:
             if self.ref_check_mode:
                 return None
 
-        # Hold emission rate and associated parameters in list of dictionaries for each LineOnImage
-        # Just making the list full of empty dictionaries here
-        emission_rates_results = [{'flow_glob': None,
-                                   'flow_raw': None,
-                                   'flow_histo': None,
-                                   'flow_hybrid': None}
-                                  for _ in range(len([a for a in self.PCS_lines if isinstance(a, LineOnImage)]))]
-
         # Run processing for each LineOnImage objects
         for i, line in enumerate(self.PCS_lines):
             if isinstance(line, LineOnImage):
-                res_dict = emission_rates_results[i]    # Get correct results dictionary for this line
+                line_id = line.line_id
+                if line_id not in self.results:
+                    self.add_line_to_results(line_id)
+
+                # Get EmissionRates object for this line
+                res = self.results[line_id]
 
                 # Get distance along line and associated parameters
                 dists = line.get_line_profile(self.dist_img_step)
@@ -1644,14 +1669,14 @@ class PyplisWorker:
                 cds = cds[cond]
                 distarr = dists[cond]
                 disterr = dist_errs
-                props = line.plume_props    # Plume properties local to line
+                props = pyplis.plumespeed.LocalPlumeProperties(line.line_id)    # Plume properties local to line
                 verr = None                 # Used and redefined later in flow_histo/flow_hybrid
                 dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
 
                 # Cross-correlation emission rate retrieval
                 if self.velo_modes['flow_glob']:
                     if not self.got_cross_corr_vel:
-                        res_dict['flow_glob'] = None
+                        pass
                     else:
                         phi, phi_err = det_emission_rate(cds, self.vel_glob, distarr,
                                                          cd_err, self.vel_glob_err, disterr)
@@ -1661,17 +1686,15 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Pack results into dictionary
-                        res_dict['flow_glob'] = {'time': img.meta['start_acq'],
-                                                 'phi': phi,
-                                                 'phi_err': phi_err,
-                                                 'velo_eff': self.vel_glob,
-                                                 'velo_eff_err': self.vel_glob_err}
+                        res['flow_glob']._start_acq.append(img.meta['start_acq'])
+                        res['flow_glob']._phi.append(phi)
+                        res['flow_glob']._phi_err.append(phi_err)
+                        res['flow_glob']._velo_eff.append(self.vel_glob)
+                        res['flow_glob']._velo_eff_err.append(self.vel_glob_err)
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
-                    if flow is None:
-                        res_dict['flow_raw'] = None
-                    else:
+                    if flow is not None:
                         delt = flow.del_t
 
                         # retrieve diplacement vectors along line
@@ -1696,18 +1719,15 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Update results dictionary
-                        res_dict['flow_raw'] = {'time': img.meta['start_acq'],
-                                                'phi': phi,
-                                                'phi_err': phi_err,
-                                                'velo_eff': veff_avg,
-                                                'velo_eff_err': veff_err}
+                        res['flow_raw']._start_acq.append(img.meta['start_acq'])
+                        res['flow_raw']._phi.append(phi)
+                        res['flow_raw']._phi_err.append(phi_err)
+                        res['flow_raw']._velo_eff.append(veff_avg)
+                        res['flow_raw']._velo_eff_err.append(veff_err)
 
                 # Histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_histo']:
-                    if flow is None:
-                        res_dict['flow_histo'] = None
-                    else:
-
+                    if flow is not None:
                         # get mask specifying plume pixels
                         mask = img.get_thresh_mask(self.min_cd)
                         props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
@@ -1725,17 +1745,15 @@ class PyplisWorker:
                         phi_err /= 1000
 
                         # Update results dictionary
-                        res_dict['flow_histo'] = {'time': img.meta['start_acq'],
-                                                  'phi': phi,
-                                                  'phi_err': phi_err,
-                                                  'velo_eff': v,
-                                                  'velo_eff_err': verr}
+                        res['flow_histo']._start_acq.append(img.meta['start_acq'])
+                        res['flow_histo']._phi.append(phi)
+                        res['flow_histo']._phi_err.append(phi_err)
+                        res['flow_histo']._velo_eff.append(v)
+                        res['flow_histo']._velo_eff_err.append(verr)
 
                 # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_hybrid']:
-                    if flow is None:
-                        res_dict['flow_hybrid'] = None
-                    else:
+                    if flow is not None:
                         # get results from local plume properties analysis
                         if not self.velo_modes['flow_histo']:
                             mask = img.get_thresh_mask(self.min_cd)
@@ -1811,15 +1829,21 @@ class PyplisWorker:
                         phi /= 1000
                         phi_err /= 1000
 
-                        res_dict['flow_hybrid'] = {'time': img.meta['start_acq'],
-                                                   'phi': phi,
-                                                   'phi_err': phi_err,
-                                                   'velo_eff': veff_avg,
-                                                   'velo_eff_err': veff_err_avg,
-                                                   'frac_optflow_ok': 1 - frac_bad,
-                                                   'frac_optflow_ok_ica': ica_fac_ok}
+                        res['flow_hybrid']._start_acq.append(img.meta['start_acq'])
+                        res['flow_hybrid']._phi.append(phi)
+                        res['flow_hybrid']._phi_err.append(phi_err)
+                        res['flow_hybrid']._velo_eff.append(veff_avg)
+                        res['flow_hybrid']._velo_eff_err.append(veff_err_avg)
+                        res['flow_hybrid']._frac_optflow_ok.append(1 - frac_bad)
+                        res['flow_hybrid']._frac_optflow_ok_ica.append(ica_fac_ok)
 
-        return emission_rates_results
+        # TODO Sum all lines of equal times and make this a 'total' EmissionRates object. So should have a total for
+        # TODO each flow type
+
+        if plot:
+            self.fig_series.update_plot()
+
+        return self.results
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False):
         """
@@ -1859,13 +1883,30 @@ class PyplisWorker:
 
             if self.img_cal_prev is not None:
                 results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
-                print('Emission rate flow hybrid: {} kg/s'.format(results[0]['flow_hybrid']['phi']))
-
+                for i in range(len(results)):
+                    print('LINE {}\n'
+                          'flow_histo\n'
+                          '----------\n'
+                          'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
+                          'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
+                                                                        results[i]['flow_histo']['phi'],
+                                                                        results[i]['flow_histo']['phi_err'],
+                                                                        results[i]['flow_histo']['velo_eff'],
+                                                                        results[i]['flow_histo']['velo_eff_err']))
+                    try:
+                        print('LINE {}\n'
+                              'flow_raw\n'
+                              '----------\n'
+                              'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
+                              'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
+                                                                            results[i]['flow_raw']['phi'],
+                                                                            results[i]['flow_raw']['phi_err'],
+                                                                            results[i]['flow_raw']['velo_eff'],
+                                                                            results[i]['flow_raw']['velo_eff_err']))
+                    except (KeyError, TypeError):
+                        pass
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
-            # too TODO sort out filename, I need to be saving filenames somewhere I guess
-            # I subtract 1 from current index since this is incremented in the processing loop so will already be 1
-            # ahead of where we want to be for storing in the buffer (we have to wait to store in the buffer since we
-            # need to load an extra image for optical flow calculation
+            # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
                                  self.img_B_prev.filename, opt_flow=opt_flow)
 

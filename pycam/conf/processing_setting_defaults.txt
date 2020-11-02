@@ -8,9 +8,9 @@ init_spec_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent
 dark_spec_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\'
 bg_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399829ss_Clear.png'
 bg_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png'
-bg_dark_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\Data\pycam\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_Dark.png'
-bg_dark_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\Data\pycam\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
-cell_cal_dir='C:\Users\tw9616\Documents\PostDoc\Guatemela\Black camera\Cal_1\'
+bg_dark_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_Dark.png'
+bg_dark_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
+cell_cal_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\'
 cal_type_int=2
 use_sensitivity_mask=1
 min_cd=5e16
@@ -19,11 +19,11 @@ buff_size=200
 save_opt_flow=1
 
 # Plume background model
-bg_mode=4
+bg_mode=5
 auto_param=1
 polyfit_2d_thresh=100
-ref_check_lower=-5e16
-ref_check_upper=5e16
+ref_check_lower=-9e+16
+ref_check_upper=5e+16
 ref_check_mode=1
 
 # DOAS

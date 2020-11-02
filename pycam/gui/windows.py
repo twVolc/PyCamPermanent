@@ -9,7 +9,7 @@ import pycam.gui.cfg as cfg
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
 from pycam.gui.figures_doas import SpectraPlot, DOASPlot
-from pycam.gui.figures_analysis import ImageSO2, SequenceInfo
+from pycam.gui.figures_analysis import ImageSO2, SequenceInfo, TimeSeriesFigure
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -104,10 +104,19 @@ class AnalysisWind:
         self.name = name
         self.frame = ttk.Frame(self.parent)
 
+        col_1 = ttk.Frame(self.frame)
+        col_1.pack(side=tk.LEFT, anchor='nw')
+        col_2 = ttk.Frame(self.frame)
+        col_2.pack(side=tk.LEFT, anchor='nw')
+
         # Sequence info
-        self.seq_info = SequenceInfo(self.frame)
+        self.seq_info = SequenceInfo(col_1)
         self.seq_info.frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
 
         # SO2 image frame
-        self.so2_img = ImageSO2(self.frame)
+        self.so2_img = ImageSO2(col_1)
         self.so2_img.frame.grid(row=1, column=0, padx=5, pady=5)
+
+        # SO2 time series
+        self.time_series = TimeSeriesFigure(col_2)
+        self.time_series.frame.grid(row=0, column=1, padx=5, pady=5)

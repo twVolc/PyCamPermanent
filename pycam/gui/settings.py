@@ -46,6 +46,7 @@ class GUISettings:
         self.fig_doas = tuple()
         self.fig_ref_spec = tuple()
         self.fig_SO2 = tuple()
+        self.fig_series = tuple()
         self.fig_cal_doas = tuple()
         self.fig_ILS = tuple()
         self.fig_doas_calib_img = tuple()
@@ -184,6 +185,8 @@ class SettingsFrame:
         self._ref_y = tk.DoubleVar()
         self._SO2_x = tk.DoubleVar()
         self._SO2_y = tk.DoubleVar()
+        self._series_x = tk.DoubleVar()
+        self._series_y = tk.DoubleVar()
         self._cal_doas_x = tk.DoubleVar()
         self._cal_doas_y = tk.DoubleVar()
         self._ILS_x = tk.DoubleVar()
@@ -241,44 +244,62 @@ class SettingsFrame:
         # --------------------------------------------------------------------------------------------------------------
         # Figure settings
         # --------------------------------------------------------------------------------------------------------------
-        img_setts = FigureSizeSettings(self.fig_frame, 'Raw image:', self._img_x, self._img_y, row=1,
+        row_sett = 0
+        img_setts = FigureSizeSettings(self.fig_frame, 'Raw image:', self._img_x, self._img_y, row=row_sett,
                                        pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
-        spec_setts = FigureSizeSettings(self.fig_frame, 'Raw spectrum:', self._spec_x, self._spec_y, row=2,
+        spec_setts = FigureSizeSettings(self.fig_frame, 'Raw spectrum:', self._spec_x, self._spec_y, row=row_sett,
                                         pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
-        doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS retrievals:', self._doas_x, self._doas_y, row=3,
+        doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS retrievals:', self._doas_x, self._doas_y, row=row_sett,
                                         pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
-        ref_setts = FigureSizeSettings(self.fig_frame, 'Reference spectrum:', self._ref_x, self._ref_y, row=4,
+        ref_setts = FigureSizeSettings(self.fig_frame, 'Reference spectrum:', self._ref_x, self._ref_y, row=row_sett,
                                        pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
-        SO2_setts = FigureSizeSettings(self.fig_frame, 'SO2 image:', self._SO2_x, self._SO2_y, row=5,
+        SO2_setts = FigureSizeSettings(self.fig_frame, 'SO2 image:', self._SO2_x, self._SO2_y, row=row_sett,
                                        pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        series_setts = FigureSizeSettings(self.fig_frame, 'Emissions time series:', self._series_x, self._series_y,
+                                          row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         cal_doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS calibration:', self._cal_doas_x, self._cal_doas_y,
-                                            row=6, pdx=self.pdx, pdy=self.pdy)
+                                            row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         ILS_setts = FigureSizeSettings(self.fig_frame, 'ILS figure:', self._ILS_x, self._ILS_y,
-                                       row=7, pdx=self.pdx, pdy=self.pdy)
+                                       row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration image:', self._doas_calib_img_x,
-                                                  self._doas_calib_img_y, row=8, pdx=self.pdx, pdy=self.pdy)
+                                                  self._doas_calib_img_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         doas_calib_fit_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration fit:', self._doas_calib_fit_x,
-                                                  self._doas_calib_fit_y, row=9, pdx=self.pdx, pdy=self.pdy)
+                                                  self._doas_calib_fit_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         cell_fit_setts = FigureSizeSettings(self.fig_frame, 'Cell calibration fit:', self._cell_fit_x,
-                                            self._cell_fit_y, row=10, pdx=self.pdx, pdy=self.pdy)
+                                            self._cell_fit_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         cell_abs_setts = FigureSizeSettings(self.fig_frame, 'Cell absorbance image:', self._cell_abs_x,
-                                            self._cell_abs_y, row=11, pdx=self.pdx, pdy=self.pdy)
+                                            self._cell_abs_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         sens_mask_setts = FigureSizeSettings(self.fig_frame, 'Sensitivity mask:', self._sens_mask_x,
-                                             self._sens_mask_y, row=12, pdx=self.pdx, pdy=self.pdy)
+                                             self._sens_mask_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         light_dil_setts = FigureSizeSettings(self.fig_frame, 'Light dilution:', self._dil_x,
-                                             self._dil_y, row=13, pdx=self.pdx, pdy=self.pdy)
+                                             self._dil_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -362,6 +383,15 @@ class SettingsFrame:
     def fig_SO2(self, value):
         self._SO2_x.set(value[0])
         self._SO2_y.set(value[1])
+
+    @property
+    def fig_series(self):
+        return (self._series_x.get(), self._series_y.get())
+
+    @fig_series.setter
+    def fig_series(self, value):
+        self._series_x.set(value[0])
+        self._series_y.set(value[1])
 
     @property
     def fig_cal_doas(self):

@@ -149,6 +149,7 @@ class ImageSO2:
         self.image_cal = image_cal
         pyplis_worker.fig_tau = self
         pyplis_worker.fig_opt.fig_SO2 = self
+        self.fig_series = None
 
         self.pix_num_x = pix_dim[0]
         self.pix_num_y = pix_dim[1]
@@ -224,11 +225,13 @@ class ImageSO2:
         # Generate figure
         self._build_fig_img()
 
-        self.frame_opts.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
-        self.frame_analysis.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
-        self.frame_fig.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+        self.frame_opts.grid(row=0, column=0, pady=5, sticky='nsew')
+        frame_space = ttk.Frame(self.frame)         #    Just putting space between frames without adding padding
+        frame_space.grid(row=0, column=1, padx=2)   # To their outer extremities
+        self.frame_analysis.grid(row=0, column=2, pady=5, sticky='nsew')
+        self.frame_fig.grid(row=1, column=0, columnspan=3, pady=5)
 
-        self.frame.columnconfigure(1, weight=1)
+        self.frame.columnconfigure(2, weight=1)
 
     @property
     def num_ica(self):
@@ -534,9 +537,12 @@ class ImageSO2:
                 # TODO Extract ICA values and plotting them
                 # self.plot_ica_xsect()
 
+                # Update time series plot for available lines
+                self.fig_series.update_lines()
+
             self.img_canvas.draw()
         else:
-            self.messages('Clicked outside axes bounds but inside plot window')
+            print('Clicked outside axes bounds but inside plot window')
 
     def del_ica(self, line_num):
         """Searches axis for line object relating to pyplis line object and removes it
@@ -568,6 +574,9 @@ class ImageSO2:
         # Once removed, set the line to None
         self.PCS_lines_list[line_num] = None
 
+        # Update timeseries plot
+        self.fig_series.update_lines()
+
         # Redraw canvas
         self.img_canvas.draw()
 
@@ -576,8 +585,8 @@ class ImageSO2:
         # Set cmap to new value
         self.img_disp.set_cmap(getattr(cm, cmap))
 
-        # Update canvas
-        self.img_canvas.draw()
+        # Update canvas, first rescaling image, as the seismic canvas we use a different scale
+        self.scale_img(draw=True)
 
     def scale_img(self, draw=True):
         """
@@ -591,14 +600,22 @@ class ImageSO2:
                 self.vmax_cal = np.percentile(self.image_cal, 99.99)
             else:
                 self.vmax_cal = self.ppmm_max
-            self.img_disp.set_clim(vmin=0, vmax=self.vmax_cal)
+            if self.cmap.name == 'seismic':
+                vmin = -self.vmax_cal
+            else:
+                vmin = 0
+            self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_cal)
         else:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_tau:
                 self.vmax_tau = np.percentile(self.image_tau, 99.99)
             else:
                 self.vmax_tau = self.tau_max
-            self.img_disp.set_clim(vmin=0, vmax=self.vmax_tau)
+            if self.cmap.name == 'seismic':
+                vmin = -self.vmax_tau
+            else:
+                vmin = 0
+            self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_tau)
 
         # Set new limits
 
@@ -702,6 +719,157 @@ class ImageSO2:
         except queue.Empty:
             pass
         self.root.after(refresh_rate, self.__draw_canv__)
+
+
+class TimeSeriesFigure:
+    """
+    Class for frame holding time series plot and associated functions to update the plot
+    """
+    def __init__(self, parent, pyplis_work=pyplis_worker, setts=gui_setts):
+        self.parent = parent
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_series = self
+        self.pyplis_worker.fig_tau.fig_series = self
+        self.q = queue.Queue()
+        self.settings = setts
+
+        self.frame = ttk.Frame(self.parent)
+
+        # Initiate variables
+        self.initiate_variables()
+
+        # Build or widgets
+        self._build_opts()
+        self._build_fig()
+        self.opts_frame.grid(row=0, column=0, sticky='nsew')
+        self.fig_frame.grid(row=1, column=0, sticky='nsew', pady=5)
+
+        # Begin refreshing of plot
+        self.__draw_canv__()
+
+    def initiate_variables(self):
+        """Initiates tkinter variables used by object"""
+        self._line_plot = tk.StringVar()
+        self._plot_total = tk.IntVar()      # If 1, the total of all lines is plotted
+        self.plot_total = 1
+        self.lines = []                     # List holding ids of all lines currently drawn
+
+    @property
+    def plot_total(self):
+        return self._plot_total.get()
+
+    @plot_total.setter
+    def plot_total(self, value):
+        self._plot_total.set(int(value))
+
+    @property
+    def line_plot(self):
+        # We decrease the increment of the line by one so that it matches the line_id for pyplis object
+        # (the value was icnreased by one before being set, to match the SO2 image - see update_lines())
+        return '{}'.format(int(self._line_plot.get()) - 1)
+
+    @line_plot.setter
+    def line_plot(self, value):
+        self._line_plot.set(value)
+
+    def _build_opts(self):
+        """Builds options widget"""
+        self.opts_frame = ttk.LabelFrame(self.frame, text='Options')
+
+        lab = ttk.Label(self.opts_frame, text='Plot line:')
+        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        self.line_opts = ttk.Combobox(self.opts_frame, textvariable=self._line_plot, justify='left',
+                                      state='readonly')
+        self.line_opts.bind('<<ComboboxSelected>>', self.update_plot)
+        self.line_opts.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+
+        self.plt_tot_check = ttk.Checkbutton(self.opts_frame, text='Plot sum of all lines', variable=self._plot_total,
+                                             command=self.update_plot)
+        self.plt_tot_check.grid(row=1, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+
+        # Update current line options
+        self.update_lines(plot=False)
+
+    def _build_fig(self):
+        """Builds frame for time series plot"""
+        self.fig_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=2)
+
+        self.fig = plt.Figure(figsize=self.settings.fig_series, dpi=self.settings.dpi)
+        self.ax = self.fig.subplots(1, 1)
+
+        # Figure colour
+        self.fig.set_facecolor('black')
+        for child in self.ax.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color('white')
+        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+
+        # Finalise canvas and gridding
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
+
+    def update_lines(self, plot=True):
+        """Updates lines available to optionmenu"""
+        self.lines = []
+        for line in self.pyplis_worker.PCS_lines:
+            if isinstance(line, LineOnImage):
+                # Incremement line by one so it matches the line number in the SO2 image figure
+                self.lines.append('{}'.format(int(line.line_id) + 1))
+
+        # Update widget
+        self.line_opts['values'] = self.lines
+        if len(self.lines) > 0:
+            current_line = self.line_plot if self.line_plot in self.lines else self.lines[0]
+        else:
+            current_line = 'None'
+        self.line_opts.set(current_line)
+
+        # If we have more than one line we can open the option to plot the total too
+        if len(self.lines) < 2:
+            self.plt_tot_check.configure(state=tk.DISABLED)
+        else:
+            self.plt_tot_check.configure(state=tk.NORMAL)
+
+        # Update plot
+        self.update_plot()
+
+    def update_plot(self, draw=True):
+        """
+        Update time series plot with new data
+        :param draw:    bool    Plot is only drawn if draw=True, otherwise plot updates will not be drawn
+        """
+        # Clear old data
+        self.ax.clear()
+
+        if self.line_plot.lower() != 'none':
+            try:
+                self.pyplis_worker.results[self.line_plot].plot(ax=self.ax)
+            except KeyError:
+                print('No emission rate analysis data available for {}'.format(self.line_plot))
+
+        # Plot the summed total
+        if self.plot_total:
+            try:
+                self.pyplis_worker.results['total'].plot(ax=self.ax)
+            except KeyError:
+                print('No emission rate analysis data available for sum of all ICA lines')
+
+        # Draw if requested to
+        if draw:
+            self.q.put(1)
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                self.canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
 
 
 class GeomSettings:
@@ -1301,7 +1469,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.frame)
         butt_frame.pack(side=tk.TOP, padx=5, pady=5, fill=tk.BOTH, expand=True)
 
-        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
@@ -1311,7 +1479,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Run current background model to load up figures
-        self.run_process()
+        self.run_process(reload_seq=False)
 
         # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
         # But a call to mainloop here prevents the crash
@@ -1373,12 +1541,14 @@ class PlumeBackground(LoadSaveProcessingSettings):
         pyplis_worker.ref_check_upper = self.ref_check_upper
         pyplis_worker.ref_check_mode = self.ref_check_mode
 
-    def run_process(self):
+    def run_process(self, reload_seq=True):
         """Main processing for background modelling and displaying the results"""
         self.gather_vars()
         pyplis_worker.model_background()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
+        if reload_seq:
+            pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
     def close_window(self):
         """Restore current settings"""
