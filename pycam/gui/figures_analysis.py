@@ -469,6 +469,9 @@ class ImageSO2:
             self.PCS_lines_list[ica_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
                                                            include_roi_rot=True, label=lbl)
 
+            # Update time series line
+            self.fig_series.update_lines()
+
             # Redraw canvas
             self.img_canvas.draw()
 
@@ -735,6 +738,14 @@ class TimeSeriesFigure:
 
         self.frame = ttk.Frame(self.parent)
 
+        # Plot Options
+        self.date_fmt = '%HH:%MM'
+        self.plot_styles = {'flow_glob': {'ls': 'solid'},
+                            'flow_raw': {'ls': 'dotted'},
+                            'flow_histo': {'ls': 'dashed'},
+                            'flow_hybrid': {'ls': 'dashdot'}}
+        self.colours = self.pyplis_worker.fig_tau.line_colours
+
         # Initiate variables
         self.initiate_variables()
 
@@ -766,7 +777,11 @@ class TimeSeriesFigure:
     def line_plot(self):
         # We decrease the increment of the line by one so that it matches the line_id for pyplis object
         # (the value was icnreased by one before being set, to match the SO2 image - see update_lines())
-        return '{}'.format(int(self._line_plot.get()) - 1)
+        try:
+            line = '{}'.format(int(self._line_plot.get()) - 1)
+        except:
+            line = 'None'
+        return line
 
     @line_plot.setter
     def line_plot(self, value):
@@ -832,7 +847,8 @@ class TimeSeriesFigure:
             self.plt_tot_check.configure(state=tk.NORMAL)
 
         # Update plot
-        self.update_plot()
+        if plot:
+            self.update_plot()
 
     def update_plot(self, draw=True):
         """
@@ -843,17 +859,45 @@ class TimeSeriesFigure:
         self.ax.clear()
 
         if self.line_plot.lower() != 'none':
-            try:
-                self.pyplis_worker.results[self.line_plot].plot(ax=self.ax)
-            except KeyError:
-                print('No emission rate analysis data available for {}'.format(self.line_plot))
+            for mode in self.pyplis_worker.velo_modes:
+                if self.pyplis_worker.velo_modes[mode]:
+                    try:
+                        if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
+                            self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.ax,
+                                                                                  ls=self.plot_styles[mode]['ls'],
+                                                                                  color=self.colours[
+                                                                                      int(self.line_plot)],
+                                                                                  lw=1.5,
+                                                                                  ymin=0,
+                                                                                  date_fmt=self.date_fmt,
+                                                                                  label='line_{}: {}'.format(
+                                                                                      int(self.line_plot) + 1, mode)
+                                                                                  )
+                    except KeyError:
+                        print('No emission rate analysis data available for {}'.format(self.line_plot))
 
         # Plot the summed total
-        if self.plot_total:
-            try:
-                self.pyplis_worker.results['total'].plot(ax=self.ax)
-            except KeyError:
-                print('No emission rate analysis data available for sum of all ICA lines')
+        if self.plot_total and len(self.lines) > 1:
+            for mode in self.pyplis_worker.velo_modes:
+                if self.pyplis_worker.velo_modes[mode]:
+                    try:
+                        if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
+                            self.pyplis_worker.results['total'][mode].plot(ax=self.ax,
+                                                                           ls=self.plot_styles[mode]['ls'],
+                                                                           color='white',
+                                                                           lw=2,
+                                                                           ymin=0,
+                                                                           date_fmt=self.date_fmt,
+                                                                           label='total: {}'.format(mode))
+                    except KeyError:
+                        print('No emission rate analysis data available for sum of all ICA lines')
+
+        # Adjust ylimits as pyplis does this but it doesn't work out perfectly when plotting multiple plots
+        self.ax.autoscale(axis='y')
+        lims = self.ax.get_ylim()
+        self.ax.set_ylim((0, lims[1]))
+        self.ax.legend(loc='upper left')
+        self.ax.grid(which='major')
 
         # Draw if requested to
         if draw:

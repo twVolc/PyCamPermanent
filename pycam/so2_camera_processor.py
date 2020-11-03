@@ -125,7 +125,7 @@ class PyplisWorker:
         self.init_results()
 
         # Some pyplis tracking parameters
-        self.ts, self.bg_mean, self.bg_std = [], [], []
+        self.bg_mean, self.bg_std = [], []
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -386,7 +386,7 @@ class PyplisWorker:
         self.doas_file_num = 1
 
         # Some pyplis tracking parameters
-        self.ts, self.bg_mean, self.bg_std = [], [], []
+        self.bg_mean, self.bg_std = [], []
 
         # Initiate results
         self.init_results()
@@ -399,6 +399,11 @@ class PyplisWorker:
             if line is not None:
                 line_id = line.line_id
                 self.add_line_to_results(line_id)
+
+        # Add EmissionRates objects for the total emission rates (sum of all lines)
+        self.results['total'] = {}
+        for mode in self.velo_modes:
+            self.results['total'][mode] = EmissionRates('total', mode)
 
     def add_line_to_results(self, line_id):
         """
@@ -1622,7 +1627,6 @@ class PyplisWorker:
         # Compute distances to plume in each pixel
         self.compute_plume_dists()
 
-        self.ts.append(img.meta['start_acq'])
         # dt = calc_dt(img, self.img_cal)     # Time incremement betweeen current 2 successive images (probably not needed as I think it is containined in the optical flow object)
 
         # Test image background region to make sure image is ok (this is pyplis code again...)
@@ -1648,6 +1652,10 @@ class PyplisWorker:
                 return None
 
         # Run processing for each LineOnImage objects
+        total_emissions = {'flow_glob': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_raw': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
         for i, line in enumerate(self.PCS_lines):
             if isinstance(line, LineOnImage):
                 line_id = line.line_id
@@ -1681,16 +1689,18 @@ class PyplisWorker:
                         phi, phi_err = det_emission_rate(cds, self.vel_glob, distarr,
                                                          cd_err, self.vel_glob_err, disterr)
 
-                        # Convert to kg/s (pyplis exports in g/s
-                        phi /= 1000
-                        phi_err /= 1000
-
                         # Pack results into dictionary
                         res['flow_glob']._start_acq.append(img.meta['start_acq'])
                         res['flow_glob']._phi.append(phi)
                         res['flow_glob']._phi_err.append(phi_err)
                         res['flow_glob']._velo_eff.append(self.vel_glob)
                         res['flow_glob']._velo_eff_err.append(self.vel_glob_err)
+
+                        # Add to total emissions
+                        total_emissions['flow_glob']['phi'].append(phi)
+                        total_emissions['flow_glob']['phi_err'].append(phi_err)
+                        total_emissions['flow_glob']['veff'].append(self.vel_glob)
+                        total_emissions['flow_glob']['veff_err'].append(self.vel_glob_err)
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
@@ -1714,16 +1724,18 @@ class PyplisWorker:
                         # Get emission rate
                         phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
-                        # Convert to kg/s (pyplis exports in g/s
-                        phi /= 1000
-                        phi_err /= 1000
-
                         # Update results dictionary
                         res['flow_raw']._start_acq.append(img.meta['start_acq'])
                         res['flow_raw']._phi.append(phi)
                         res['flow_raw']._phi_err.append(phi_err)
                         res['flow_raw']._velo_eff.append(veff_avg)
                         res['flow_raw']._velo_eff_err.append(veff_err)
+
+                        # Add to total emissions
+                        total_emissions['flow_raw']['phi'].append(phi)
+                        total_emissions['flow_raw']['phi_err'].append(phi_err)
+                        total_emissions['flow_raw']['veff'].append(veff_avg)
+                        total_emissions['flow_raw']['veff_err'].append(veff_err)
 
                 # Histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_histo']:
@@ -1740,16 +1752,18 @@ class PyplisWorker:
                                                        sigma_tol=flow.settings.hist_sigma_tol)
                         phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
 
-                        # Convert to kg/s (pyplis exports in g/s
-                        phi /= 1000
-                        phi_err /= 1000
-
                         # Update results dictionary
                         res['flow_histo']._start_acq.append(img.meta['start_acq'])
                         res['flow_histo']._phi.append(phi)
                         res['flow_histo']._phi_err.append(phi_err)
                         res['flow_histo']._velo_eff.append(v)
                         res['flow_histo']._velo_eff_err.append(verr)
+
+                        # Add to total emissions
+                        total_emissions['flow_histo']['phi'].append(phi)
+                        total_emissions['flow_histo']['phi_err'].append(phi_err)
+                        total_emissions['flow_histo']['veff'].append(v)
+                        total_emissions['flow_histo']['veff_err'].append(verr)
 
                 # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_hybrid']:
@@ -1825,10 +1839,7 @@ class PyplisWorker:
                         phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
                         veff_err_avg = veff_err_arr.mean()
 
-                        # Convert to kg/s (pyplis exports in g/s
-                        phi /= 1000
-                        phi_err /= 1000
-
+                        # Add to EmissionRates object
                         res['flow_hybrid']._start_acq.append(img.meta['start_acq'])
                         res['flow_hybrid']._phi.append(phi)
                         res['flow_hybrid']._phi_err.append(phi_err)
@@ -1837,8 +1848,23 @@ class PyplisWorker:
                         res['flow_hybrid']._frac_optflow_ok.append(1 - frac_bad)
                         res['flow_hybrid']._frac_optflow_ok_ica.append(ica_fac_ok)
 
-        # TODO Sum all lines of equal times and make this a 'total' EmissionRates object. So should have a total for
-        # TODO each flow type
+                        # Add to total emissions
+                        total_emissions['flow_hybrid']['phi'].append(phi)
+                        total_emissions['flow_hybrid']['phi_err'].append(phi_err)
+                        total_emissions['flow_hybrid']['veff'].append(veff_avg)
+                        total_emissions['flow_hybrid']['veff_err'].append(veff_err_avg)
+
+        # Sum all lines of equal times and make this a 'total' EmissionRates object. So have a total for
+        # each flow type
+        for mode in self.velo_modes:
+            if self.velo_modes[mode]:
+                self.results['total'][mode]._start_acq.append(img.meta['start_acq'])
+                self.results['total'][mode]._phi.append(np.nansum(total_emissions[mode]['phi']))
+                self.results['total'][mode]._phi_err.append(
+                    np.sqrt(np.nansum(np.power(total_emissions[mode]['phi_err'], 2))))
+                self.results['total'][mode]._velo_eff.append(np.nanmean(total_emissions[mode]['veff']))
+                self.results['total'][mode]._velo_eff_err.append(
+                    np.sqrt(np.nansum(np.power(total_emissions[mode]['veff_err'], 2))))
 
         if plot:
             self.fig_series.update_plot()
@@ -1883,28 +1909,28 @@ class PyplisWorker:
 
             if self.img_cal_prev is not None:
                 results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
-                for i in range(len(results)):
-                    print('LINE {}\n'
-                          'flow_histo\n'
-                          '----------\n'
-                          'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
-                          'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
-                                                                        results[i]['flow_histo']['phi'],
-                                                                        results[i]['flow_histo']['phi_err'],
-                                                                        results[i]['flow_histo']['velo_eff'],
-                                                                        results[i]['flow_histo']['velo_eff_err']))
-                    try:
-                        print('LINE {}\n'
-                              'flow_raw\n'
-                              '----------\n'
-                              'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
-                              'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
-                                                                            results[i]['flow_raw']['phi'],
-                                                                            results[i]['flow_raw']['phi_err'],
-                                                                            results[i]['flow_raw']['velo_eff'],
-                                                                            results[i]['flow_raw']['velo_eff_err']))
-                    except (KeyError, TypeError):
-                        pass
+                # for i in range(len(results)):
+                #     print('LINE {}\n'
+                #           'flow_histo\n'
+                #           '----------\n'
+                #           'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
+                #           'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
+                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].phi[-1],
+                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].phi_err[-1],
+                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].velo_eff[-1],
+                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].velo_eff_err[-1]))
+                    # try:
+                    #     print('LINE {}\n'
+                    #           'flow_raw\n'
+                    #           '----------\n'
+                    #           'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
+                    #           'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
+                    #                                                         results[i]['flow_raw']['phi'],
+                    #                                                         results[i]['flow_raw']['phi_err'],
+                    #                                                         results[i]['flow_raw']['velo_eff'],
+                    #                                                         results[i]['flow_raw']['velo_eff_err']))
+                    # except (KeyError, TypeError):
+                    #     pass
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
@@ -2025,6 +2051,9 @@ class PyplisWorker:
         """
         Main processing function for continuous processing
         """
+        # Reset self
+        self.reset_self()
+
         while True:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
