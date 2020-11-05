@@ -28,10 +28,12 @@ import matplotlib.cm as cm
 import matplotlib.widgets as widgets
 import matplotlib.patches as patches
 import matplotlib.lines as mpllines
+import matplotlib.ticker as ticker
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
 import time
 import queue
+from pandas import Series
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
@@ -739,6 +741,7 @@ class TimeSeriesFigure:
         self.frame = ttk.Frame(self.parent)
 
         # Plot Options
+        self.style = 'default'
         self.date_fmt = '%HH:%MM'
         self.plot_styles = {'flow_glob': {'ls': 'solid'},
                             'flow_raw': {'ls': 'dotted'},
@@ -810,14 +813,21 @@ class TimeSeriesFigure:
         self.fig_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=2)
 
         self.fig = plt.Figure(figsize=self.settings.fig_series, dpi=self.settings.dpi)
-        self.ax = self.fig.subplots(1, 1)
+        # self.ax = self.fig.subplots(1, 1)
 
-        # Figure colour
-        self.fig.set_facecolor('black')
-        for child in self.ax.get_children():
-            if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        self.axes = [None] * 4
+        gs = plt.GridSpec(4, 1, height_ratios=[.6, .2, .2, .2], hspace=0.05)
+        self.axes[0] = self.fig.add_subplot(gs[0])
+        for i in range(3):
+            self.axes[i+1] = self.fig.add_subplot(gs[i+1], sharex=self.axes[0])
+        for i in range(2):
+            self.axes[(2*i) + 1].yaxis.tick_right()
+            self.axes[(2*i) + 1].yaxis.set_label_position("right")
+            self.axes[i+1].set_xticklabels([])
+            plt.setp(self.axes[i + 1].get_xticklabels(), visible=False)
+        self.axes[0].xaxis.tick_top()
+        self.fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+        self.axes[-1].set_xlabel('Time')
 
         # Finalise canvas and gridding
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
@@ -856,22 +866,29 @@ class TimeSeriesFigure:
         :param draw:    bool    Plot is only drawn if draw=True, otherwise plot updates will not be drawn
         """
         # Clear old data
-        self.ax.clear()
+        for ax in self.axes:
+            ax.clear()
 
         if self.line_plot.lower() != 'none':
             for mode in self.pyplis_worker.velo_modes:
                 if self.pyplis_worker.velo_modes[mode]:
                     try:
                         if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
-                            self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.ax,
+                            line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
+                            self.plot_bg_roi()
+                            self.plot_flow_dir(self.line_plot, label=line_lab,
+                                               color=self.colours[int(self.line_plot)])
+                            self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
+                                           label=line_lab, ls=self.plot_styles[mode]['ls'],
+                                           color=self.colours[int(self.line_plot)])
+                            self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
                                                                                   ls=self.plot_styles[mode]['ls'],
                                                                                   color=self.colours[
                                                                                       int(self.line_plot)],
                                                                                   lw=1.5,
                                                                                   ymin=0,
                                                                                   date_fmt=self.date_fmt,
-                                                                                  label='line_{}: {}'.format(
-                                                                                      int(self.line_plot) + 1, mode)
+                                                                                  label=line_lab
                                                                                   )
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
@@ -882,9 +899,9 @@ class TimeSeriesFigure:
                 if self.pyplis_worker.velo_modes[mode]:
                     try:
                         if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
-                            self.pyplis_worker.results['total'][mode].plot(ax=self.ax,
+                            self.pyplis_worker.results['total'][mode].plot(ax=self.axes[0],
                                                                            ls=self.plot_styles[mode]['ls'],
-                                                                           color='white',
+                                                                           color='black',
                                                                            lw=2,
                                                                            ymin=0,
                                                                            date_fmt=self.date_fmt,
@@ -892,16 +909,78 @@ class TimeSeriesFigure:
                     except KeyError:
                         print('No emission rate analysis data available for sum of all ICA lines')
 
-        # Adjust ylimits as pyplis does this but it doesn't work out perfectly when plotting multiple plots
-        self.ax.autoscale(axis='y')
-        lims = self.ax.get_ylim()
-        self.ax.set_ylim((0, lims[1]))
-        self.ax.legend(loc='upper left')
-        self.ax.grid(which='major')
+        # Adjust ylimits and do general plot tidying
+        self.axes[0].autoscale(axis='y')
+        lims = self.axes[0].get_ylim()
+        self.axes[0].set_ylim((0, lims[1]))
+        self.axes[0].legend(loc='upper left')
+        self.axes[1].set_ylabel(r"$v_{eff}$ [m/s]")
+        self.axes[2].set_ylabel(r"$\varphi\,[^{\circ}$]")
+        self.axes[3].set_ylabel(r"$ROI_{BG}\,[cm^{-2}]$")
+        for i in range(len(self.axes)):
+            self.axes[i].grid(b=True, which='major')
+            if i == 1 or i == 2:
+                plt.setp(self.axes[i].get_xticklabels(), visible=False)
 
         # Draw if requested to
         if draw:
             self.q.put(1)
+
+    def plot_veff(self, emission_rates, ax=1, yerr=True, **kwargs):
+        """
+        Controls plotting effective velocity - pyplis plotting of this doesn't seem to work on my data
+
+        :param emission_rates:  pyplis.fluxcalc.EmissionRates       Emissions rates containing all info
+        """
+        times = emission_rates.start_acq
+        veff, verr = emission_rates.velo_eff, emission_rates.velo_eff_err
+        self.axes[ax].plot(times, veff, **kwargs)
+
+        # Plot errors
+        if yerr:
+            phi_upper = Series(veff + verr, times)
+            phi_lower = Series(veff - verr, times)
+            kwargs['lw'] = 0    # Plot no lines around fill
+            self.axes[ax].fill_between(times, phi_lower, phi_upper, alpha=0.1, **kwargs)
+        self.axes[ax].autoscale(axis='y')
+        self.axes[ax].set_ylim([0, self.axes[ax].get_ylim()[1]])
+
+    def plot_flow_dir(self, line_id, ax=2, yerr=True, **kwargs):
+        """Plot predominant wind direction retrieved from flow_hybrid"""
+        times = self.pyplis_worker.results[line_id]['flow_histo'].start_acq
+        orientations = self.pyplis_worker.results[line_id]['flow_histo']._flow_orient
+
+        self.axes[ax].plot(times, orientations, **kwargs)
+
+        # Plot errors
+        if yerr:
+            upper = self.pyplis_worker.results[line_id]['flow_histo']._flow_orient_upper
+            lower = self.pyplis_worker.results[line_id]['flow_histo']._flow_orient_lower
+            kwargs['lw'] = 0
+            self.axes[ax].fill_between(times, lower, upper, alpha=0.1, **kwargs)
+        self.axes[ax].set_ylim([-180, 180])
+
+    def plot_bg_roi(self, ax=3, yerr=True, **kwargs):
+        """Plot background region column density and standard deviation"""
+        if "color" not in kwargs:
+            kwargs["color"] = "r"
+
+        # Plot background timeseries
+        self.axes[ax].plot(self.pyplis_worker.ts, self.pyplis_worker.bg_mean, **kwargs)
+
+        # Plot standard deviations
+        if yerr:
+            mean_arr = np.array(self.pyplis_worker.bg_mean)     # Convert to numpy for element-wise addition/subtraction
+            bg_upper = mean_arr + np.array(self.pyplis_worker.bg_std)
+            bg_lower = mean_arr - np.array(self.pyplis_worker.bg_std)
+
+            kwargs['lw'] = 0  # Plot no lines around fill
+            self.axes[ax].fill_between(self.pyplis_worker.ts, bg_lower, bg_upper, alpha=0.1, **kwargs)
+
+        # Set axis y-limits
+        self.axes[ax].autoscale(axis='y')
+        lim = max(np.abs(self.axes[ax].get_ylim()))
+        self.axes[ax].set_ylim([-lim, lim])
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
@@ -2281,8 +2360,8 @@ class CellCalibFrame:
         divider = make_axes_locatable(self.ax_abs)
         cax = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar_abs = plt.colorbar(self.abs_im, cax=cax)
-        self.cbar_abs.outline.set_edgecolor('white')
-        self.cbar_abs.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        # self.cbar_abs.outline.set_edgecolor('white')
+        self.cbar_abs.ax.tick_params(axis='both', direction='in', top='on', right='on')
 
         # Create figure
         self.fig_mask = plt.Figure(figsize=self.fig_size_sens_mask, dpi=self.dpi)
@@ -2297,8 +2376,8 @@ class CellCalibFrame:
         divider = make_axes_locatable(self.ax_mask)
         cax = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar_mask = plt.colorbar(self.mask_im, cax=cax)
-        self.cbar_mask.outline.set_edgecolor('white')
-        self.cbar_mask.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        # self.cbar_mask.outline.set_edgecolor('white')
+        self.cbar_mask.ax.tick_params(axis='both', direction='in', top='on', right='on')
 
         # Finalise canvas and gridding
         self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame_top)

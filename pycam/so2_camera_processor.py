@@ -125,7 +125,7 @@ class PyplisWorker:
         self.init_results()
 
         # Some pyplis tracking parameters
-        self.bg_mean, self.bg_std = [], []
+        self.ts, self.bg_mean, self.bg_std = [], [], []
 
         # Figure objects (objects are defined elsewhere in PyCam. They are not matplotlib Figure objects, although
         # they will contain matplotlib figure objects as attributes
@@ -386,7 +386,7 @@ class PyplisWorker:
         self.doas_file_num = 1
 
         # Some pyplis tracking parameters
-        self.bg_mean, self.bg_std = [], []
+        self.ts, self.bg_mean, self.bg_std = [], [], []
 
         # Initiate results
         self.init_results()
@@ -413,6 +413,10 @@ class PyplisWorker:
         self.results[line_id] = {}
         for mode in self.velo_modes:
             self.results[line_id][mode] = EmissionRates(line_id, mode)
+            if mode == 'flow_histo':
+                self.results[line_id][mode]._flow_orient = []
+                self.results[line_id][mode]._flow_orient_upper = []
+                self.results[line_id][mode]._flow_orient_lower = []
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -1197,6 +1201,7 @@ class PyplisWorker:
             return
 
         # Compute plume background in image (don't fully understand this line)
+        # TODO - Maybe work out what is goin on here???
         plume_bg_vigncorr = img * np.exp(tau_uncorr.img)
 
         # Calculate plume pixel mask
@@ -1631,6 +1636,7 @@ class PyplisWorker:
 
         # Test image background region to make sure image is ok (this is pyplis code again...)
         try:
+            self.ts.append(img.meta['start_acq'])       # Append acquisition time to list used for plotting time vs BG
             sub = img.crop(self.ambient_roi, new_img=True)
             avg = sub.mean()
             self.bg_mean.append(avg)
@@ -1759,6 +1765,12 @@ class PyplisWorker:
                         res['flow_histo']._velo_eff.append(v)
                         res['flow_histo']._velo_eff_err.append(verr)
 
+                        # Also add predominant flow direction
+                        orient_series, upper, lower = props.get_orientation_tseries()
+                        res['flow_histo']._flow_orient.append(orient_series[-1])
+                        res['flow_histo']._flow_orient_upper.append(upper[-1])
+                        res['flow_histo']._flow_orient_lower.append(lower[-1])
+
                         # Add to total emissions
                         total_emissions['flow_histo']['phi'].append(phi)
                         total_emissions['flow_histo']['phi_err'].append(phi_err)
@@ -1848,6 +1860,14 @@ class PyplisWorker:
                         res['flow_hybrid']._frac_optflow_ok.append(1 - frac_bad)
                         res['flow_hybrid']._frac_optflow_ok_ica.append(ica_fac_ok)
 
+                        # Also add predominant flow direction (it will be identical to histo values, so we only need to
+                        # do this once per line, and we just always store it in flow_histo)
+                        if not self.velo_modes['flow_histo']:
+                            orient_series, upper, lower = props.get_orientation_tseries()
+                            res['flow_histo']._flow_orient.append(orient_series[-1])
+                            res['flow_histo']._flow_orient_upper.append(upper[-1])
+                            res['flow_histo']._flow_orient_lower.append(lower[-1])
+
                         # Add to total emissions
                         total_emissions['flow_hybrid']['phi'].append(phi)
                         total_emissions['flow_hybrid']['phi_err'].append(phi_err)
@@ -1909,28 +1929,7 @@ class PyplisWorker:
 
             if self.img_cal_prev is not None:
                 results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
-                # for i in range(len(results)):
-                #     print('LINE {}\n'
-                #           'flow_histo\n'
-                #           '----------\n'
-                #           'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
-                #           'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
-                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].phi[-1],
-                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].phi_err[-1],
-                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].velo_eff[-1],
-                #                                                         results[self.PCS_lines[i].line_id]['flow_histo'].velo_eff_err[-1]))
-                    # try:
-                    #     print('LINE {}\n'
-                    #           'flow_raw\n'
-                    #           '----------\n'
-                    #           'Emission rate [kg/s]:\t{:.2f} +/- {:.2f}\n'
-                    #           'Plume speed [m/s]:\t{:.2f} +- {:.2f}'.format(i,
-                    #                                                         results[i]['flow_raw']['phi'],
-                    #                                                         results[i]['flow_raw']['phi_err'],
-                    #                                                         results[i]['flow_raw']['velo_eff'],
-                    #                                                         results[i]['flow_raw']['velo_eff_err']))
-                    # except (KeyError, TypeError):
-                    #     pass
+
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,

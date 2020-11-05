@@ -18,7 +18,8 @@ from pycam.cfg import pyplis_worker, process_settings
 from pycam.setupclasses import SpecSpecs
 from pycam.gui.settings import GUISettings
 
-plt.style.use('dark_background')
+# plt.style.use('dark_background')
+plt.style.use('default')
 
 refresh_rate = 100
 
