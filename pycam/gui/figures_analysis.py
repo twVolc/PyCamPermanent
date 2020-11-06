@@ -5,7 +5,7 @@ Contains all classes associated with building figures for the analysis functions
 """
 
 from pycam.gui.cfg import gui_setts
-from pycam.gui.misc import SpinboxOpt
+from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -124,7 +124,7 @@ class SequenceInfo:
         self.num_img_tot_lab.configure(text=str(self.num_img_tot))
 
 
-class ImageSO2:
+class ImageSO2(LoadSaveProcessingSettings):
     """
     Main class for generating an image of SO2. It may be calibated [ppm.m] or uncalibrated [apparent absorbance]
     depending on the user's command
@@ -139,8 +139,9 @@ class ImageSO2:
         [x_dimension, y_dimension] list of resolution for SO2 camera imagery
     """
 
-    def __init__(self, parent, image_tau=None, image_cal=None,
+    def __init__(self, parent, pyplis_work=pyplis_worker, image_tau=None, image_cal=None,
                  pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
+        super().__init__()
 
         # Get root - used for plotting using refresh after in _draw_canv_()
         parent_name = parent.winfo_parent()
@@ -149,8 +150,9 @@ class ImageSO2:
         self.parent = parent
         self.image_tau = image_tau
         self.image_cal = image_cal
-        pyplis_worker.fig_tau = self
-        pyplis_worker.fig_opt.fig_SO2 = self
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_tau = self
+        self.pyplis_worker.fig_opt.fig_SO2 = self
         self.fig_series = None
 
         self.pix_num_x = pix_dim[0]
@@ -173,6 +175,8 @@ class ImageSO2:
         self.num_ica = 1
         self._current_ica = tk.IntVar()
         self.current_ica = 1
+        self._xcorr_ica = tk.IntVar()
+        self.xcorr_ica = 0
         self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
@@ -210,6 +214,12 @@ class ImageSO2:
         self._plt_flow = tk.IntVar()
         self.plt_flow = 1
 
+        # Interactive mode
+        self._interactive_mode = tk.IntVar()
+        self.interactive_mode = 0
+
+        # Load any saved variables
+        self.initiate_variables()
         # -----------------------------------------------------------------------------------------------
 
         # Generate main frame for figure
@@ -235,6 +245,41 @@ class ImageSO2:
 
         self.frame.columnconfigure(2, weight=1)
 
+    def initiate_variables(self):
+        """Initiates variables to be loaded"""
+        self.vars = {'amb_roi': list}
+
+        self.load_defaults()
+
+    def gather_vars(self):
+        """
+        Update pyplis_worker for all attributes
+        :return:
+        """
+        self.pyplis_worker.ambient_roi = self.amb_roi
+
+        # Update full line list
+        self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
+
+        # If there is a xcorr line the we exclude it from the PCS_lines list on pyplis_worker, otherwise set the full
+        # list
+        if self.xcorr_ica > 0:
+            self.pyplis_worker.PCS_lines = self.PCS_lines_list[:self.xcorr_ica-1] + self.PCS_lines_list[self.xcorr_ica:]
+        else:
+            self.pyplis_worker.PCS_lines = self.PCS_lines_list
+
+        # Set the cross-correlation line
+        if self.xcorr_ica > 0:
+            self.pyplis_worker.PCS_line_cross_corr = self.PCS_lines_list[self.xcorr_ica - 1]
+        else:
+            self.pyplis_worker.PCS_line_cross_corr = None
+
+        # Update lines (will get error on start up as fig_series isn't yet assigned. After this it works fine)
+        try:
+            self.fig_series.update_lines()
+        except AttributeError:
+            pass
+
     @property
     def num_ica(self):
         return self._num_ica.get()
@@ -250,6 +295,14 @@ class ImageSO2:
     @current_ica.setter
     def current_ica(self, value):
         self._current_ica.set(value)
+
+    @property
+    def xcorr_ica(self):
+        return self._xcorr_ica.get()
+
+    @xcorr_ica.setter
+    def xcorr_ica(self, value):
+        self._xcorr_ica.set(value)
 
     @property
     def cmap(self):
@@ -307,6 +360,14 @@ class ImageSO2:
     def plt_flow(self, value):
         self._plt_flow.set(value)
 
+    @property
+    def interactive_mode(self):
+        return self._interactive_mode.get()
+
+    @interactive_mode.setter
+    def interactive_mode(self, value):
+        self._interactive_mode.set(value)
+
     def _build_fig_img(self):
         """Build figure"""
         # Main frame for figure and all associated widgets
@@ -339,13 +400,19 @@ class ImageSO2:
         # Plot optical flwo if it is requested at start
         self.plt_opt_flow(draw=False)
 
+        # Draw ambient roi
+        crop_X = self.amb_roi[2] - self.amb_roi[0]
+        crop_Y = self.amb_roi[3] - self.amb_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+                                                        crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
+
         # Finalise canvas and gridding
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
         self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
 
         # Bind click event to figure
-        self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
+        self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
 
         # Setup thread-safe plot update
         self.__draw_canv__()
@@ -373,6 +440,14 @@ class ImageSO2:
         # Flip ICA normal button
         self.ica_flip_butt = ttk.Button(self.frame_analysis, text='Flip ICA normal', command=self.flip_ica_normal)
         self.ica_flip_butt.grid(row=row, column=2, sticky='nsew', padx=2, pady=2)
+
+        # Cross-correlation line
+        row += 1
+        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA:')
+        label.grid(row=row, column=0, sticky='w', padx=2)
+        self.x_corr_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica, from_=0, to=self.num_ica,
+                                       increment=1, command=self.gather_vars)
+        self.x_corr_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
     def _build_options(self):
         """Builds options widget"""
@@ -429,13 +504,68 @@ class ImageSO2:
                                               command=self.plt_opt_flow)
         self.plt_flow_check.grid(row=row, column=0, columnspan=2, padx=2, pady=2, sticky='w')
 
+        # Interactive mode selector
+        row += 1
+        selector_frame = ttk.Frame(self.frame_opts, relief=tk.RAISED, borderwidth=2)
+        selector_frame.grid(row=row, column=0, columnspan=3, sticky='nsew')
+        self.line_draw_sel = ttk.Radiobutton(selector_frame, text='Draw ICA line',
+                                             variable=self._interactive_mode, value=0,
+                                             command=self.change_interactive_mode)
+        self.roi_draw_sel = ttk.Radiobutton(selector_frame, text='Draw ambient ROI',
+                                            variable=self._interactive_mode, value=1,
+                                            command=self.change_interactive_mode)
+        self.line_draw_sel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        self.roi_draw_sel.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+
+    def change_interactive_mode(self):
+        """Changes interactive mode from drawing PCS lines to drawing ambient region"""
+        if self.interactive_mode == 0:
+            self.rs.disconnect_events()
+            self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
+        elif self.interactive_mode == 1:
+            self.fig.canvas.mpl_disconnect(self.line_draw)
+            self.rs = widgets.RectangleSelector(self.ax, self.draw_roi, drawtype='box',
+                                                rectprops=dict(facecolor='red', edgecolor='blue', alpha=0.5, fill=True))
+        else:
+            raise ValueError('Unrecognised interactive_mode for ImageSO2')
+
+    def draw_roi(self, eclick, erelease):
+        """
+        Draws region of interest for calculating optical flow
+        :return:
+        """
+        try:  # Delete previous rectangle, if it exists
+            self.rect.remove()
+        except AttributeError:
+            pass
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+        self.rect = self.ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y),
+                                                        crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
+
+        # Only update roi_abs if use_roi is true
+        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.gather_vars()
+
+        self.q.put(1)
+
     def update_ica_num(self):
         """Makes necessary changes to update the number of ICA lines"""
 
         # Edit 'to' of ica_edit_spin spinbox and if current ICA is above number of ICAs we update current ICA
         self.ica_edit_spin.configure(to=self.num_ica)
-        if self.current_ica > self.num_ica:
-            self.current_ica = self.num_ica
+        self.current_ica = self.num_ica
+
+        # Edit cross-correlation ICA
+        self.x_corr_spin.configure(to=self.num_ica)
+        if self.xcorr_ica > self.num_ica:       # If the xcorr_ica is deleted we set the xcorr back to 0
+            self.xcorr_ica = 0
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
@@ -444,6 +574,9 @@ class ImageSO2:
                 self.del_ica(ica_num)
                 self.PCS_lines_list[ica_num] = None
             ica_num += 1
+
+        # Gather variables
+        self.gather_vars()
 
     def flip_ica_normal(self):
         """Flips the normal vector of the current ICA"""
@@ -471,8 +604,8 @@ class ImageSO2:
             self.PCS_lines_list[ica_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
                                                            include_roi_rot=True, label=lbl)
 
-            # Update time series line
-            self.fig_series.update_lines()
+            # Gather variables to update pyplis_worker object
+            self.gather_vars()
 
             # Redraw canvas
             self.img_canvas.draw()
@@ -533,17 +666,15 @@ class ImageSO2:
                                                            color=self.line_colours[PCS_idx],
                                                            line_id=lbl)
 
-                pyplis_worker.PCS_lines = self.PCS_lines_list
-
                 # Plot pyplis object on figure
                 self.PCS_lines_list[PCS_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
                                                                include_roi_rot=True, label=lbl)
 
+                # Update lines
+                self.gather_vars()
+
                 # TODO Extract ICA values and plotting them
                 # self.plot_ica_xsect()
-
-                # Update time series plot for available lines
-                self.fig_series.update_lines()
 
             self.img_canvas.draw()
         else:
@@ -579,8 +710,8 @@ class ImageSO2:
         # Once removed, set the line to None
         self.PCS_lines_list[line_num] = None
 
-        # Update timeseries plot
-        self.fig_series.update_lines()
+        # Gather variables
+        self.gather_vars()
 
         # Redraw canvas
         self.img_canvas.draw()
@@ -653,12 +784,15 @@ class ImageSO2:
                 # We only want to delete optical flow line
                 x_dat = child.get_xdata()
                 y_dat = child.get_ydata()
-                coords = [[x_dat[0], y_dat[0]], [x_dat[-1], y_dat[-1]]]
-                for line in self.PCS_lines_list:
-                    if line is not None:
-                        if line.start in coords and line.stop in coords:
-                            del_line = False
-                            break
+                try:
+                    coords = [[x_dat[0], y_dat[0]], [x_dat[-1], y_dat[-1]]]
+                    for line in self.PCS_lines_list:
+                        if line is not None:
+                            if line.start in coords and line.stop in coords:
+                                del_line = False
+                                break
+                except IndexError:      # Index error means we have part of the ambient ROI rect, so don't delete
+                    continue
 
             if del_line:
                 child.remove()
@@ -1404,90 +1538,6 @@ class GeomSettings:
         except queue.Empty:
             pass
         self.frame.after(refresh_rate, self.__draw_canv__)
-
-
-class LoadSaveProcessingSettings:
-    """Base Class for loading and saving processing settings methods"""
-
-    def __init__(self):
-        self.vars = {}  # Variables dictionary with kay-value pairs containing attribute name and variable type
-
-        self.pdx = 2
-        self.pdy = 2
-
-    def gather_vars(self):
-        """
-        Place holder for inheriting classes. It gathers all tk variables and sets associated variables to their
-        values
-        """
-        pass
-
-    def load_defaults(self):
-        """Loads default settings"""
-        filename = FileLocator.PROCESS_DEFAULTS
-
-        with open(filename, 'r') as f:
-            for line in f:
-                if line[0] == '#':
-                    continue
-
-                # Try to split line into key and value, if it fails this line is not used
-                try:
-                    key, value = line.split('=')
-                except ValueError:
-                    continue
-
-                # If the value is one we edit, we extract the value
-                if key in self.vars.keys():
-                    if self.vars[key] is str:
-                        value = value.split('\'')[1]
-                    elif self.vars[key] is list:
-                        value = [int(x) for x in value.split('[')[1].split(']')[0].split(',')]
-                    else:
-                        value = self.vars[key](value.split('\n')[0].split('#')[0])
-                    setattr(self, key, value)
-
-        # Update all objects finally
-        self.gather_vars()
-
-    def set_defaults(self):
-        """Sets current values as defaults"""
-        # First set this variables
-        self.gather_vars()
-
-        # Ask user to define filename for saving geometry settings
-        filename = FileLocator.PROCESS_DEFAULTS
-        filename_temp = filename.replace('.txt', '_temp.txt')
-
-        # Open file object and write all attributes to it
-        with open(filename_temp, 'w') as f_temp:
-            with open(filename, 'r') as f:
-                for line in f:
-                    if line[0] == '#':
-                        f_temp.write(line)
-                        continue
-
-                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
-                    try:
-                        key, value = line.split('=')
-                    except ValueError:
-                        f_temp.write(line)
-                        continue
-
-                    # If the value is one we edit, we extract the value
-                    if key in self.vars.keys():
-                        if self.vars[key] is str:  # If string we need to write the value within quotes
-                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
-                        else:
-                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
-                    else:
-                        f_temp.write(line)
-
-        # Finally, overwrite old default file with new file
-        os.replace(filename_temp, filename)
-
-        messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
-                                              'These will now be the program start-up settings.')
 
 
 class PlumeBackground(LoadSaveProcessingSettings):

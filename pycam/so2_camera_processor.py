@@ -97,6 +97,8 @@ class PyplisWorker:
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
+        self.PCS_lines_all = []
+        self.PCS_line_cross_corr = None
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow

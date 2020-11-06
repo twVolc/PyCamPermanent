@@ -2,7 +2,7 @@
 
 """Contains a number of miscellaneous GUI classes for use"""
 import pycam.gui.cfg as cfg
-from pycam.setupclasses import pycam_details
+from pycam.setupclasses import pycam_details, FileLocator
 
 import tkinter as tk
 from tkinter import messagebox
@@ -12,6 +12,7 @@ import tkinter.ttk as ttk
 from PIL import ImageTk, Image
 import time
 import threading
+import os
 
 
 class About:
@@ -214,3 +215,89 @@ class SpinboxOpt:
         label.grid(row=row, column=0, sticky='w', padx=pdx, pady=pdy)
         pyr_opt = ttk.Spinbox(parent, textvariable=var, from_=limits[0], to=limits[1], increment=limits[2])
         pyr_opt.grid(row=row, column=1, sticky='ew', padx=pdx, pady=pdy)
+
+
+class LoadSaveProcessingSettings:
+    """Base Class for loading and saving processing settings methods"""
+
+    def __init__(self):
+        self.vars = {}  # Variables dictionary with kay-value pairs containing attribute name and variable type
+
+        self.pdx = 2
+        self.pdy = 2
+
+    def gather_vars(self):
+        """
+        Place holder for inheriting classes. It gathers all tk variables and sets associated variables to their
+        values
+        """
+        pass
+
+    def load_defaults(self):
+        """Loads default settings"""
+        filename = FileLocator.PROCESS_DEFAULTS
+
+        with open(filename, 'r') as f:
+            for line in f:
+                if line[0] == '#':
+                    continue
+
+                # Try to split line into key and value, if it fails this line is not used
+                try:
+                    key, value = line.split('=')
+                except ValueError:
+                    continue
+
+                # If the value is one we edit, we extract the value
+                if key in self.vars.keys():
+                    if self.vars[key] is str:
+                        value = value.split('\'')[1]
+                    elif self.vars[key] is list:
+                        value = [int(x) for x in value.split('[')[1].split(']')[0].split(',')]
+                    else:
+                        value = self.vars[key](value.split('\n')[0].split('#')[0])
+                    setattr(self, key, value)
+
+        # Update all objects finally
+        self.gather_vars()
+
+    def set_defaults(self):
+        """Sets current values as defaults"""
+        # First set this variables
+        self.gather_vars()
+
+        # Ask user to define filename for saving geometry settings
+        filename = FileLocator.PROCESS_DEFAULTS
+        filename_temp = filename.replace('.txt', '_temp.txt')
+
+        # Open file object and write all attributes to it
+        with open(filename_temp, 'w') as f_temp:
+            with open(filename, 'r') as f:
+                for line in f:
+                    if line[0] == '#':
+                        f_temp.write(line)
+                        continue
+
+                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
+                    try:
+                        key, value = line.split('=')
+                    except ValueError:
+                        f_temp.write(line)
+                        continue
+
+                    # If the value is one we edit, we extract the value
+                    if key in self.vars.keys():
+                        if self.vars[key] is str:  # If string we need to write the value within quotes
+                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
+                        else:
+                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
+                    else:
+                        f_temp.write(line)
+
+        # Finally, overwrite old default file with new file
+        os.replace(filename_temp, filename)
+
+        messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
+                                              'These will now be the program start-up settings.')
+
+
