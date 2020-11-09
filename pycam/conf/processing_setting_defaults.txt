@@ -48,6 +48,7 @@ flow_raw=0
 flow_histo=1
 flow_hybrid=0
 use_multi_gauss=1
+cross_corr_recal=30
 
 # Light dilution
 amb_roi=[550, 20, 600, 70]

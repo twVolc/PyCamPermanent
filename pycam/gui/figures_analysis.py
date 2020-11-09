@@ -175,8 +175,10 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.num_ica = 1
         self._current_ica = tk.IntVar()
         self.current_ica = 1
-        self._xcorr_ica = tk.IntVar()
-        self.xcorr_ica = 0
+        self._xcorr_ica_old = tk.IntVar()
+        self.xcorr_ica_old = 0
+        self._xcorr_ica_young = tk.IntVar()
+        self.xcorr_ica_young = 0
         self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
@@ -261,18 +263,26 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update full line list
         self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
 
-        # If there is a xcorr line the we exclude it from the PCS_lines list on pyplis_worker, otherwise set the full
+        # If there is a xcorr line then we exclude it from the PCS_lines list on pyplis_worker, otherwise set the full
         # list
-        if self.xcorr_ica > 0:
-            self.pyplis_worker.PCS_lines = self.PCS_lines_list[:self.xcorr_ica-1] + self.PCS_lines_list[self.xcorr_ica:]
+        if self.xcorr_ica_old > 0:
+            self.pyplis_worker.PCS_lines = self.PCS_lines_list[:self.xcorr_ica_old - 1] + self.PCS_lines_list[self.xcorr_ica_old:]
         else:
             self.pyplis_worker.PCS_lines = self.PCS_lines_list
 
         # Set the cross-correlation line
-        if self.xcorr_ica > 0:
-            self.pyplis_worker.PCS_line_cross_corr = self.PCS_lines_list[self.xcorr_ica - 1]
+        if self.xcorr_ica_old > 0:
+            self.pyplis_worker.cross_corr_lines['old'] = self.PCS_lines_list[self.xcorr_ica_old - 1]
         else:
-            self.pyplis_worker.PCS_line_cross_corr = None
+            self.pyplis_worker.cross_corr_lines['old'] = None
+
+        # Set the young cross-correlation line (this line is not excluded from the total emission rate calculation -
+        # only the old cross-correlation line is) It is therefore assumed that this young line is part of the set of
+        # line that constrain the volcanic edifice in all directions
+        if self.xcorr_ica_young > 0:
+            self.pyplis_worker.cross_corr_lines['young'] = self.PCS_lines_list[self.xcorr_ica_young - 1]
+        else:
+            self.pyplis_worker.cross_corr_lines['young'] = None
 
         # Update lines (will get error on start up as fig_series isn't yet assigned. After this it works fine)
         try:
@@ -297,12 +307,20 @@ class ImageSO2(LoadSaveProcessingSettings):
         self._current_ica.set(value)
 
     @property
-    def xcorr_ica(self):
-        return self._xcorr_ica.get()
+    def xcorr_ica_old(self):
+        return self._xcorr_ica_old.get()
 
-    @xcorr_ica.setter
-    def xcorr_ica(self, value):
-        self._xcorr_ica.set(value)
+    @xcorr_ica_old.setter
+    def xcorr_ica_old(self, value):
+        self._xcorr_ica_old.set(value)
+
+    @property
+    def xcorr_ica_young(self):
+        return self._xcorr_ica_young.get()
+
+    @xcorr_ica_young.setter
+    def xcorr_ica_young(self, value):
+        self._xcorr_ica_young.set(value)
 
     @property
     def cmap(self):
@@ -441,13 +459,21 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.ica_flip_butt = ttk.Button(self.frame_analysis, text='Flip ICA normal', command=self.flip_ica_normal)
         self.ica_flip_butt.grid(row=row, column=2, sticky='nsew', padx=2, pady=2)
 
-        # Cross-correlation line
+        # Cross-correlation line (older and younger)
         row += 1
-        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA:')
+        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [young]:')
         label.grid(row=row, column=0, sticky='w', padx=2)
-        self.x_corr_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica, from_=0, to=self.num_ica,
-                                       increment=1, command=self.gather_vars)
-        self.x_corr_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
+        self.x_corr_spin_young = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica_young,
+                                             from_=0, to=self.num_ica, increment=1, command=self.gather_vars)
+        self.x_corr_spin_young.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
+
+
+        row += 1
+        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [old]:')
+        label.grid(row=row, column=0, sticky='w', padx=2)
+        self.x_corr_spin_old = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica_old,
+                                           from_=0, to=self.num_ica, increment=1, command=self.gather_vars)
+        self.x_corr_spin_old.grid(row=row, column=1, sticky='ew')
 
     def _build_options(self):
         """Builds options widget"""
@@ -563,9 +589,14 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.current_ica = self.num_ica
 
         # Edit cross-correlation ICA
-        self.x_corr_spin.configure(to=self.num_ica)
-        if self.xcorr_ica > self.num_ica:       # If the xcorr_ica is deleted we set the xcorr back to 0
-            self.xcorr_ica = 0
+        self.x_corr_spin_old.configure(to=self.num_ica)
+        if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
+            self.xcorr_ica_old = 0
+
+        # Edit cross-correlation ICA (young)
+        self.x_corr_spin_young.configure(to=self.num_ica)
+        if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
+            self.xcorr_ica_young = 0
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
@@ -971,7 +1002,7 @@ class TimeSeriesFigure:
     def update_lines(self, plot=True):
         """Updates lines available to optionmenu"""
         self.lines = []
-        for line in self.pyplis_worker.PCS_lines:
+        for line in self.pyplis_worker.PCS_lines_all:
             if isinstance(line, LineOnImage):
                 # Incremement line by one so it matches the line number in the SO2 image figure
                 self.lines.append('{}'.format(int(line.line_id) + 1))
@@ -2667,7 +2698,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'flow_raw': int,
                      'flow_histo': int,
                      'flow_hybrid': int,
-                     'use_multi_gauss': int
+                     'use_multi_gauss': int,
+                     'cross_corr_recal': int
                      }
 
         self.settings_vars = {'pyr_scale': float,       # Alternative vars dict containing only those values which
@@ -2698,6 +2730,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._hist_sigma_tol = tk.IntVar()
         self._use_roi = tk.IntVar()
         self._use_multi_gauss = tk.IntVar()
+        self._cross_corr_recal = tk.IntVar()
 
         # Flow options
         self._flow_glob = tk.IntVar()
@@ -2805,6 +2838,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         roi_check.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         gauss_check = ttk.Checkbutton(self.analysis_frame, text='Use Multi-Gauss', variable=self._use_multi_gauss)
         gauss_check.grid(row=row, column=1, sticky='w', padx=2, pady=2)
+
+        # Cross-correlation
+        row += 1
+        spin = SpinboxOpt(self.analysis_frame, name='Cross-correlation length [minutes]:', var=self._cross_corr_recal,
+                          limits=[1, 999, 1], row=row)
+        self.xcorr_spin = spin.spin_opt
 
         # -----------------------------------
         # Flow modes in use
@@ -2972,6 +3011,15 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
     def use_multi_gauss(self, value):
         self._use_multi_gauss.set(value)
 
+    @property
+    def cross_corr_recal(self):
+        """Time in minutes to rerun cross-correlation analysis"""
+        return self._cross_corr_recal.get()
+
+    @cross_corr_recal.setter
+    def cross_corr_recal(self, value):
+        self._cross_corr_recal.set(value)
+
     def gather_vars(self, run=False):
         """
         Gathers all optical flow settings and updates pyplis worker settings
@@ -2993,6 +3041,9 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # Loop through flow options and set them
         for key in self.pyplis_worker.velo_modes:
             self.pyplis_worker.velo_modes[key] = bool(getattr(self, key))
+
+        # Set cross-correlation recalibration
+        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
 
         if run:
             self.run_flow()

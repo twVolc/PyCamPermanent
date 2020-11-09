@@ -14,7 +14,7 @@ from pyplis import LineOnImage
 from pyplis.custom_image_import import load_picam_png
 from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
-from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties
+from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties, find_signal_correlation
 from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 import pydoas
@@ -98,7 +98,11 @@ class PyplisWorker:
         self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
         self.PCS_lines_all = []
-        self.PCS_line_cross_corr = None
+        self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
+                                 'old': None}           # Old plume LineOnImage for cross-correlation
+        self.cross_corr_series = {'time': [],           # datetime list
+                                  'young': [],          # Young plume series list
+                                  'old': [] }           # Old plume series list
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
@@ -107,9 +111,9 @@ class PyplisWorker:
                            "flow_raw": False,           # Raw optical flow output
                            "flow_histo": True,          # Histogram analysis
                            "flow_hybrid": False}        # Hybrid histogram
-        self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
-                                 'old': None}           # Old plume LineOnImage for cross-correlation
         self.got_cross_corr_vel = False                 # Flag for if we have a cross correlation velocity
+        self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
+        self.cross_corr_last = 0                        # Last time cross-correlation was run
         self.vel_glob = None                            # Global velocity (m/s)
         self.vel_glob_err = None                        # Global velocity error
         self.optflow_err_rel_veff = 0.15                # Empirically determined optical flow error (from pyplis)
@@ -293,6 +297,10 @@ class PyplisWorker:
         self.meas = pyplis.setupclasses.MeasSetup(self.img_dir, start, stop, camera=self.cam,
                                                   source=self.source, wind_info=wind_info)
 
+        # Compute all distance images and associated parameter (done here so it will be set correctly every time
+        # the measurement geometry is changed)
+        self.compute_plume_dists()
+
     def show_geom(self):
         """Wrapper for pyplis plotting of measurement geometry"""
         self.geom_fig = self.meas.meas_geometry.draw_map_2d()
@@ -385,6 +393,10 @@ class PyplisWorker:
         self.got_cal_cell = False
         self.got_light_dil = False
         self.got_cross_corr_vel = False
+        self.cross_corr_last = 0
+        self.cross_corr_series = {'time': [],  # datetime list
+                                  'young': [],  # Young plume series list
+                                  'old': []}  # Old plume series list
         self.doas_file_num = 1
 
         # Some pyplis tracking parameters
@@ -397,7 +409,7 @@ class PyplisWorker:
         """Initiates results dictionary"""
         # Emission rate dictionary
         self.results = {}
-        for line in self.PCS_lines:
+        for line in self.PCS_lines_all:
             if line is not None:
                 line_id = line.line_id
                 self.add_line_to_results(line_id)
@@ -635,26 +647,6 @@ class PyplisWorker:
             self.img_buff[:-1] = self.img_buff[1:]
             self.img_buff[-1] = new_dict
         # --------------------------------------------
-
-        # # Extract time from filename into datetime object
-        # img_time = self.get_img_time(filename)
-        #
-        # # If we haven't exceeded buffer size then we simply add new data to buffer
-        # if self.idx_current < self.img_buff_size:
-        #     self.img_buff[:, :, self.idx_current] = img_tau
-        #     self.img_tau_buff_time[self.idx_current] = img_time
-        #
-        # # If we are beyond the buffer size we need to shift all images down one and add the new image to the end
-        # # The oldest image is therefore lost from the buffer
-        # else:
-        #     self.img_buff[:, :, :-1] = self.img_buff[:, :, 1:]
-        #     self.img_buff[:, :, -1] = img_tau
-        #     self.img_tau_buff_time[:-1] = self.img_tau_buff_time[1:]
-        #     self.img_tau_buff_time[-1] = img_time
-
-        # # Increment current index (I've commented this out as I now do it in the processing loops - this means that
-        # # edits can be made to the first image without the buffer slowly moving forwards)
-        # self.idx_current += 1
 
     def generate_vign_mask(self, img, band):
         """
@@ -1119,12 +1111,11 @@ class PyplisWorker:
         Computes plume distances for each pixel and associated error
         :return:
         """
-        # TODO may not want to use this as it could be done in model light dilution
-        self.plume_dists = self.meas.meas_geometry.plume_dist()
-        self.plume_dist_err = self.meas.meas_geometry.plume_dist_err()
-
         # Compute integration step sizes
-        self.dist_img_step = self.meas.meas_geometry.compute_all_integration_step_lengths()[0]
+        self.dist_img_step, _, self.plume_dists = self.meas.meas_geometry.compute_all_integration_step_lengths()
+
+        # Compute plume distance errors
+        self.plume_dist_err = self.meas.meas_geometry.plume_dist_err()
 
     def model_light_dilution(self, lines=None, draw=True, **kwargs):
         """
@@ -1140,9 +1131,6 @@ class PyplisWorker:
 
         # Ensure we only use the correct objects for processing
         self.light_dil_lines = [f for f in self.light_dil_lines if isinstance(f, LineOnImage)]
-
-        # Compute distances to plume
-        pix_dists, _, self.plume_dists = self.meas.meas_geometry.compute_all_integration_step_lengths()
 
         # Create the pyplis light dilution object
         dil = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
@@ -1448,6 +1436,10 @@ class PyplisWorker:
         # if img_path_A is not None:
         #     self.update_img_buff(self.img_tau.img, img_path_A)
 
+        # Extract tau time series for cross-correlation lines if velo_mode flow_glob is True
+        if self.velo_modes['flow_glob']:
+            self.extract_cross_corr_vals(self.img_tau)
+
         # Calibrate the image
         self.img_cal = self.calibrate_image(self.img_tau, run_cal_doas=run_cal)
 
@@ -1554,19 +1546,60 @@ class PyplisWorker:
         pass
         # TODO write script to update DOAS calibration with or without DOAS FOV update
 
-    def generate_cross_corr(self, line_young, line_old):
+    def extract_cross_corr_vals(self, img):
+        """
+        Extracts values across img using line
+        :param img:     Img             Image to extract data from
+        """
+        try:
+            for line in ['young', 'old']:
+                line_vals = self.cross_corr_lines[line].get_line_profile(img.img)
+                self.cross_corr_series[line].append(np.sum(line_vals))
+            self.cross_corr_series['time'].append(img.meta['start_acq'])
+        except BaseException as e:
+            print('Could not retrieve integrated tau over PCS lines for cross-correlation\n {}'.format(e))
+
+    def generate_cross_corr(self, series_time, series_young, series_old, distance=None):
         """
         Runs cross correlation procedure to get a global velocity and assign it to self.vel_glob
-        :param line_young:  LineOnImage  First line of the younger plume
-        :param line_old:    LineOnImage    Second line of the older plume
+        :param series_time:   list            List of datetime objects
+        :param series_young:  list            First line of the younger plume
+        :param series_old:    list    Second line of the older plume
         :return:
         """
         # TODO ============================================================================
         # TODO perform all global velocity analysis and update any appropriate parameters
         # TODO ============================================================================
-
-
         self.vel_glob = None
+
+        # Calculate distance between current two PCS lines if we aren't passed a distance
+        if distance is None:
+            pcs1 = self.cross_corr_lines['young']
+            pcs2 = self.cross_corr_lines['old']
+            pix_dist_avg_line1 = pcs1.get_line_profile(self.dist_img_step.img).mean()
+            pix_dist_avg_line2 = pcs2.get_line_profile(self.dist_img_step.img).mean()
+
+            # Take the mean of those to determine distance between both lines in m
+            pix_dist_avg = np.mean([pix_dist_avg_line1, pix_dist_avg_line2])
+
+            distance = pcs1.dist_other(pcs2) * pix_dist_avg
+
+        # Find lag in seconds
+        lag = find_signal_correlation(series_young, series_old, time_stamps=series_time)
+
+        # Set global velocity
+        self.vel_glob = distance / lag
+
+        # TODO Set last cross-correlation time to the time of this run. It is used to calculate when the next
+        # TODO plume speed extraction via cross_correlation is needed
+        self.cross_corr_last = self.img_A.meta['start_acq']
+
+        self.got_cross_corr_vel = True
+
+        # Reset the time series
+        self.cross_corr_series = {'time': [],   # datetime list
+                                  'young': [],  # Young plume series list
+                                  'old': []}    # Old plume series list
 
     def update_opt_flow_settings(self, **settings):
         """
@@ -1600,8 +1633,7 @@ class PyplisWorker:
         self.flow = self.opt_flow.calc_flow()
 
         # Generate plume speed array
-        dist_img, _, _ = self.meas.meas_geometry.compute_all_integration_step_lengths(pyrlevel=0)
-        self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(dist_img))
+        self.velo_img = pyplis.image.Img(self.opt_flow.to_plume_speed(self.dist_img_step))
 
         if plot:
             # TODO Think about this plotting - I have currently left it as img_tau_next when really it should be img_tau
@@ -1631,9 +1663,6 @@ class PyplisWorker:
             warnings.warn("DOAS calibration error could not be accessed: {}".format(repr(e)))
             cd_err = None
 
-        # Compute distances to plume in each pixel
-        self.compute_plume_dists()
-
         # dt = calc_dt(img, self.img_cal)     # Time incremement betweeen current 2 successive images (probably not needed as I think it is containined in the optical flow object)
 
         # Test image background region to make sure image is ok (this is pyplis code again...)
@@ -1659,12 +1688,17 @@ class PyplisWorker:
             if self.ref_check_mode:
                 return None
 
-        # Run processing for each LineOnImage objects
+        # Setup total emissions lists into dictionary
         total_emissions = {'flow_glob': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_raw': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
-        for i, line in enumerate(self.PCS_lines):
+
+        # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
+        lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
+
+        # Run processing for each LineOnImage objects
+        for i, line in enumerate(self.PCS_lines_all):
             if isinstance(line, LineOnImage):
                 line_id = line.line_id
                 if line_id not in self.results:
@@ -1705,10 +1739,11 @@ class PyplisWorker:
                         res['flow_glob']._velo_eff_err.append(self.vel_glob_err)
 
                         # Add to total emissions
-                        total_emissions['flow_glob']['phi'].append(phi)
-                        total_emissions['flow_glob']['phi_err'].append(phi_err)
-                        total_emissions['flow_glob']['veff'].append(self.vel_glob)
-                        total_emissions['flow_glob']['veff_err'].append(self.vel_glob_err)
+                        if line_id in lines_total:
+                            total_emissions['flow_glob']['phi'].append(phi)
+                            total_emissions['flow_glob']['phi_err'].append(phi_err)
+                            total_emissions['flow_glob']['veff'].append(self.vel_glob)
+                            total_emissions['flow_glob']['veff_err'].append(self.vel_glob_err)
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
@@ -1740,10 +1775,11 @@ class PyplisWorker:
                         res['flow_raw']._velo_eff_err.append(veff_err)
 
                         # Add to total emissions
-                        total_emissions['flow_raw']['phi'].append(phi)
-                        total_emissions['flow_raw']['phi_err'].append(phi_err)
-                        total_emissions['flow_raw']['veff'].append(veff_avg)
-                        total_emissions['flow_raw']['veff_err'].append(veff_err)
+                        if line_id in lines_total:
+                            total_emissions['flow_raw']['phi'].append(phi)
+                            total_emissions['flow_raw']['phi_err'].append(phi_err)
+                            total_emissions['flow_raw']['veff'].append(veff_avg)
+                            total_emissions['flow_raw']['veff_err'].append(veff_err)
 
                 # Histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_histo']:
@@ -1774,10 +1810,11 @@ class PyplisWorker:
                         res['flow_histo']._flow_orient_lower.append(lower[-1])
 
                         # Add to total emissions
-                        total_emissions['flow_histo']['phi'].append(phi)
-                        total_emissions['flow_histo']['phi_err'].append(phi_err)
-                        total_emissions['flow_histo']['veff'].append(v)
-                        total_emissions['flow_histo']['veff_err'].append(verr)
+                        if line_id in lines_total:
+                            total_emissions['flow_histo']['phi'].append(phi)
+                            total_emissions['flow_histo']['phi_err'].append(phi_err)
+                            total_emissions['flow_histo']['veff'].append(v)
+                            total_emissions['flow_histo']['veff_err'].append(verr)
 
                 # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
                 if self.velo_modes['flow_hybrid']:
@@ -1871,10 +1908,11 @@ class PyplisWorker:
                             res['flow_histo']._flow_orient_lower.append(lower[-1])
 
                         # Add to total emissions
-                        total_emissions['flow_hybrid']['phi'].append(phi)
-                        total_emissions['flow_hybrid']['phi_err'].append(phi_err)
-                        total_emissions['flow_hybrid']['veff'].append(veff_avg)
-                        total_emissions['flow_hybrid']['veff_err'].append(veff_err_avg)
+                        if line_id in lines_total:
+                            total_emissions['flow_hybrid']['phi'].append(phi)
+                            total_emissions['flow_hybrid']['phi_err'].append(phi_err)
+                            total_emissions['flow_hybrid']['veff'].append(veff_avg)
+                            total_emissions['flow_hybrid']['veff_err'].append(veff_err_avg)
 
         # Sum all lines of equal times and make this a 'total' EmissionRates object. So have a total for
         # each flow type
@@ -1893,7 +1931,8 @@ class PyplisWorker:
 
         return self.results
 
-    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False):
+    def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False,
+                     cross_corr=False):
         """
         Processes full image pair when passed images
 
@@ -1904,6 +1943,8 @@ class PyplisWorker:
         :param force_cal: bool  If True, calibration is performed after image load, and then calibration is applied -
                                 Use case, if we are at the end of an image sequence and have not yet reached the
                                 buffer size to perform a DOAS calibration
+        :param cross_corr: bool If True, cross-correlation plume speed estimation is forced - if flow_glob in
+                                velo_modes is True.
         :return:
         """
 
@@ -1928,6 +1969,11 @@ class PyplisWorker:
                 opt_flow = None
 
             # TODO all of processing if not the first image pair
+            if self.velo_modes['flow_glob']:
+                time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
+                time_gap = time_gap.total_seconds() / 60
+                if cross_corr or time_gap >= self.cross_corr_recal:
+                    self.generate_cross_corr(self.cross_corr_series['young'], self.cross_corr_lines['old'])
 
             if self.img_cal_prev is not None:
                 results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
@@ -1980,7 +2026,6 @@ class PyplisWorker:
             # Calculate emission rate
             results = self.calculate_emission_rate(img=img_cal, flow=flow)
 
-
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
@@ -1998,6 +2043,7 @@ class PyplisWorker:
 
         # Set plot iter for this period, get it from current setting for this attribute
         plot_iter = self.plot_iter
+        cross_corr = False
 
         # Add images to queue to be displayed if the plot_iter requested
         self.img_list = self.get_img_list()
@@ -2011,9 +2057,10 @@ class PyplisWorker:
         self.first_image = True
         for i in range(len(self.img_list)):
 
-            # Always plot the final image
+            # Always plot the final image and always force cross-correlation
             if i == len(self.img_list) - 1:
                 plot_iter = True
+                cross_corr = True
 
             # If we have a short image list we need to force calibration on the last image
             if len(self.img_list) < self.doas_recal_num and i == len(self.img_list) - 1:
@@ -2022,7 +2069,7 @@ class PyplisWorker:
 
             # Process image pair
             self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
-                              plot=plot_iter, force_cal=force_cal)
+                              plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
 
             # Once first image is processed we update the first_image bool
             if i == 0:

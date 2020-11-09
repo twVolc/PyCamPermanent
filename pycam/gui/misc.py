@@ -213,8 +213,8 @@ class SpinboxOpt:
 
         label = ttk.Label(parent, text='{}:'.format(name))
         label.grid(row=row, column=0, sticky='w', padx=pdx, pady=pdy)
-        pyr_opt = ttk.Spinbox(parent, textvariable=var, from_=limits[0], to=limits[1], increment=limits[2])
-        pyr_opt.grid(row=row, column=1, sticky='ew', padx=pdx, pady=pdy)
+        self.spin_opt = ttk.Spinbox(parent, textvariable=var, from_=limits[0], to=limits[1], increment=limits[2])
+        self.spin_opt.grid(row=row, column=1, sticky='ew', padx=pdx, pady=pdy)
 
 
 class LoadSaveProcessingSettings:
