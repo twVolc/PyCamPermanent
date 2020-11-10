@@ -445,7 +445,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._num_ica, from_=1, to=self.max_lines,
                                     increment=1, command=self.update_ica_num)
-        self.ica_spin.grid(row=row, column=1, sticky='ew')
+        self.ica_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
         # Line to edit
         row += 1
@@ -453,7 +453,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_edit_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._current_ica, from_=1, to=self.num_ica,
                                          increment=1)
-        self.ica_edit_spin.grid(row=row, column=1, sticky='ew')
+        self.ica_edit_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
         # Flip ICA normal button
         self.ica_flip_butt = ttk.Button(self.frame_analysis, text='Flip ICA normal', command=self.flip_ica_normal)
@@ -473,7 +473,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.x_corr_spin_old = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica_old,
                                            from_=0, to=self.num_ica, increment=1, command=self.gather_vars)
-        self.x_corr_spin_old.grid(row=row, column=1, sticky='ew')
+        self.x_corr_spin_old.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
     def _build_options(self):
         """Builds options widget"""
