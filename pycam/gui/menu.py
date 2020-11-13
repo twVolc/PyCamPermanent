@@ -5,16 +5,20 @@
 from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, opti_flow, light_dilution
-from pycam.gui.misc import About
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
+    opti_flow, light_dilution, cross_correlation
+from pycam.gui.misc import About, LoadSaveProcessingSettings
+from pycam.io import save_pcs_line, load_pcs_line
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg_menu_frames import calibration_wind
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
+from pycam.setupclasses import FileLocator
 
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import filedialog
 from tkinter import messagebox
 import time
 
@@ -44,6 +48,21 @@ class PyMenu:
         tab = 'File'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        # Load options
+        self.load_frame = LoadFrame(pyplis_work=pyplis_worker)
+        self.submenu_load = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
+        self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
+        self.submenu_load.add_separator()
+        self.submenu_load.add_command(label='Configure start-up', command=self.load_frame.generate_frame)
+
+        # Save
+        self.save_frame = SaveFrame(pyplis_work=pyplis_worker)
+        self.submenu_save = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
+        self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
+        self.menus[tab].add_separator()
 
         self.menus[tab].add_command(label='Settings', command=Settings)
         self.menus[tab].add_separator()
@@ -103,6 +122,7 @@ class PyMenu:
         self.submenu_windows.add_command(label='Cell calibration',
                                          command=lambda: cell_calib.update_plot(generate_frame=True))
         self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
+        self.submenu_windows.add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
         self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
 
@@ -146,3 +166,212 @@ class Settings:
         # Add the frames for each tab to the notebook
         self.windows.add(self.connection_gui.frame, text=self.connection_gui.name)
         self.windows.add(self.gui_settings.frame, text=self.gui_settings.name)
+
+
+class LoadFrame(LoadSaveProcessingSettings):
+    """
+    Class giving options to load a range of variables, either during immediately or on startup
+    """
+    def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, init_dir=FileLocator.SAVED_OBJECTS):
+        super().__init__()
+        self.pyplis_worker = pyplis_work
+        self.init_dir = init_dir
+        self.pdx, self.pdy = 2, 2
+        self.sep = ','
+        self.max_len_str = 50
+        self.no_line = 'No line'
+        self.in_frame = False
+
+        self.initiate_variables()
+        self.load_defaults()
+
+        if generate_frame:
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """Setup tk variables for save options"""
+        self.vars = {'pcs_lines': str}
+        self.num_pcs_lines = 5
+        self._pcs_lines = [self.no_line] * self.num_pcs_lines
+
+    def gather_vars(self):
+        """Required for LoadSaveProcessSettings as it is called after loading. Do some general house keeping"""
+        pass
+
+    def generate_frame(self):
+        """Build frame"""
+        # Load the settings each time the frame is opened, so that we ensure we are working with current saved settings
+        # rather than
+        self.load_defaults()
+
+        self.in_frame = True
+        self.frame = tk.Toplevel()
+        self.frame.attributes('-topmost', 1)    # Fix to top
+        self.frame.title('Save options')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 1.2),
+                                                 int(self.frame.winfo_screenheight() / 1.2),
+                                                 int(self.frame.winfo_screenwidth() / 10),
+                                                 int(self.frame.winfo_screenheight() / 10)))
+
+        self.load_frame = ttk.LabelFrame(self.frame, text='Load objects on start-up', relief=tk.RAISED, borderwidth=3)
+        self.load_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        row = 0
+        pcs_frame = ttk.LabelFrame(self.load_frame, text='ICA lines')
+        pcs_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self.pcs_lines_labs = [None] * self.num_pcs_lines
+        self.pcs_add_butt = [None] * self.num_pcs_lines
+        self.pcs_rem_butt = [None] * self.num_pcs_lines
+        row_line = 0
+        for i in range(self.num_pcs_lines):
+            lab = ttk.Label(pcs_frame, text='File:')
+            lab.grid(row=row_line, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+            self.pcs_lines_labs[i] = ttk.Label(pcs_frame, text=self.pcs_lines_short[i], width=self.max_len_str)
+            self.pcs_lines_labs[i].grid(row=row_line, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+            self.pcs_add_butt[i] = ttk.Button(pcs_frame, text='Change line',
+                                              command=lambda i=i: self.add_pcs_startup(i))
+            self.pcs_add_butt[i].grid(row=row_line, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
+            self.pcs_rem_butt[i] = ttk.Button(pcs_frame, text='Remove line',
+                                              command=lambda i=i: self.remove_pcs_startup(i))
+            self.pcs_rem_butt[i].grid(row=row_line, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
+            row_line += 1
+
+        row += 1
+        update_butt = ttk.Button(self.load_frame, text='Save changes', command=lambda: self.set_defaults(self.frame))
+        update_butt.grid(row=row, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
+
+    @property
+    def pcs_lines(self):
+        return self.sep.join([line for line in self._pcs_lines if line != self.no_line])
+
+    @pcs_lines.setter
+    def pcs_lines(self, value):
+        """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
+        lines = value.split(self.sep)
+        for i, line in enumerate(lines):
+            if i < self.num_pcs_lines:
+                if line == '':
+                    line = self.no_line
+                self._pcs_lines[i] = line
+
+    @property
+    def pcs_lines_short(self):
+        short_list = [''] * self.num_pcs_lines
+        for i, line in enumerate(self._pcs_lines):
+            if len(line) > self.max_len_str:
+                short_list[i] = '...' + line[-self.max_len_str+3:]
+            else:
+                short_list[i] = line
+
+        return short_list
+
+    def load_pcs(self, filename=None):
+        """Loads PCS into GUI"""
+        if filename is None:
+            kwargs = {}
+            if self.in_frame:
+                kwargs['frame'] = self.frame
+
+            filename = filedialog.askopenfilename(initialdir=self.init_dir, **kwargs)
+
+        if len(filename) > 0:
+            line = load_pcs_line(filename)
+
+            self.pyplis_worker.fig_tau.add_pcs_line(line, force_add=True)
+
+    def add_pcs_startup(self, num):
+        """
+        Edits pcs lines used at startup
+        :param num:     int     Line index to add
+        """
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=self.init_dir)
+
+        if len(filename) > 0:
+            # Update line list
+            self._pcs_lines[num] = filename
+
+            self.pcs_lines_labs[num].configure(text=self.pcs_lines_short[num])
+
+    def remove_pcs_startup(self, num):
+        """
+        Remove pcs lines used at startup
+        :param num:     int     Line index to add
+        """
+        self._pcs_lines[num] = self.no_line
+        self.pcs_lines_labs[num].configure(text=self.pcs_lines_short[num])
+
+    def set_all_pcs_lines(self):
+        """Loads all lines held in this object and updates pyplis_worker.fig tau to contain these lines"""
+        for line in self._pcs_lines:
+            if line is not self.no_line:
+                self.load_pcs(filename=line)
+
+    def close_frame(self):
+        """CLose window"""
+        self.in_frame = False
+        self.frame.destroy()
+
+
+class SaveFrame:
+    """
+    Class giving options to save a range of variables, either during processing or upon click
+    """
+    def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, init_dir=FileLocator.SAVED_OBJECTS):
+        self.pyplis_worker = pyplis_work
+        self.init_dir = init_dir
+        self.pdx, self.pdy = 2, 2
+
+        self.initiate_variables()
+
+        if generate_frame:
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """Setup tk variables for save options"""
+        self._pcs_line = tk.IntVar()
+        self.pcs_ext = '.txt'
+
+    def generate_frame(self):
+        """Build frame"""
+        self.frame = tk.Toplevel()
+        self.frame.attributes('-topmost', 1)    # Fix to top
+        self.frame.title('Save options')
+        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 1.2),
+                                                 int(self.frame.winfo_screenheight() / 1.2),
+                                                 int(self.frame.winfo_screenwidth() / 10),
+                                                 int(self.frame.winfo_screenheight() / 10)))
+
+        self.save_now_frame = ttk.LabelFrame(self.frame, text='Save objects now', relief=tk.RAISED, borderwidth=3)
+        self.save_now_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        row = 0
+        # pcs line saving
+        self.pcs_lines = [int(x) for x in self.pyplis_worker.fig_series.lines]
+        label = ttk.Label(self.save_now_frame, text='Save ICA line:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin_pcs = ttk.OptionMenu(self.save_now_frame, self._pcs_line, self.pyplis_worker.fig_tau.current_ica, *self.pcs_lines)
+        spin_pcs.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_pcs)
+        butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
+
+    def save_pcs(self):
+        """Saves PCS line"""
+        if len(self.pyplis_worker.PCS_lines_all) == 0:
+            print('There are no lines to be saved. Please draw an ICA line first')
+            return
+
+        filename = filedialog.asksaveasfilename(parent=self.frame, initialdir=self.init_dir)
+
+        if len(filename) > 0:
+            if self.pcs_ext not in filename:
+                filename += self.pcs_ext
+
+            # Adjust line number by -1 to get the index in python indexing (start at 0)
+            line_idx = self._pcs_line.get() - 1
+            line = self.pyplis_worker.PCS_lines_all[line_idx]
+
+            # Save line
+            save_pcs_line(line, filename)
+
+            self.init_dir = filename.rsplit('\\', 1)[0].rsplit('/', 1)

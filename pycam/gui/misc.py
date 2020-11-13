@@ -261,7 +261,7 @@ class LoadSaveProcessingSettings:
         # Update all objects finally
         self.gather_vars()
 
-    def set_defaults(self):
+    def set_defaults(self, parent=None):
         """Sets current values as defaults"""
         # First set this variables
         self.gather_vars()
@@ -297,7 +297,10 @@ class LoadSaveProcessingSettings:
         # Finally, overwrite old default file with new file
         os.replace(filename_temp, filename)
 
+        kwargs = {}
+        if parent is not None:
+            kwargs['parent'] = parent
         messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
-                                              'These will now be the program start-up settings.')
+                                              'These will now be the program start-up settings.', **kwargs)
 
 

@@ -48,6 +48,11 @@ class FileLocator:
 
     PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.txt'
 
+    # Data
+    DATA = PYCAM_ROOT_WINDOWS + '/Data/'
+    SAVED_OBJECTS = DATA + 'saved_objects/'
+    PCS_LINES = SAVED_OBJECTS + 'pcs_lines/'
+
 
 class ConfigInfo:
     """Defines important attributes related to config files, allowing references to link to this file rather than being

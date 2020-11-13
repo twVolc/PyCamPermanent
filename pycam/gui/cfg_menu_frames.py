@@ -7,7 +7,7 @@ object's frame has been build in the menu
 """
 
 from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame, \
-    CellCalibFrame, OptiFlowSettings, LightDilutionSettings
+    CellCalibFrame, CrossCorrelationSettings, OptiFlowSettings, LightDilutionSettings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts
 
@@ -28,6 +28,9 @@ doas_fov = DOASFOVSearchFrame(fig_setts=gui_setts)
 
 # Cell calibration frame
 cell_calib = CellCalibFrame(fig_setts=gui_setts, process_setts=process_settings)
+
+# Cross-correlation frame
+cross_correlation = CrossCorrelationSettings(fig_setts=gui_setts)
 
 # Optical flow frame
 opti_flow = OptiFlowSettings(fig_setts=gui_setts)

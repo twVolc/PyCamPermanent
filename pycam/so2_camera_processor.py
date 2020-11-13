@@ -145,6 +145,7 @@ class PyplisWorker:
         self.fig_spec = None            # Figure displaying spectra
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
+        self.fig_cross_corr = None      # Figure for displaying cross-correlation results
         self.fig_opt = None             # Figure for displaying optical flow
         self.fig_dilution = None        # Figure for displaying light dilution
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
@@ -368,7 +369,7 @@ class PyplisWorker:
 
     def reset_buff(self):
         """
-        Resets image buffer and cross-correlation buffer
+        Resets image buffer and cross correlation buffer
         :return:
         """
         self.img_buff = [{'directory': '',
@@ -381,14 +382,25 @@ class PyplisWorker:
                           }
                          for x in range(self.img_buff_size)]
 
+        # Reset cross-correlation buffer
+        self.reset_cross_corr_buff()
+
+    def reset_cross_corr_buff(self):
+        """
+        Resets cross correlation buffer
+        :return:
+        """
         # Update cross-correlation buffer
         self.cross_corr_buff = {}
-        for line in self.PCS_lines_all:
-            self.cross_corr_buff[line.line_id] = {'time': list(),
-                                                  'cds': list(),
-                                                  'cd_err': list(),
-                                                  'distarr': list(),
-                                                  'disterr': list()}
+        try:
+            for line in self.PCS_lines_all:
+                self.cross_corr_buff[line.line_id] = {'time': list(),
+                                                      'cds': list(),
+                                                      'cd_err': list(),
+                                                      'distarr': list(),
+                                                      'disterr': list()}
+        except AttributeError:  # First time this is run it will not have PCS_lines_all instantiated, so just catch here
+            pass
 
     def reset_self(self):
         """
@@ -1597,9 +1609,6 @@ class PyplisWorker:
         :param plot:            bool    If True, plotting of cross-correlation analysis is performed
         :return:
         """
-        # TODO ============================================================================
-        # TODO perform all global velocity analysis and update any appropriate parameters
-        # TODO ============================================================================
         # Calculate distance between current two PCS lines if we aren't passed a distance
         if distance is None:
             pcs1 = self.cross_corr_lines['young']
@@ -1623,7 +1632,8 @@ class PyplisWorker:
             print('Cross correlation aborted! Cannot convert time series arrays to numpy array.\n'
                   '{}').format(e)
             return
-        lag = find_signal_correlation(series_young, series_old, time_stamps=series_time)[0]
+        lag, coeffs, s1_ana, s2_ana, max_coeff_signal, ax = find_signal_correlation(series_young, series_old,
+                                                                                    time_stamps=series_time, plot=plot)
         dt = np.mean(np.asarray([delt.total_seconds() for delt in (series_time[1:] - series_time[:-1])]))
         lag_frames = lag / dt
 
@@ -1650,11 +1660,15 @@ class PyplisWorker:
               'Lag [s]:\t{}\n'
               'Plume speed [m/s]:\t{}\n'.format(distance, lag_frames, lag, vel))
 
-        # TODO Plot if requested
+        # TODO Plot if requested cross-correlation results with lag etc
         if plot:
-            pass
+            info = {'distance': distance,
+                    'lag_frames': lag_frames,
+                    'lag': lag,
+                    'velocity': vel}
+            self.fig_cross_corr.update_plot(ax, info)
 
-    def get_cross_corr_emissions_from_buff(self, force_estimate=True):
+    def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
         Retrieves cross-correlation emission rates from the cross-correlation buffer
         :param force_estimate:  bool
@@ -1668,8 +1682,17 @@ class PyplisWorker:
                   'Cannot retrieve emission rates via cross-correlation')
             return
 
+        # Setup total emissions dictionary (for summing lines)
+        total_emissions = {'time': np.array([]),
+                           'phi': [], 'phi_err': [],
+                           'veff': [], 'veff_err': []}
+        # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
+        lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
+
+        # Loop through lines
         for line in self.cross_corr_buff:
             cd_buff = self.cross_corr_buff[line]
+            res = self.results[line]
             for i in range(len(cd_buff['cds'])):
                 vel_glob = None
 
@@ -1699,6 +1722,68 @@ class PyplisWorker:
                                                      cd_buff['cd_err'][i],
                                                      vel_glob_err,
                                                      cd_buff['disterr'][i])
+
+                # Pack results into dictionary
+                res['flow_glob']._start_acq.append(img_time)
+                res['flow_glob']._phi.append(phi)
+                res['flow_glob']._phi_err.append(phi_err)
+                res['flow_glob']._velo_eff.append(vel_glob)
+                res['flow_glob']._velo_eff_err.append(vel_glob_err)
+
+                # Add all lines to total emissions
+                if line in lines_total:
+                    idx = np.argwhere(img_time == total_emissions['time'])
+                    if len(idx) > 0:
+                        idx = idx[0][0]     # Extract the index from the array argwhere returns
+                        total_emissions['phi'][idx] = np.append(total_emissions['phi'][idx], phi)
+                        total_emissions['phi_err'][idx] = np.append(total_emissions['phi_err'][idx], phi_err)
+                        total_emissions['veff'][idx] = np.append(total_emissions['veff'][idx], vel_glob)
+                        total_emissions['veff_err'][idx] = np.append(total_emissions['veff_err'][idx], vel_glob_err)
+                    # If this time doesn't exist yet we must append it then generate np.arrays for all other variables
+                    # These can then be appended to in later iterations
+                    else:
+                        total_emissions['time'] = np.append(total_emissions['time'], img_time)
+                        total_emissions['phi'].append(np.array([phi]))
+                        total_emissions['phi_err'].append(np.array([phi_err]))
+                        total_emissions['veff'].append(np.array([vel_glob]))
+                        total_emissions['veff_err'].append(np.array([vel_glob_err]))
+
+            # # Make sure the arrays are sorted properly, in case we added data which comes earlier than data already
+            # # added to the dictionary. This may be unnecessary if all flow_glob calculations come through this
+            # # function rather than calculate_emission_rates()
+            # sorted_args = np.array(res['flow_glob']._start_acq).argsort()
+            # res['flow_glob']._start_acq = res['flow_glob']._start_acq[sorted_args]
+            # res['flow_glob']._phi = res['flow_glob']._phi[sorted_args]
+            # res['flow_glob']._phi_err = res['flow_glob']._phi_err[sorted_args]
+            # res['flow_glob']._velo_eff = res['flow_glob']._velo_eff[sorted_args]
+            # res['flow_glob']._velo_eff_err = res['flow_glob']._velo_eff_err[sorted_args]
+
+        # Loop through results dictionary and add the 'total' measurements
+        mode = 'flow_glob'
+        for i, img_time in enumerate(total_emissions['time']):
+            self.results['total'][mode]._start_acq.append(img_time)
+            self.results['total'][mode]._phi.append(np.nansum(total_emissions['phi'][i]))
+            self.results['total'][mode]._phi_err.append(
+                np.sqrt(np.nansum(np.power(total_emissions['phi_err'][i], 2))))
+            self.results['total'][mode]._velo_eff.append(np.nanmean(total_emissions['veff'][i]))
+            self.results['total'][mode]._velo_eff_err.append(
+                np.sqrt(np.nansum(np.power(total_emissions['veff_err'][i], 2))))
+
+        # # Ensure the results dictionary is sorted (may not be critical?)
+        # sorted_args = np.array(self.results['total'][mode]._start_acq).argsort()
+        # self.results['total'][mode]._start_acq = self.results['total'][mode]._start_acq[sorted_args]
+        # self.results['total'][mode]._phi = self.results['total'][mode]._phi[sorted_args]
+        # self.results['total'][mode]._phi_err = self.results['total'][mode]._phi_err[sorted_args]
+        # self.results['total'][mode]._velo_eff = self.results['total'][mode]._velo_eff[sorted_args]
+        # self.results['total'][mode]._velo_eff_err = self.results['total'][mode]._velo_eff_err[sorted_args]
+
+        # Clear the cross-correlation buffer as we assume that all data within it has now been processed as best as
+        # possible
+        self.reset_cross_corr_buff()
+
+        # Plot if requested - updates time series with these new emission rates from flow_glob
+        if plot:
+            self.fig_series.update_plot()
 
     def update_opt_flow_settings(self, **settings):
         """
@@ -1841,11 +1926,11 @@ class PyplisWorker:
                 if self.velo_modes['flow_glob']:
                     # If vel_glob is None but cross-correlation is requested we store all required variables in a buffer
                     if vel_glob is None:
-                        self.cross_corr_buff['time'].append(img_time)
-                        self.cross_corr_buff['cds'].append(cds)
-                        self.cross_corr_buff['cd_err'].append(cd_err)
-                        self.cross_corr_buff['distarr'].append(distarr)
-                        self.cross_corr_buff['disterr'].append(disterr)
+                        self.cross_corr_buff[line_id]['time'].append(img_time)
+                        self.cross_corr_buff[line_id]['cds'].append(cds)
+                        self.cross_corr_buff[line_id]['cd_err'].append(cd_err)
+                        self.cross_corr_buff[line_id]['distarr'].append(distarr)
+                        self.cross_corr_buff[line_id]['disterr'].append(disterr)
                     else:
                         phi, phi_err = det_emission_rate(cds, vel_glob, distarr,
                                                          cd_err, vel_glob_err, disterr)
@@ -2092,7 +2177,12 @@ class PyplisWorker:
             else:
                 opt_flow = None
 
-            # Run cross-correlation if the time is right
+            # Calibrate image if we have a calibrated image
+            if self.img_cal_prev is not None:
+                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
+
+            # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
+            # function can add this most recent data point to the cross-corr buffer)
             if self.velo_modes['flow_glob']:
                 time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
                 time_gap = time_gap.total_seconds() / 60
@@ -2100,10 +2190,7 @@ class PyplisWorker:
                     self.generate_cross_corr(self.cross_corr_series['time'],
                                              self.cross_corr_series['young'],
                                              self.cross_corr_series['old'])
-
-            # Calibrate image if we have a calibrated image
-            if self.img_cal_prev is not None:
-                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
+                    self.get_cross_corr_emissions_from_buff()
 
             # TODO all of processing if not the first image pair
 

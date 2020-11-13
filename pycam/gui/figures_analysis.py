@@ -11,6 +11,7 @@ from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line
+from pycam.io import save_pcs_line, load_pcs_line
 
 from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask
@@ -581,6 +582,60 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         self.q.put(1)
 
+    def add_pcs_line(self, line, line_num=None, force_add=True):
+        """
+        Adds LineOnImage object to plot and updates all relevant objects
+        :param line:        LineOnImage     Object to be added to plot
+        :param line_num:    int             Index to add line to (starts at 1, not 0). If None we add it to first
+                                            available position
+        :param force_add    bool            If True we add the line even if there are no spaces left.
+                                            We replace the current_ica for it
+        """
+        # If line number is given we delete it if it exists
+        if line_num is not None:
+            line_idx = line_num - 1
+            if self.PCS_lines_list[line_idx] is not None:
+                self.del_ica(line_idx)
+        else:
+            line_idx = None
+            # Line is only added if we don't already
+            for i in range(self.max_lines):
+                if self.PCS_lines_list[i] is None:
+                    line_idx = i
+
+                    # Update spinbox to reflect the fact we have added a new line
+                    self.num_ica = i + 1
+                    self.update_ica_num()
+                    break
+
+            # If there are no space for this line we either force adding it, by overwriting current edit line or we
+            # return from the function without adding the line
+            if line_idx is None:
+                if force_add:
+                    line_idx = self.current_ica - 1
+                    self.del_ica(line_idx)
+                else:
+                    print('No space to add PCS line, please use force_add or delete a line before adding another')
+                    return
+
+        # Make line
+        lbl = "{}".format(line_idx)
+        line.line_id = lbl
+        line.color = self.line_colours[line_idx]
+        self.PCS_lines_list[line_idx] = line
+        # Plot pyplis object on figure
+        self.PCS_lines_list[line_idx].plot_line_on_grid(ax=self.ax, include_normal=1,
+                                                       include_roi_rot=True, label=lbl)
+
+        # Gather variables to update pyplis_worker object
+        self.gather_vars()
+
+        # Redraw canvas
+        self.img_canvas.draw()
+
+        # Update time series lines
+        self.fig_series.update_lines()
+
     def update_ica_num(self):
         """Makes necessary changes to update the number of ICA lines"""
 
@@ -603,7 +658,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         for ica in self.PCS_lines_list[self.num_ica:]:
             if ica is not None:
                 self.del_ica(ica_num)
-                self.PCS_lines_list[ica_num] = None
+                # self.PCS_lines_list[ica_num] = None   # I think this isn't required as it is done in del_ica
             ica_num += 1
 
         # Gather variables
@@ -913,6 +968,7 @@ class TimeSeriesFigure:
                             'flow_histo': {'ls': 'dashed'},
                             'flow_hybrid': {'ls': 'dashdot'}}
         self.colours = self.pyplis_worker.fig_tau.line_colours
+        self.marker = '.'
 
         # Initiate variables
         self.initiate_variables()
@@ -932,6 +988,7 @@ class TimeSeriesFigure:
         self._plot_total = tk.IntVar()      # If 1, the total of all lines is plotted
         self.plot_total = 1
         self.lines = []                     # List holding ids of all lines currently drawn
+        self.total_lines = []               # Lines which contribute to the 'total' emission rate
 
     @property
     def plot_total(self):
@@ -1016,7 +1073,8 @@ class TimeSeriesFigure:
         self.line_opts.set(current_line)
 
         # If we have more than one line we can open the option to plot the total too
-        if len(self.lines) < 2:
+        self.total_lines = [f for f in self.pyplis_worker.PCS_lines if isinstance(f, LineOnImage)]
+        if len(self.total_lines) < 2:
             self.plt_tot_check.configure(state=tk.DISABLED)
         else:
             self.plt_tot_check.configure(state=tk.NORMAL)
@@ -1040,12 +1098,14 @@ class TimeSeriesFigure:
                     try:
                         if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
                             line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
-                            self.plot_bg_roi()
+                            self.plot_bg_roi(marker=self.marker)
                             self.plot_flow_dir(self.line_plot, label=line_lab,
-                                               color=self.colours[int(self.line_plot)])
+                                               color=self.colours[int(self.line_plot)],
+                                               marker='.')
                             self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
-                                           color=self.colours[int(self.line_plot)])
+                                           color=self.colours[int(self.line_plot)],
+                                           marker=self.marker)
                             self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
                                                                                   ls=self.plot_styles[mode]['ls'],
                                                                                   color=self.colours[
@@ -1053,13 +1113,14 @@ class TimeSeriesFigure:
                                                                                   lw=1.5,
                                                                                   ymin=0,
                                                                                   date_fmt=self.date_fmt,
-                                                                                  label=line_lab
+                                                                                  label=line_lab,
+                                                                                  marker=self.marker
                                                                                   )
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
 
         # Plot the summed total
-        if self.plot_total and len(self.lines) > 1:
+        if self.plot_total and len(self.total_lines) > 1:
             for mode in self.pyplis_worker.velo_modes:
                 if self.pyplis_worker.velo_modes[mode]:
                     try:
@@ -1070,7 +1131,8 @@ class TimeSeriesFigure:
                                                                            lw=2,
                                                                            ymin=0,
                                                                            date_fmt=self.date_fmt,
-                                                                           label='total: {}'.format(mode))
+                                                                           label='total: {}'.format(mode),
+                                                                           marker=self.marker)
                     except KeyError:
                         print('No emission rate analysis data available for sum of all ICA lines')
 
@@ -1106,6 +1168,7 @@ class TimeSeriesFigure:
             phi_upper = Series(veff + verr, times)
             phi_lower = Series(veff - verr, times)
             kwargs['lw'] = 0    # Plot no lines around fill
+            kwargs.pop('marker', None)  # Remove the amrker key as fill between doesn't take this
             self.axes[ax].fill_between(times, phi_lower, phi_upper, alpha=0.1, **kwargs)
         self.axes[ax].autoscale(axis='y')
         self.axes[ax].set_ylim([0, self.axes[ax].get_ylim()[1]])
@@ -1122,6 +1185,7 @@ class TimeSeriesFigure:
             upper = self.pyplis_worker.results[line_id]['flow_histo']._flow_orient_upper
             lower = self.pyplis_worker.results[line_id]['flow_histo']._flow_orient_lower
             kwargs['lw'] = 0
+            kwargs.pop('marker', None)  # Remove the amrker key as fill between doesn't take this
             self.axes[ax].fill_between(times, lower, upper, alpha=0.1, **kwargs)
         self.axes[ax].set_ylim([-180, 180])
 
@@ -1140,6 +1204,7 @@ class TimeSeriesFigure:
             bg_lower = mean_arr - np.array(self.pyplis_worker.bg_std)
 
             kwargs['lw'] = 0  # Plot no lines around fill
+            kwargs.pop('marker', None)      # Remove the amrker key as fill between doesn't take this
             self.axes[ax].fill_between(self.pyplis_worker.ts, bg_lower, bg_upper, alpha=0.1, **kwargs)
 
         # Set axis y-limits
@@ -1812,7 +1877,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'use_sensitivity_mask': int,
                      'min_cd': float,
                      'buff_size': int,
-                     'save_opt_flow': int
+                     'save_opt_flow': int       # If True, optical flow is saved to buffer (takes up more space)
                      }
 
         self._plot_iter = tk.IntVar()
@@ -2641,6 +2706,145 @@ class CellCalibFrame:
         """
         self.in_frame = False
         self.frame.destroy()
+
+
+class CrossCorrelationSettings(LoadSaveProcessingSettings):
+    """
+    Cross-correlation settings frame
+
+        To add a new variable:
+        1. Add it as a tk variable in initiate variables
+        2. Add it to the vars dictionary, along with its type
+        3. Add its associated widgets
+        4. Add its associated property with get and set options
+        5. Add its default value to processing_setting_defaults.txt
+    """
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_cross_corr = self
+        self.q = queue.Queue()
+        self.cam_specs = cam_specs
+        self.fig_setts = fig_setts
+        self.dpi = self.fig_setts.dpi
+        self.fig_size = self.fig_setts.fig_cross_corr
+
+        self.pdx = 5
+        self.pdy = 5
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def initiate_variables(self):
+        """
+        Initiates all tkinter variables
+        :return:
+        """
+        self.vars = {'cross_corr_recal': int
+                     }
+        self._cross_corr_recal = tk.IntVar()
+
+    def gather_vars(self):
+        # Set cross-correlation recalibration
+        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+
+    def generate_frame(self):
+        """
+        Generates widget settings frame
+        :return:
+        """
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
+        self.in_frame = True
+
+        self.frame = tk.Toplevel()
+        self.frame.title('Optical flow settings')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        row = 0
+        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # -------------------------------------------
+        # Build figure displaying cross-correlation
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig'):
+            self.fig = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
+
+        self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+        self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas.draw()
+
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
+        toolbar.update()
+        self.fig_canvas._tkcanvas.pack(side=tk.TOP)
+        # -------------------------------------------
+
+        self.__draw_canv__()
+
+    @property
+    def cross_corr_recal(self):
+        """Time in minutes to rerun cross-correlation analysis"""
+        return self._cross_corr_recal.get()
+
+    @cross_corr_recal.setter
+    def cross_corr_recal(self, value):
+        self._cross_corr_recal.set(value)
+
+    def update_plot(self, ax, info=None):
+        """Updates cross-correlation plot"""
+        self.ax = ax
+        self.fig = ax[0].figure
+        # Adjust figure size
+        self.fig.set_size_inches(self.fig_size[0], self.fig_size[1], forward=True)
+        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1)
+        ax[0].set_ylabel(r'ICA SO$_2$ loading [arbitrary]')
+        ax[0].set_xlabel('Time')
+
+        # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
+        # the updated plot will be built
+        if self.in_frame:
+            self.fig_canvas.get_tk_widget().destroy()
+
+            self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+            self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
+            self.fig_canvas.draw()
+
+            # Add toolbar so figures can be saved
+            toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
+            toolbar.update()
+            self.fig_canvas._tkcanvas.pack(side=tk.TOP)
+
+            self.q.put(1)
+
+    def close_frame(self):
+        """
+        Closes frame and makes sure current values are correct
+        :return:
+        """
+        self.in_frame = False
+        self.q.put(2)
+        # Close frame
+        self.frame.destroy()
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.fig_canvas.draw()
+            else:
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
 
 
 class OptiFlowSettings(LoadSaveProcessingSettings):
@@ -3610,6 +3814,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :param figs:    dict     Dictionary of figures
         :return:
         """
+        # TODO =========================================================================================================
+        # TODO These plots are deleted when the frame is closed, since generate_frame rebuilds everything and forgets
+        # TODO these plot. Need to redo this so that plots are remembered - look at cross-correlation class
+        # TODO which has this working
+        # TODO =========================================================================================================
+
         # First delete any pre-existing canvases
         for row in self.fig_canvas_xtra:
             for fig in row:
@@ -3649,6 +3859,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.in_frame = False
+
+        # Stop draw_canv
+        self.q.put(2)
 
         # Close frame
         self.frame.destroy()

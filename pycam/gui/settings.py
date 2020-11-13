@@ -55,6 +55,7 @@ class GUISettings:
         self.fig_cell_abs = tuple()
         self.fig_sens_mask = tuple()
         self.fig_dil = tuple()
+        self.fig_cross_corr = tuple()
 
         # Load settings if given a file on instantiation
         if self.config_file is not None:
@@ -203,6 +204,8 @@ class SettingsFrame:
         self._sens_mask_y = tk.DoubleVar()
         self._dil_x = tk.DoubleVar()
         self._dil_y = tk.DoubleVar()
+        self._cross_corr_x = tk.DoubleVar()
+        self._cross_corr_y = tk.DoubleVar()
 
         # Gather settings currently being used in Settings object
         self.collect_settings()
@@ -234,17 +237,17 @@ class SettingsFrame:
         row += 1
 
         # DPI
+        row_sett = 0
         label = ttk.Label(self.fig_frame, text='Resolution:')
-        label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        label.grid(row=row_sett, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.dpi_spin = ttk.Spinbox(self.fig_frame, textvariable=self._dpi, width=4, from_=10, to=150, increment=1)
-        self.dpi_spin.grid(row=0, column=1, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='ew')
+        self.dpi_spin.grid(row=row_sett, column=1, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='ew')
         label = ttk.Label(self.fig_frame, text='dpi')
-        label.grid(row=0, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
-
+        label.grid(row=row_sett, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
+        row_sett += 1
         # --------------------------------------------------------------------------------------------------------------
         # Figure settings
         # --------------------------------------------------------------------------------------------------------------
-        row_sett = 0
         img_setts = FigureSizeSettings(self.fig_frame, 'Raw image:', self._img_x, self._img_y, row=row_sett,
                                        pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
@@ -295,6 +298,10 @@ class SettingsFrame:
 
         sens_mask_setts = FigureSizeSettings(self.fig_frame, 'Sensitivity mask:', self._sens_mask_x,
                                              self._sens_mask_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        light_dil_setts = FigureSizeSettings(self.fig_frame, 'Cross-correlation:', self._cross_corr_x,
+                                             self._cross_corr_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
         light_dil_setts = FigureSizeSettings(self.fig_frame, 'Light dilution:', self._dil_x,
@@ -455,6 +462,15 @@ class SettingsFrame:
     def fig_sens_mask(self, value):
         self._sens_mask_x.set(value[0])
         self._sens_mask_y.set(value[1])
+
+    @property
+    def fig_cross_corr(self):
+        return (self._cross_corr_x.get(), self._cross_corr_y.get())
+
+    @fig_cross_corr.setter
+    def fig_cross_corr(self, value):
+        self._cross_corr_x.set(value[0])
+        self._cross_corr_y.set(value[1])
 
     @property
     def fig_dil(self):

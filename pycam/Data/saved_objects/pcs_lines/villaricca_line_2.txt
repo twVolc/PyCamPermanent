@@ -1,0 +1,3 @@
+x=234,379
+y=214,66
+orientation=left

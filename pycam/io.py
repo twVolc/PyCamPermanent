@@ -4,6 +4,7 @@
 Contains some simple functions for saving data
 """
 
+from pyplis import LineOnImage
 from .setupclasses import SpecSpecs
 from .utils import check_filename
 import numpy as np
@@ -80,3 +81,43 @@ def spec_txt_2_npy(directory):
         save_spectrum(wavelengths, spectrum, directory + file.replace('txt', 'npy'))
 
 
+def save_pcs_line(line, filename):
+    """
+    Saves PCS line coordinates so that it can be reloaded
+    :param line:        LineOnImage
+    :param filename:    str
+    :return:
+    """
+    with open(filename, 'w') as f:
+        f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
+        f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
+        f.write('orientation={}\n'.format(line.normal_orientation))
+
+
+def load_pcs_line(filename, color='blue', line_id='line'):
+    """
+    Loads PCS line and returns it as a pyplis object
+    :param filename:
+    :return:
+    """
+    if not os.path.exists(filename):
+        print('Cannot get line from filename as no file exists at this path')
+        return
+
+    with open(filename, 'r') as f:
+        for line in f:
+            if 'x=' in line:
+                coords = line.split('x=')[-1].split('\n')[0]
+                x0, x1 = [int(x) for x in coords.split(',')]
+            elif 'y=' in line:
+                coords = line.split('y=')[-1].split('\n')[0]
+                y0, y1 = [int(y) for y in coords.split(',')]
+            elif 'orientation=' in line:
+                orientation = line.split('orientation=')[-1].split('\n')[0]
+
+    pcs_line = LineOnImage(x0=x0, y0=y0, x1=x1, y1=y1,
+                           normal_orientation=orientation,
+                           color=color,
+                           line_id=line_id)
+
+    return pcs_line

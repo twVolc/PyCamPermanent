@@ -13,7 +13,8 @@ from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
-from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, light_dilution
+from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
+    light_dilution, cross_correlation
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -78,8 +79,10 @@ class PyCam(ttk.Frame):
         process_settings.initiate_variables()
         plume_bg.initiate_variables()
         doas_fov.initiate_variables()
+        cross_correlation.initiate_variables()
         opti_flow.initiate_variables()
         light_dilution.initiate_variables()
+        self.menu.load_frame.set_all_pcs_lines()
 
         # Load in initial sequence directory
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
