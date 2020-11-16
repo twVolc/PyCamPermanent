@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
-from pycam.io import save_img
+from pycam.io import save_img, save_emission_rates_as_txt
 
 import pyplis
 from pyplis import LineOnImage
@@ -114,7 +114,7 @@ class PyplisWorker:
                            "flow_hybrid": False}        # Hybrid histogram
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
-        self.vel_glob = []                            # Global velocity (m/s)
+        self.vel_glob = []                              # Global velocity (m/s)
         self.vel_glob_err = None                        # Global velocity error
         self.optflow_err_rel_veff = 0.15                # Empirically determined optical flow error (from pyplis)
         self.tau_thresh = 0.01                          # Threshold used for generating pixel mask
@@ -127,6 +127,7 @@ class PyplisWorker:
         self.got_light_dil = False                      # Flags whether we have light dilution for this sequence
         self.lightcorr_A = None                         # Light dilution corrected image
         self.lightcorr_B = None                         # Light dilution corrected image
+        self.save_emission_rates = 60                   # Save emission rate time series every x minutes
         self.results = {}
         self.init_results()
 
@@ -454,6 +455,36 @@ class PyplisWorker:
                 self.results[line_id][mode]._flow_orient_upper = []
                 self.results[line_id][mode]._flow_orient_lower = []
 
+    def set_processing_directory(self, img_dir=None):
+        """
+        Sets processing directory
+        :param img_dir:     str     If not None then this path is used, otherwise self.img_dir is used as root
+        :return:
+        """
+        if img_dir is not None:
+            if not os.path.exists(img_dir):
+                raise ValueError('Directory does not exist, cannot setup processing directory')
+        else:
+            img_dir = self.img_dir
+
+        # Update processing directory and create it
+        i = 1
+        self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
+        # TODO Edit to check if the folder is empty - if empty do processing in this folder
+        while True:
+            # If the path doesn't exist we use it and create it
+            if not os.path.exists(self.processed_dir):
+                os.mkdir(self.processed_dir)
+                break
+
+             # If the path exists, check if it is empty - if so, we can use this folder anyway
+            if len(os.listdir(self.processed_dir)) == 0:
+                break
+
+            i += 1
+            self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
+
+
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
         Loads image sequence which is defined by the user
@@ -477,13 +508,8 @@ class PyplisWorker:
         # Update image list
         self.img_list = self.get_img_list()
 
-        # Update processing directory and create it
-        i = 1
-        self.processed_dir = os.path.join(self.img_dir, self.proc_name.format(i))
-        while os.path.exists(self.processed_dir):
-            i += 1
-            self.processed_dir = os.path.join(self.img_dir, self.proc_name.format(i))
-        os.mkdir(self.processed_dir)
+        # Set-up processing directory
+        self.set_processing_directory()
 
         # Display first images of sequence
         if len(self.img_list) > 0:
@@ -2179,7 +2205,7 @@ class PyplisWorker:
 
             # Calibrate image if we have a calibrated image
             if self.img_cal_prev is not None:
-                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow)
+                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow, plot=plot)
 
             # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
             # function can add this most recent data point to the cross-corr buffer)
@@ -2242,6 +2268,14 @@ class PyplisWorker:
             # Calculate emission rate
             results = self.calculate_emission_rate(img=img_cal, flow=flow)
 
+    def finalise_processing(self):
+        """Finishes all processing requirements (mainly saving info)"""
+        # Save the final emission rates
+        save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
+
+        # TODO perhaps do things like calculate average emission rate (this will be a daily average when used in
+        # TODO the continuous monitoring mode) save to a file, etc
+
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
@@ -2251,8 +2285,7 @@ class PyplisWorker:
     def _process_sequence(self):
         """
         Processes the current image directory
-        :param plot_iter: bool      Tells function whether to plot iteratively or not
-        :return:
+        Direcotry should therefore already have been processed using load_sequence()
         """
         # Reset important parameters to ensure we start processing correctly
         self.reset_self()
@@ -2268,6 +2301,8 @@ class PyplisWorker:
         if self.cal_type in [0, 2]:
             self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
+
+        time_proc = time.time()
 
         # Loop through img_list and process data
         self.first_image = True
@@ -2295,8 +2330,12 @@ class PyplisWorker:
             self.idx_current += 1
 
             # Wait for defined amount of time to allow plotting of data without freezing up
-            time.sleep(self.wait_time)
+            # time.sleep(self.wait_time)
 
+        # Run final processing work
+        self.finalise_processing()
+
+        print('Processing time: {}'.format(time.time() - time_proc))
 
         # if self.cal_type in [1, 2]:
         #     # TODO Edit this test to use proper data (currently uses dummy random values) - I think this test is now automatic in process_pair/generate_optical_depth
@@ -2318,9 +2357,18 @@ class PyplisWorker:
         # Reset self
         self.reset_self()
 
+        # TODO I may need to think about whether I use this to look for images and perform load_sequence() - whihc also
+        # TODO sets the processing directory with set_processing_directory(). Otherwise i need the watcher function
+        # TODO to be checking for changes in directory and then controlling the current working directory of the object etc
+
         while True:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
+
+            # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
+            # So we finalise processing and then continue (TODO check this is ok)
+            if self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
+                self.finalise_processing()
 
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)

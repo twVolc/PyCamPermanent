@@ -5,6 +5,7 @@ Contains some simple functions for saving data
 """
 
 from pyplis import LineOnImage
+from pyplis.fluxcalc import EmissionRates
 from .setupclasses import SpecSpecs
 from .utils import check_filename
 import numpy as np
@@ -121,3 +122,83 @@ def load_pcs_line(filename, color='blue', line_id='line'):
                            line_id=line_id)
 
     return pcs_line
+
+
+def save_emission_rates_as_txt(path, emission_dict, save_all=False):
+    """
+    Saves emission rates as text files every hour - emission rates are split into hour-long
+    :param path:            str     Directory to save to
+    :param emission_dict:   dict    Dictionary of emission rates for different lines and different flow modes
+                                    Assumed to be time-sorted
+    :param save_all:        bool    If True, the entire time series is saved, even if the hour isn't complete
+    :return:
+    """
+    file_fmt = "pyplis_EmissionRates_{}_{}_{}.txt"
+    date_fmt = "%Y%m%d"
+    time_fmt = "%H%M"
+    emis_attrs = ['_start_acq', '_phi', '_phi_err', '_velo_eff', '_velo_eff_err']
+
+    # Try to make directory if it is not valid
+    if not os.path.exists(path):
+        try:
+            os.mkdir(path)
+        except BaseException as e:
+            print('Could not save emission rate data as path definition is not valid:\n'
+                  '{}'.format(e))
+
+    # Loop through lines (includes 'total' and save data to it
+    for line_id in emission_dict:
+        # Make dir for specific line if it doesn't already exist
+        line_path = os.path.join(path, 'line_{}'.format(line_id))
+        if not os.path.exists(line_path):
+            os.mkdir(line_path)
+
+        for flow_mode in emission_dict[line_id]:
+            emis_dict = emission_dict[line_id][flow_mode]
+            # Check there is data in this dictionary - if not, we don't save this data
+            if len(emis_dict._start_acq) == 0:
+                continue
+
+            # Make line directory
+            full_path = os.path.join(line_path, flow_mode)
+            if not os.path.exists(full_path):
+                os.mkdir(full_path)
+
+            start_time = emis_dict._start_acq[0]
+            start_time_hr = start_time.hour
+            end_time_hr = emis_dict._start_acq[-1].hour
+            if not save_all:
+                end_time_hr -= 1           # We don't want the most recent hour as this may contain incomplete data
+                if end_time_hr < start_time_hr:
+                    # In this case there is no data to be saved, so we move to next dataset
+                    continue
+
+            # Have to make a new EmissionRates object to save data
+            for hour in range(start_time_hr, end_time_hr + 1):
+                # Arrange times of file
+                file_date = start_time.strftime(date_fmt)
+                file_start_time = start_time.replace(hour=hour, minute=0, second=0)
+                file_end_time = start_time.replace(hour=hour, minute=59, second=0)
+                start_time_str = file_start_time.strftime(time_fmt)
+                end_time_str = file_end_time.strftime(time_fmt)
+
+                # Generate filename
+                filename = file_fmt.format(file_date, start_time_str, end_time_str)
+                pathname = os.path.join(full_path, filename)
+
+                # We don't overwrite data, so if the file already exists we continue without saving
+                if os.path.exists(pathname):
+                    continue
+                else:
+                    # Make new emission rates object to save
+                    emis_rates = EmissionRates(line_id, velo_mode=flow_mode)
+                    indices = np.argwhere((file_start_time < np.array(emis_dict._start_acq)) &
+                                          (np.array(emis_dict._start_acq) <= file_end_time))
+                    # Loop through attributes in emission rate object and set them to new object
+                    # This loop is just cleaner than writing out each attribute...
+                    for attr in emis_attrs:
+                        setattr(emis_rates, attr, getattr(emis_dict, attr)[indices])
+
+                    # Save object
+                    emis_rates.to_pandas_dataframe().to_csv(pathname)
+
