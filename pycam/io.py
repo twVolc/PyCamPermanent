@@ -192,12 +192,12 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                 else:
                     # Make new emission rates object to save
                     emis_rates = EmissionRates(line_id, velo_mode=flow_mode)
-                    indices = np.argwhere((file_start_time < np.array(emis_dict._start_acq)) &
-                                          (np.array(emis_dict._start_acq) <= file_end_time))
+                    indices = tuple([(file_start_time < np.array(emis_dict._start_acq)) &
+                                     (np.array(emis_dict._start_acq) <= file_end_time)])
                     # Loop through attributes in emission rate object and set them to new object
                     # This loop is just cleaner than writing out each attribute...
                     for attr in emis_attrs:
-                        setattr(emis_rates, attr, getattr(emis_dict, attr)[indices])
+                        setattr(emis_rates, attr, np.array(getattr(emis_dict, attr))[indices])
 
                     # Save object
                     emis_rates.to_pandas_dataframe().to_csv(pathname)

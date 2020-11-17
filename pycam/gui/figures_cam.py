@@ -150,12 +150,12 @@ class ImageFigure:
         plt.setp(self.plt_col.get_yticklabels(), visible=False)
         plt.setp(self.ax.get_xticklabels(), visible=False)
 
-        self.fig.set_facecolor('black')
+        self.fig.set_facecolor(cfg.fig_face_colour)
 
         for child in self.ax.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(cfg.axes_colour)
+        self.ax.tick_params(axis='both', colors=cfg.axes_colour, direction='in', top='on', right='on')
         self.img_disp = self.ax.imshow(self.image, cmap=cm.gray, interpolation='none', vmin=0,
                                        vmax=self.specs._max_DN, aspect='equal')  # FOR GREYSCALE
         self.img_disp_row, = self.ax.plot([0, self.specs.pix_num_x], [self._init_img_row, self._init_img_row],
@@ -164,19 +164,19 @@ class ImageFigure:
                                           color=self._col_colour, lw=2)
         self.ax.set_xlim([0, self.specs.pix_num_x - 1])
         self.ax.set_ylim([self.specs.pix_num_y - 1, 0])
-        self.ax.set_title('Test Image', color='white')
-        self.ax.set_ylabel('Pixel', color='white')
+        self.ax.set_title('Test Image', color=cfg.axes_colour)
+        self.ax.set_ylabel('Pixel', color=cfg.axes_colour)
 
         for child in self.plt_row.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.plt_row.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(cfg.axes_colour)
+        self.plt_row.tick_params(axis='both', colors=cfg.axes_colour, direction='in', top='on', right='on')
         for child in self.plt_col.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.plt_col.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
-        self.plt_row.set_facecolor('black')
-        self.plt_col.set_facecolor('black')
+                child.set_color(cfg.axes_colour)
+        self.plt_col.tick_params(axis='both', colors=cfg.axes_colour, direction='in', top='on', right='on')
+        self.plt_row.set_facecolor(cfg.fig_face_colour)
+        self.plt_col.set_facecolor(cfg.fig_face_colour)
 
         self.pix_row = np.arange(0, self.specs.pix_num_x, 1)
         self.pix_col = np.arange(0, self.specs.pix_num_y, 1)
@@ -189,17 +189,25 @@ class ImageFigure:
         # ------------------------------------------------------
         # Plot settings
         # ------------------------------------------------------
-        self.plt_row.set_xlabel('Pixel', color='white')
-        self.plt_row.set_ylabel('DN', color='white')
-        self.plt_col.set_xlabel('DN', color='white')
+        self.plt_row.set_xlabel('Pixel', color=cfg.axes_colour)
+        self.plt_row.set_ylabel('DN', color=cfg.axes_colour)
+        self.plt_col.set_xlabel('DN', color=cfg.axes_colour)
         # self.plt_col.set_ylabel('Pixel', color='white')
         # self.plt_row.set_xlim(0, self.imgSizeX)
         self.plt_row.set_ylim(0, self.specs._max_DN)
         self.plt_col.set_xlim(0, self.specs._max_DN)
         self.plt_col.set_ylim(self.specs.pix_num_y, 0)
+        self.plt_row.grid(b=True, which='major')
+        self.plt_col.grid(b=True, which='major')
+
+        # Get subplot size right
+        asp = np.diff(self.plt_col.get_ylim())[0] / np.diff(self.plt_col.get_xlim())[0]
+        asp /= np.abs(np.diff(self.ax.get_ylim())[0] / np.diff(self.ax.get_xlim())[0])
+        asp /= (648 / 200)
+        self.plt_col.set_aspect(abs(1/asp))
 
         self.fig.tight_layout()  # Make plots extend right to edges of figure (or at least to a good fit)
-        self.fig.subplots_adjust(hspace=0.1, wspace=486 / 6480)  # Make space between subplots equal
+        self.fig.subplots_adjust(hspace=0.1, wspace=486 / 6480)     # Make space between subplots equal
 
         # -------------------------------------
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)

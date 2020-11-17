@@ -19,6 +19,12 @@ from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 import pydoas
 
+from math import log10, floor
+import datetime
+import time
+import queue
+import threading
+import pickle
 from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
@@ -28,11 +34,7 @@ import cv2
 from skimage import transform as tf
 import warnings
 warnings.simplefilter("ignore", UserWarning)
-from math import log10, floor
-import datetime
-import time
-import queue
-import threading
+
 
 class PyplisWorker:
     """
@@ -150,6 +152,7 @@ class PyplisWorker:
         self.fig_opt = None             # Figure for displaying optical flow
         self.fig_dilution = None        # Figure for displaying light dilution
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
+        self.seq_info = None            # Object displaying details of the current imaging directory
 
         # Calibration attributes
         self.calib_pears = None                 # Pyplis object holding functions to plot results
@@ -169,11 +172,12 @@ class PyplisWorker:
                           'off': {}}        # Dictionary containing all retrieved dark images with their ss as the key
         self.dark_dir = None
         self.img_list = None
-        self.num_img_pairs = 0      # Total number of plume pairs
-        self.num_img_tot = 0        # Total number of plume images
-        self.first_image = True     # Flag for when in the first image of a sequence (wind speed can't be calculated)
-        self._location = None       # String for location e.g. lascar
-        self.source = None          # Pyplis object of location
+        self.num_img_pairs = 0          # Total number of plume pairs
+        self.num_img_tot = 0            # Total number of plume images
+        self.time_range = [None, None]  # Image sequence range of times
+        self.first_image = True         # Flag for when in the first image of a sequence (wind speed can't be calculated)
+        self._location = None           # String for location e.g. lascar
+        self.source = None              # Pyplis object of location
 
         self.img_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.img_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
@@ -365,6 +369,7 @@ class PyplisWorker:
                           'These images will not be used for processing.'.format(no_contemp))
 
         self.num_img_pairs = len(img_list)
+        self.time_range = [self.get_img_time(img_list[0][0]), self.get_img_time(img_list[-1][0])]
 
         return img_list
 
@@ -510,6 +515,9 @@ class PyplisWorker:
 
         # Set-up processing directory
         self.set_processing_directory()
+
+        # Update frame containing details of image directory
+        self.seq_info.update_variables()
 
         # Display first images of sequence
         if len(self.img_list) > 0:
@@ -2514,6 +2522,53 @@ class ImageRegistration:
                 warped_B = self.cp_warp_img(img_B)
 
         return warped_B
+
+    def save_registration(self, pathname, method=None):
+        """
+        Saves the current image registration object to the file specified in pathname
+        :param pathname:    str     Path to save object
+        """
+        if method is None:
+            method = self.method
+
+        if method is None:
+            print('No registration object to save as there is currently no image registration applied')
+            return
+
+        elif method.lower() == 'cv':
+            if not self.got_cv_transform:
+                print('No CV object is available to save. Please run registration first')
+                return
+            pathname = pathname.split('.')[0] + '.npy'
+            arr = np.array(self.warp_matrix_cv)
+            with open(pathname, 'wb') as f:
+                np.save(f, arr)
+
+        elif method.lower() == 'cp':
+            if not self.got_cp_transform:
+                print('No Control Point object is available to save. Please run registration first')
+                return
+            pathname = pathname.split('.')[0] + '.pkl'
+            pickle.dump(self.cp_tform, pathname, pickle.HIGHEST_PROTOCOL)
+
+    def load_registration(self, pathname):
+        """
+        Loads registration from path
+        :param pathname:    str     Path to save object
+        """
+        file_ext = pathname.split('.')[-1]
+        if file_ext == 'pkl':
+            self.method = 'cp'
+            with open(pathname, 'rb') as f:
+                self.cp_tform = pickle.load(f)
+            self.got_cp_transform = True
+        elif file_ext == 'npy':
+            self.method = 'cv'
+            with open(pathname, 'rb') as f:
+                self.warp_matrix_cv = np.load(f)
+            self.got_cv_transform = True
+        else:
+            print('Unrecognised file type, cannot load registration')
 
 
 # ## SCRIPT FUNCTION DEFINITIONS

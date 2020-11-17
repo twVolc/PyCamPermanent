@@ -4,7 +4,7 @@
 Contains all classes associated with building figures for the analysis functions of SO2 cameras
 """
 
-from pycam.gui.cfg import gui_setts
+from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
 from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
@@ -43,9 +43,13 @@ class SequenceInfo:
     """
     Generates widget containing squence information, which is displayed at the top of the analysis frame
     """
-    def __init__(self, parent, generate_widget=True):
+    def __init__(self, parent, pyplis_work=pyplis_worker, generate_widget=True):
         self.parent = parent
         self.frame = ttk.LabelFrame(self.parent, text='Sequence information')
+        self.pyplis_worker = pyplis_worker
+        self.pyplis_worker.seq_info = self
+        self.date_fmt = '%d-%m-%Y'
+        self.time_fmt = '%H:%M:%S'
 
         self.path_str_length = 50
 
@@ -62,9 +66,12 @@ class SequenceInfo:
         self._num_img_pairs = tk.IntVar()
         self._num_img_tot = tk.IntVar()
 
-        self.img_dir = pyplis_worker.img_dir
-        self.num_img_tot = pyplis_worker.num_img_tot
-        self.num_img_pairs = pyplis_worker.num_img_pairs
+        self.img_dir = self.pyplis_worker.img_dir
+        self.num_img_tot = self.pyplis_worker.num_img_tot
+        self.num_img_pairs = self.pyplis_worker.num_img_pairs
+        self.date = '-'
+        self.start_time = '-'
+        self.end_time = '-'
 
     def generate_widget(self):
         """Builds widget"""
@@ -73,6 +80,18 @@ class SequenceInfo:
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.img_dir_lab = ttk.Label(self.frame, text=self.img_dir_short)
         self.img_dir_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row += 1
+        label = ttk.Label(self.frame, text='Date:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.date_lab = ttk.Label(self.frame, text=self.date)
+        self.date_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row += 1
+        label = ttk.Label(self.frame, text='Time:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.time_lab = ttk.Label(self.frame, text='{} - {}'.format(self.start_time, self.end_time))
+        self.time_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
         label = ttk.Label(self.frame, text='Total images:')
@@ -116,13 +135,18 @@ class SequenceInfo:
 
     def update_variables(self):
         """Updates image list variables"""
-        self.img_dir = pyplis_worker.img_dir
-        self.num_img_pairs = pyplis_worker.num_img_pairs
-        self.num_img_tot = pyplis_worker.num_img_tot
+        self.img_dir = self.pyplis_worker.img_dir
+        self.num_img_pairs = self.pyplis_worker.num_img_pairs
+        self.num_img_tot = self.pyplis_worker.num_img_tot
+        self.date = self.pyplis_worker.time_range[0].strftime(self.date_fmt)
+        self.start_time = self.pyplis_worker.time_range[0].strftime(self.time_fmt)
+        self.end_time = self.pyplis_worker.time_range[-1].strftime(self.time_fmt)
 
         self.img_dir_lab.configure(text=self.img_dir_short)
         self.num_img_pairs_lab.configure(text=str(self.num_img_pairs))
         self.num_img_tot_lab.configure(text=str(self.num_img_tot))
+        self.date_lab.configure(text=self.date)
+        self.time_lab.configure(text='{} - {}'.format(self.start_time, self.end_time))
 
 
 class ImageSO2(LoadSaveProcessingSettings):
@@ -160,6 +184,8 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.pix_num_y = pix_dim[1]
         self.dpi = gui_setts.dpi
         self.fig_size = gui_setts.fig_SO2
+        self.h_ratio = 3
+        self.w_ratio = 20
 
         self.specs = CameraSpecs()
 
@@ -393,28 +419,41 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
 
         # Create figure
-        self.fig = plt.Figure(figsize=self.fig_size, dpi=self.dpi)
-        self.ax = self.fig.subplots(1, 1)
+        self.fig, self.axes = plt.subplots(2, 2, figsize=self.fig_size, dpi=self.dpi,
+                                    gridspec_kw={'height_ratios': [self.h_ratio, 1], 'width_ratios': [self.w_ratio, 1]})
+        self.axes[1, 1].axis('off')
+        # self.ax = self.fig.subplots(1, 1)
+        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.01)
+
+        self.ax = self.axes[0, 0]
         self.ax.set_aspect(1)
 
+        self.ax_xsect = self.axes[1, 0]
+        self.ax_xsect.grid()
+
         # Figure colour
-        self.fig.set_facecolor('black')
+        self.fig.set_facecolor(fig_face_colour)
         for child in self.ax.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(axes_colour)
+        self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        for child in self.ax_xsect.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_xsect.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
         self.img_disp = self.ax.imshow(self.image_tau, cmap=self.cmap, interpolation='none', vmin=0,
                                        vmax=self.specs._max_DN, aspect='equal')
-        self.ax.set_title('SO2 image', color='white')
+        self.ax.set_title(r'SO$_2$ image', color=axes_colour)
 
         # Colorbar
-        divider = make_axes_locatable(self.ax)
-        self.ax_divider = divider.append_axes("right", size="10%", pad=0.05)
-        self.cbar = plt.colorbar(self.img_disp, cax=self.ax_divider)
-        self.cbar.outline.set_edgecolor('white')
-        self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        # divider = make_axes_locatable(self.ax)
+        # self.ax_divider = divider.append_axes("right", size="5%", pad=0.05)
+        # self.cbar = plt.colorbar(self.img_disp, cax=self.ax_divider)
+        self.cbar = plt.colorbar(self.img_disp, cax=self.axes[0, 1])
+        self.cbar.outline.set_edgecolor(axes_colour)
+        self.cbar.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Plot optical flwo if it is requested at start
         self.plt_opt_flow(draw=False)
@@ -759,8 +798,8 @@ class ImageSO2(LoadSaveProcessingSettings):
                 # Update lines
                 self.gather_vars()
 
-                # TODO Extract ICA values and plotting them
-                # self.plot_ica_xsect()
+                # Extract ICA values and plot them
+                self.update_xsect()
 
             self.img_canvas.draw()
         else:
@@ -798,6 +837,9 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Gather variables
         self.gather_vars()
+
+        # Update xsect_plot
+        self.update_xsect()
 
         # Redraw canvas
         self.img_canvas.draw()
@@ -893,6 +935,35 @@ class ImageSO2(LoadSaveProcessingSettings):
             self.q.put(1)
             # self.img_canvas.draw()
 
+    def update_xsect(self):
+        """Updates corss-section subplot"""
+        # Clear axis
+        self.ax_xsect.clear()
+
+        if self.disp_cal:
+            for line in self.pyplis_worker.PCS_lines_all:
+                if isinstance(line, LineOnImage):
+                    line_id = str(int(line.line_id) + 1)
+                    self.ax_xsect.plot(line.get_line_profile(self.image_cal), color=line.color, label=line_id)
+            self.ax_xsect.set_ylabel('CD [ppm.m]', color=axes_colour)
+        else:
+            for line in self.pyplis_worker.PCS_lines_all:
+                if isinstance(line, LineOnImage):
+                    line_id = str(int(line.line_id) + 1)
+                    self.ax_xsect.plot(line.get_line_profile(self.image_tau), color=line.color, label=line_id)
+            self.ax_xsect.set_ylabel(r'$\tau$', color=axes_colour)
+
+        # Set xsection aspect ratio
+        xlims = self.ax_xsect.get_xlim()
+        self.ax_xsect.set_xlim([0, xlims[-1]])
+        asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
+        asp /= np.abs(np.diff(self.ax.get_xlim())[0] / np.diff(self.ax.get_ylim())[0])
+        asp /= self.h_ratio
+        self.ax_xsect.set_aspect(asp)
+
+        self.ax_xsect.grid(b=True, which='major')
+        self.ax_xsect.legend(loc='upper right')
+
     def update_plot(self, img_tau, img_cal=None, draw=True):
         """
         Updates image figure and all associated subplots
@@ -925,12 +996,11 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Plot optical flow
         self.plt_opt_flow(draw=False)
 
+        # Update cross-section plot
+        self.update_xsect()
+
         if draw:
             self.q.put(1)
-            # if time.time() - self.draw_time > self.plot_lag:
-            #     self.cbar.draw_all()
-            #     self.img_canvas.draw()
-            #     self.draw_time = time.time()
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
@@ -1035,7 +1105,7 @@ class TimeSeriesFigure:
         self.fig_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=2)
 
         self.fig = plt.Figure(figsize=self.settings.fig_series, dpi=self.settings.dpi)
-        # self.ax = self.fig.subplots(1, 1)
+        self.fig.set_facecolor(fig_face_colour)
 
         self.axes = [None] * 4
         gs = plt.GridSpec(4, 1, height_ratios=[.6, .2, .2, .2], hspace=0.05)
@@ -1054,7 +1124,12 @@ class TimeSeriesFigure:
         # Finalise canvas and gridding
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
         self.canvas.draw()
-        self.canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
+        self.canvas.get_tk_widget().pack(side=tk.TOP)
+
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.canvas, self.fig_frame)
+        toolbar.update()
+        self.canvas._tkcanvas.pack(side=tk.TOP)
 
     def update_lines(self, plot=True):
         """Updates lines available to optionmenu"""
@@ -1407,17 +1482,17 @@ class GeomSettings:
         self.ax.set_aspect(1)
 
         # Figure colour
-        self.fig.set_facecolor('black')
+        self.fig.set_facecolor(fig_face_colour)
         for child in self.ax.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(axes_colour)
+        self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
         self.img_A = self.pyplis_worker.img_A.img
         self.img_disp = self.ax.imshow(self.img_A, cmap=cm.gray, interpolation='none', vmin=0,
                                        vmax=self.pyplis_worker.cam_specs._max_DN, aspect='equal')
-        self.ax.set_title('Reference point selection', color='white')
+        self.ax.set_title('Reference point selection', color=axes_colour)
 
         # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
@@ -3268,17 +3343,17 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.ax.set_aspect(1)
 
         # Figure colour
-        self.fig.set_facecolor('black')
+        self.fig.set_facecolor(fig_face_colour)
         for child in self.ax.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(axes_colour)
+        self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
         self.img_tau = self.pyplis_worker.img_tau_prev.img
         self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
                                        vmax=0.5, aspect='equal')
-        self.ax.set_title('Optical flow', color='white')
+        self.ax.set_title('Optical flow', color=axes_colour)
 
         # Draw optical flow
         self.pyplis_worker.opt_flow.draw_flow(ax=self.ax, in_roi=True)
@@ -3289,8 +3364,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         divider = make_axes_locatable(self.ax)
         self.ax_divider = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar = plt.colorbar(self.img_disp, cax=self.ax_divider)
-        self.cbar.outline.set_edgecolor('white')
-        self.cbar.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        self.cbar.outline.set_edgecolor(axes_colour)
+        self.cbar.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
 
         # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
@@ -3322,11 +3397,11 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.ax_vel.set_aspect(1)
 
         # Figure colour
-        self.fig_vel.set_facecolor('black')
+        self.fig_vel.set_facecolor(fig_face_colour)
         for child in self.ax_vel.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax_vel.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(axes_colour)
+        self.ax_vel.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
         self.img_vel = self.pyplis_worker.velo_img
@@ -3339,8 +3414,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         divider = make_axes_locatable(self.ax_vel)
         self.ax_vel_divider = divider.append_axes("right", size="10%", pad=0.05)
         self.cbar_vel = plt.colorbar(self.img_vel_disp, cax=self.ax_vel_divider)
-        self.cbar_vel.outline.set_edgecolor('white')
-        self.cbar_vel.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+        self.cbar_vel.outline.set_edgecolor(axes_colour)
+        self.cbar_vel.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Finalise canvas and gridding
         self.vel_canvas = FigureCanvasTkAgg(self.fig_vel, master=self.frame_fig)
@@ -3638,17 +3713,17 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.ax.set_aspect(1)
 
         # Figure colour
-        self.fig.set_facecolor('black')
+        self.fig.set_facecolor(fig_face_colour)
         for child in self.ax.get_children():
             if isinstance(child, matplotlib.spines.Spine):
-                child.set_color('white')
-        self.ax.tick_params(axis='both', colors='white', direction='in', top='on', right='on')
+                child.set_color(axes_colour)
+        self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
         self.img_B = self.pyplis_worker.vigncorr_B_warped.img
         self.img_disp = self.ax.imshow(self.img_B, cmap=cm.gray, interpolation='none', vmin=0,
                                        vmax=self.cam_specs._max_DN, aspect='equal')
-        self.ax.set_title('Light dilution', color='white')
+        self.ax.set_title('Light dilution', color=axes_colour)
 
         # Finalise canvas and gridding (canvases are drawn in _build_fig_vel())
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
