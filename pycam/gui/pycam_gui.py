@@ -49,6 +49,7 @@ class PyCam(ttk.Frame):
         self.style = ThemedStyle(self.root)
         # self.style.set_theme('equilux')
         self.style.set_theme('breeze')
+        self.style.layout('TNotebook.Tab', [])          # Turns off notepad bar
 
         # Menu bar setup
         self.menu = PyMenu(self, self.root)
@@ -82,7 +83,7 @@ class PyCam(ttk.Frame):
         cross_correlation.initiate_variables()
         opti_flow.initiate_variables()
         light_dilution.initiate_variables()
-        self.menu.load_frame.set_all_pcs_lines()
+        self.menu.load_frame.load_all(img_reg_frame=self.cam_wind.img_reg_frame)
 
         # Load in initial sequence directory
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)

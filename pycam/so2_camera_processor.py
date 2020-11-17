@@ -2551,10 +2551,12 @@ class ImageRegistration:
             pathname = pathname.split('.')[0] + '.pkl'
             pickle.dump(self.cp_tform, pathname, pickle.HIGHEST_PROTOCOL)
 
-    def load_registration(self, pathname):
+    def load_registration(self, pathname, img_reg_frame=None):
         """
         Loads registration from path
-        :param pathname:    str     Path to save object
+        :param pathname:        str     Path to save object
+        :param img_reg_frame:   ImageRegistrationFrame
+                    Object which contains registration widgets - for editing checkbutton to correct value
         """
         file_ext = pathname.split('.')[-1]
         if file_ext == 'pkl':
@@ -2562,11 +2564,19 @@ class ImageRegistration:
             with open(pathname, 'rb') as f:
                 self.cp_tform = pickle.load(f)
             self.got_cp_transform = True
+            try:
+                img_reg_frame.reg_meth = 1
+            except AttributeError:
+                pass
         elif file_ext == 'npy':
             self.method = 'cv'
             with open(pathname, 'rb') as f:
                 self.warp_matrix_cv = np.load(f)
             self.got_cv_transform = True
+            try:
+                img_reg_frame.reg_meth = 2
+            except AttributeError:
+                pass
         else:
             print('Unrecognised file type, cannot load registration')
 

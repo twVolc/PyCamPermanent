@@ -21,6 +21,7 @@ import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
 import time
+import os
 
 
 class PyMenu:
@@ -127,9 +128,14 @@ class PyMenu:
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
 
         self.menus[tab].add_separator()
-        self.menus[tab].add_command(label='Camera window')
-        self.menus[tab].add_command(label='DOAS window')
-        self.menus[tab].add_command(label='Analysis window')
+        self.init_var = tk.IntVar()
+        self.init_var.set(1)
+        self.menus[tab].add_radiobutton(label='Camera window', value=1, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(0))
+        self.menus[tab].add_radiobutton(label='DOAS window',  value=0, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(1))
+        self.menus[tab].add_radiobutton(label='Analysis window',  value=2, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(2))
         self.menus[tab].add_separator()
 
 
@@ -190,9 +196,11 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     def initiate_variables(self):
         """Setup tk variables for save options"""
-        self.vars = {'pcs_lines': str}
+        self.vars = {'pcs_lines': str,
+                     'img_registration': str}
         self.num_pcs_lines = 5
         self._pcs_lines = [self.no_line] * self.num_pcs_lines
+        self.img_registration = ''
 
     def gather_vars(self):
         """Required for LoadSaveProcessSettings as it is called after loading. Do some general house keeping"""
@@ -237,6 +245,19 @@ class LoadFrame(LoadSaveProcessingSettings):
             self.pcs_rem_butt[i].grid(row=row_line, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
             row_line += 1
 
+        # Image registration load
+        row += 1
+        img_reg_frame = ttk.LabelFrame(self.load_frame, text='Image registration')
+        img_reg_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(img_reg_frame, text='File:')
+        lab.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.img_reg_lab = ttk.Label(img_reg_frame, text=self.img_reg_short, width=self.max_len_str)
+        self.img_reg_lab.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self.reg_add_butt = ttk.Button(img_reg_frame, text='Change', command=self.add_reg_startup)
+        self.reg_add_butt.grid(row=0, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
+        self.reg_rem_butt = ttk.Button(img_reg_frame, text='Remove', command=self.remove_reg_startup)
+        self.reg_rem_butt.grid(row=0, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
+
         row += 1
         update_butt = ttk.Button(self.load_frame, text='Save changes', command=lambda: self.set_defaults(self.frame))
         update_butt.grid(row=row, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
@@ -266,18 +287,23 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         return short_list
 
+    @property
+    def img_reg_short(self):
+        if len(self.img_registration) > self.max_len_str:
+            return '...' + self.img_registration[-self.max_len_str+3:]
+        else:
+            return self.img_registration
+
     def load_pcs(self, filename=None):
         """Loads PCS into GUI"""
         if filename is None:
             kwargs = {}
             if self.in_frame:
                 kwargs['frame'] = self.frame
-
             filename = filedialog.askopenfilename(initialdir=self.init_dir, **kwargs)
 
         if len(filename) > 0:
             line = load_pcs_line(filename)
-
             self.pyplis_worker.fig_tau.add_pcs_line(line, force_add=True)
 
     def add_pcs_startup(self, num):
@@ -285,12 +311,12 @@ class LoadFrame(LoadSaveProcessingSettings):
         Edits pcs lines used at startup
         :param num:     int     Line index to add
         """
-        filename = filedialog.askopenfilename(parent=self.frame, initialdir=self.init_dir)
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=os.path.join(self.init_dir, 'pcs_lines'),
+                                              filetypes=[('Text file', '*.txt')])
 
         if len(filename) > 0:
             # Update line list
             self._pcs_lines[num] = filename
-
             self.pcs_lines_labs[num].configure(text=self.pcs_lines_short[num])
 
     def remove_pcs_startup(self, num):
@@ -306,6 +332,36 @@ class LoadFrame(LoadSaveProcessingSettings):
         for line in self._pcs_lines:
             if line is not self.no_line:
                 self.load_pcs(filename=line)
+
+    def add_reg_startup(self):
+        """
+        Edits image registration object used at startup
+        """
+        filename = filedialog.askopenfilename(parent=self.frame,
+                                              initialdir=os.path.join(self.init_dir, 'image_registration'),
+                                              filetypes=[('numpy file', '*.npy'), ('pickled file', '*.pkl')])
+
+        if len(filename) > 0:
+            # Update line list
+            self.img_registration = filename
+            self.img_reg_lab.configure(text=self.img_reg_short)
+
+    def remove_reg_startup(self):
+        """
+        Remove image registration object used at startup
+        """
+        self.img_registration = ''
+        self.img_reg_lab.configure(text=self.img_registration)
+
+    def load_img_reg(self, img_reg_frame=None):
+        """Loads in image registration to the pyplis object"""
+        if os.path.exists(self.img_registration):
+            self.pyplis_worker.img_reg.load_registration(self.img_registration, img_reg_frame=img_reg_frame)
+
+    def load_all(self, img_reg_frame=None):
+        """Runs all load functions to prepare pyplis worker"""
+        self.set_all_pcs_lines()
+        self.load_img_reg(img_reg_frame)
 
     def close_frame(self):
         """CLose window"""
@@ -332,6 +388,14 @@ class SaveFrame:
         self._pcs_line = tk.IntVar()
         self.pcs_ext = '.txt'
 
+        self._img_reg = tk.StringVar()
+        self.reg_ext = {'cp': '.pkl',
+                        'cv': '.npy'}
+
+    @property
+    def img_reg(self):
+        return self._img_reg.get()
+
     def generate_frame(self):
         """Build frame"""
         self.frame = tk.Toplevel()
@@ -355,13 +419,27 @@ class SaveFrame:
         butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_pcs)
         butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
 
+        # Image registration saving
+        row += 1
+        self.img_reg_opts = []
+        for tform in self.reg_ext:
+            if getattr(self.pyplis_worker.img_reg, 'got_{}_transform'.format(tform)):
+                self.img_reg_opts.append(tform)
+        label = ttk.Label(self.save_now_frame, text='Save image registration:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin_reg = ttk.OptionMenu(self.save_now_frame, self._img_reg, self.img_reg_opts[0] if self.img_reg_opts else '',
+                                  *self.img_reg_opts if self.img_reg_opts else '')
+        spin_reg.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_img_reg)
+        butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
+
     def save_pcs(self):
         """Saves PCS line"""
         if len(self.pyplis_worker.PCS_lines_all) == 0:
             print('There are no lines to be saved. Please draw an ICA line first')
             return
 
-        filename = filedialog.asksaveasfilename(parent=self.frame, initialdir=self.init_dir)
+        filename = filedialog.asksaveasfilename(parent=self.frame, initialdir=os.path.join(self.init_dir, 'pcs_lines'))
 
         if len(filename) > 0:
             if self.pcs_ext not in filename:
@@ -375,3 +453,26 @@ class SaveFrame:
             save_pcs_line(line, filename)
 
             self.init_dir = filename.rsplit('\\', 1)[0].rsplit('/', 1)
+
+    def save_img_reg(self):
+        """
+        Saves image registration object
+        :return:
+        """
+        if self.img_reg == '':
+            return
+
+        if self.img_reg == 'cv':
+            filetypes = (('numpy file', '*.npy'), ("All Files", "*.*"))
+        elif self.img_reg == 'cp':
+            filetypes = (('pickled file', '*.pkl'), ("All Files", "*.*"))
+
+        filename = filedialog.asksaveasfilename(parent=self.frame,
+                                                initialdir=os.path.join(self.init_dir, 'image_registration'),
+                                                defaultextension=self.reg_ext[self.img_reg],
+                                                filetypes=filetypes)
+
+        if len(filename) > 0:
+            if self.reg_ext[self.img_reg] not in filename:
+                filename += self.reg_ext[self.img_reg]
+            self.pyplis_worker.img_reg.save_registration(filename, method=self.img_reg)
