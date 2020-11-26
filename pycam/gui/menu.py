@@ -6,7 +6,7 @@ from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
-    opti_flow, light_dilution, cross_correlation
+    opti_flow, light_dilution, cross_correlation, doas_fov
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io import save_pcs_line, load_pcs_line
 import pycam.gui.settings as settings
@@ -55,6 +55,7 @@ class PyMenu:
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
+        self.submenu_load.add_command(label='Load image registration', command=self.load_frame.load_img_reg)
         self.submenu_load.add_separator()
         self.submenu_load.add_command(label='Configure start-up', command=self.load_frame.generate_frame)
 
@@ -65,7 +66,7 @@ class PyMenu:
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
         self.menus[tab].add_separator()
 
-        self.menus[tab].add_command(label='Settings', command=Settings)
+        self.menus[tab].add_command(label='Settings', command=lambda: Settings(self.parent))
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Exit', command=self.parent.exit_app)
 
@@ -122,6 +123,8 @@ class PyMenu:
         self.submenu_windows.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
         self.submenu_windows.add_command(label='Cell calibration',
                                          command=lambda: cell_calib.update_plot(generate_frame=True))
+        self.submenu_windows.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
+        self.submenu_windows.add_separator()
         self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
         self.submenu_windows.add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
         self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
@@ -153,7 +156,7 @@ class PyMenu:
 
 class Settings:
     """Class to control the settings from the GUI toolbar"""
-    def __init__(self):
+    def __init__(self, parent):
         self.frame = tk.Toplevel()
         self.frame.title('PyCam Settings')
         self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth()/1.2),
@@ -162,7 +165,9 @@ class Settings:
                                                  int(self.frame.winfo_screenheight()/10)))
 
         # Setup notebook tabs
-        self.windows = ttk.Notebook(self.frame)
+        style = parent.style
+        style.configure('One.TNotebook.Tab', **parent.layout_old[0][1])
+        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
         self.windows.pack(fill='both', expand=1, padx=5, pady=5)
 
         # Generate the frames for each tab
@@ -186,6 +191,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.sep = ','
         self.max_len_str = 50
         self.no_line = 'No line'
+        self.img_reg_frame = None
         self.in_frame = False
 
         self.initiate_variables()
@@ -299,7 +305,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         if filename is None:
             kwargs = {}
             if self.in_frame:
-                kwargs['frame'] = self.frame
+                kwargs['parent'] = self.frame
             filename = filedialog.askopenfilename(initialdir=self.init_dir, **kwargs)
 
         if len(filename) > 0:
@@ -353,15 +359,27 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.img_registration = ''
         self.img_reg_lab.configure(text=self.img_registration)
 
-    def load_img_reg(self, img_reg_frame=None):
+    def load_img_reg(self, filename=None):
         """Loads in image registration to the pyplis object"""
-        if os.path.exists(self.img_registration):
-            self.pyplis_worker.img_reg.load_registration(self.img_registration, img_reg_frame=img_reg_frame)
+        if filename is None:
+            kwargs = {}
+            if self.in_frame:
+                kwargs['frame'] = self.frame
+            init_dir = os.path.join(self.init_dir, 'image_registration')
+            filename = filedialog.askopenfilename(initialdir=init_dir,
+                                                  **kwargs)
+            if len(filename) > 0:
+                filename = os.path.join(init_dir, filename)
+            else:
+                return
 
-    def load_all(self, img_reg_frame=None):
+        if os.path.exists(filename):
+            self.pyplis_worker.img_reg.load_registration(filename, img_reg_frame=self.img_reg_frame)
+
+    def load_all(self):
         """Runs all load functions to prepare pyplis worker"""
         self.set_all_pcs_lines()
-        self.load_img_reg(img_reg_frame)
+        self.load_img_reg(filename=self.img_registration)
 
     def close_frame(self):
         """CLose window"""
@@ -392,9 +410,82 @@ class SaveFrame:
         self.reg_ext = {'cp': '.pkl',
                         'cv': '.npy'}
 
+        self.img_types = ['.npy', '.mat']
+        self._save_img_aa = tk.BooleanVar()
+        self._type_img_aa = tk.StringVar()
+        self.type_img_aa = self.img_types[0]
+        self._save_img_cal = tk.BooleanVar()
+        self._type_img_cal = tk.StringVar()
+        self.type_img_cal = self.img_types[0]
+        self._save_img_so2 = tk.BooleanVar()
+        self._png_compression = tk.IntVar()
+        self.png_compression = 0
+
+    def gather_vars(self):
+        self.pyplis_worker.save_dict['img_aa']['save'] = self.save_img_aa
+        self.pyplis_worker.save_dict['img_aa']['ext'] = self.type_img_aa
+
+        self.pyplis_worker.save_dict['img_cal']['save'] = self.save_img_cal
+        self.pyplis_worker.save_dict['img_cal']['ext'] = self.type_img_cal
+
+        self.pyplis_worker.save_dict['img_SO2']['save'] = self.save_img_so2
+        self.pyplis_worker.save_dict['img_SO2']['compression'] = self.png_compression
+
+        tk.messagebox.showinfo('Save settings updated',
+                               'Save settings have been updated and will apply to next processing run',
+                               parent=self.frame)
+
     @property
     def img_reg(self):
         return self._img_reg.get()
+
+    @property
+    def save_img_aa(self):
+        return self._save_img_aa.get()
+
+    @save_img_aa.setter
+    def save_img_aa(self, value):
+        self._save_img_aa.set(value)
+
+    @property
+    def type_img_aa(self):
+        return self._type_img_aa.get()
+
+    @type_img_aa.setter
+    def type_img_aa(self, value):
+        self._type_img_aa.set(value)
+
+    @property
+    def save_img_cal(self):
+        return self._save_img_cal.get()
+
+    @save_img_cal.setter
+    def save_img_cal(self, value):
+        self._save_img_cal.set(value)
+
+    @property
+    def type_img_cal(self):
+        return self._type_img_cal.get()
+
+    @type_img_cal.setter
+    def type_img_cal(self, value):
+        self._type_img_cal.set(value)
+
+    @property
+    def save_img_so2(self):
+        return self._save_img_so2.get()
+
+    @save_img_so2.setter
+    def save_img_so2(self, value):
+        self._save_img_so2.set(value)
+
+    @property
+    def png_compression(self):
+        return self._png_compression.get()
+
+    @png_compression.setter
+    def png_compression(self, value):
+        self._png_compression.set(value)
 
     def generate_frame(self):
         """Build frame"""
@@ -406,6 +497,7 @@ class SaveFrame:
                                                  int(self.frame.winfo_screenwidth() / 10),
                                                  int(self.frame.winfo_screenheight() / 10)))
 
+        # SAVE NOW FRAME
         self.save_now_frame = ttk.LabelFrame(self.frame, text='Save objects now', relief=tk.RAISED, borderwidth=3)
         self.save_now_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
@@ -432,6 +524,49 @@ class SaveFrame:
         spin_reg.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_img_reg)
         butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
+
+        # PROCESSING SAVE OPTIONS
+        self.save_proc_frame = ttk.LabelFrame(self.frame, text='Processing save options', relief=tk.RAISED,
+                                              borderwidth=3)
+        self.save_proc_frame.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row = 0
+
+        # Img tau save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save AA images', variable=self._save_img_aa)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(type_frame, text='File type:')
+        lab.grid(row=0, column=0, sticky='w')
+        img_types = ttk.OptionMenu(type_frame, self._type_img_aa, self.type_img_aa, *self.img_types)
+        img_types.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
+        # Img cal save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save calibrated images', variable=self._save_img_cal)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(type_frame, text='File type:')
+        lab.grid(row=0, column=0, sticky='w')
+        img_types = ttk.OptionMenu(type_frame, self._type_img_cal, self.type_img_cal, *self.img_types)
+        img_types.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
+        # Img SO2 save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save SO2 PNG', variable=self._save_img_so2)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(type_frame, text='Compression:')
+        lab.grid(row=0, column=0, sticky='w')
+        img_types = ttk.Spinbox(type_frame, textvariable=self._png_compression, width=3, from_=0, to=9, increment=1)
+        img_types.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
+        # Apply button
+        butt = ttk.Button(self.save_proc_frame, text='Apply settings', command=self.gather_vars)
+        butt.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
     def save_pcs(self):
         """Saves PCS line"""

@@ -185,7 +185,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.dpi = gui_setts.dpi
         self.fig_size = gui_setts.fig_SO2
         self.h_ratio = 3
-        self.w_ratio = 20
+        self.w_ratio = 25
 
         self.specs = CameraSpecs()
 
@@ -252,7 +252,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         # -----------------------------------------------------------------------------------------------
 
         # Generate main frame for figure
-        self.frame = ttk.Frame(self.parent)
+        self.frame = ttk.Frame(self.parent, relief=tk.RAISED, borderwidth=2)
 
         if self.image_tau is None:
             self.image_tau = np.random.random([self.pix_num_y, self.pix_num_x]) * self.specs._max_DN
@@ -266,11 +266,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Generate figure
         self._build_fig_img()
 
-        self.frame_opts.grid(row=0, column=0, pady=5, sticky='nsew')
-        frame_space = ttk.Frame(self.frame)         #    Just putting space between frames without adding padding
-        frame_space.grid(row=0, column=1, padx=2)   # To their outer extremities
-        self.frame_analysis.grid(row=0, column=2, pady=5, sticky='nsew')
-        self.frame_fig.grid(row=1, column=0, columnspan=3, pady=5)
+        self.frame_opts.grid(row=0, column=0, pady=5, padx=2, sticky='nsew')
+        self.frame_analysis.grid(row=0, column=2, pady=5, padx=2, sticky='nsew')
+        self.frame_fig.grid(row=1, column=0, columnspan=3, pady=5, padx=2)
 
         self.frame.columnconfigure(2, weight=1)
 
@@ -421,9 +419,8 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Create figure
         self.fig, self.axes = plt.subplots(2, 2, figsize=self.fig_size, dpi=self.dpi,
                                     gridspec_kw={'height_ratios': [self.h_ratio, 1], 'width_ratios': [self.w_ratio, 1]})
-        self.axes[1, 1].axis('off')
-        # self.ax = self.fig.subplots(1, 1)
-        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.01)
+        self.axes[1, 1].axis('off')  # Make bottom-right subplot blank
+        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
 
         self.ax = self.axes[0, 0]
         self.ax.set_aspect(1)
@@ -713,7 +710,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # If current line is not none we find it's orientation and reverse it
         if line is not None:
-            self.del_ica(ica_idx)
+            self.del_ica(ica_idx, update_all=False)
 
             if line.normal_orientation == 'right':
                 self.PCS_lines_list[ica_idx] = LineOnImage(x0=line.x0, y0=line.y0, x1=line.x1, y1=line.y1,
@@ -779,7 +776,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
                 # Delete previous line if it exists
                 if self.PCS_lines_list[PCS_idx] is not None:
-                    self.del_ica(PCS_idx)
+                    self.del_ica(PCS_idx, update_all=False)
 
                 # Update pyplis line object and objects in pyplis_worker
                 lbl = "{}".format(PCS_idx)
@@ -805,13 +802,16 @@ class ImageSO2(LoadSaveProcessingSettings):
         else:
             print('Clicked outside axes bounds but inside plot window')
 
-    def del_ica(self, line_num):
+    def del_ica(self, line_num, update_all=True):
         """Searches axis for line object relating to pyplis line object and removes it
 
         Parameters
         ----------
         line_num: int
-            Index of line in PCS_lines_list"""
+            Index of line in PCS_lines_list
+        :param update_all:  bool
+            If True all drawing etc is done, otherwise it isn't (it will be set to False in flip_ica_normal)
+        """
         # Get line
         line = self.PCS_lines_list[line_num]
 
@@ -835,14 +835,15 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Once removed, set the line to None
         self.PCS_lines_list[line_num] = None
 
-        # Gather variables
-        self.gather_vars()
+        if update_all:
+            # Gather variables
+            self.gather_vars()
 
-        # Update xsect_plot
-        self.update_xsect()
+            # Update xsect_plot
+            self.update_xsect()
 
-        # Redraw canvas
-        self.img_canvas.draw()
+            # Redraw canvas
+            self.img_canvas.draw()
 
     def change_cmap(self, cmap):
         """Change colourmap of image"""
@@ -869,6 +870,7 @@ class ImageSO2(LoadSaveProcessingSettings):
             else:
                 vmin = 0
             self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_cal)
+            self.cbar.ax.set_title('ppm.m')
         else:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_tau:
@@ -880,6 +882,7 @@ class ImageSO2(LoadSaveProcessingSettings):
             else:
                 vmin = 0
             self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_tau)
+            self.cbar.ax.set_title(r'$\tau$')
 
         # Set new limits
 
@@ -983,6 +986,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Disable radiobutton if no calibrated image is present - we can't plot what isn't there...
         if self.image_cal is None:
             self.disp_cal_rad.configure(state=tk.DISABLED)
+            self.disp_cal = 0       # Set this so scale_img knows we are on tau not cal
         else:
             self.disp_cal_rad.configure(state=tk.NORMAL)
 
@@ -1028,7 +1032,7 @@ class TimeSeriesFigure:
         self.q = queue.Queue()
         self.settings = setts
 
-        self.frame = ttk.Frame(self.parent)
+        self.frame = tk.Frame(self.parent, relief=tk.RAISED, borderwidth=2)
 
         # Plot Options
         self.style = 'default'
@@ -1046,8 +1050,8 @@ class TimeSeriesFigure:
         # Build or widgets
         self._build_opts()
         self._build_fig()
-        self.opts_frame.grid(row=0, column=0, sticky='nsew')
-        self.fig_frame.grid(row=1, column=0, sticky='nsew', pady=5)
+        self.opts_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        self.fig_frame.grid(row=1, column=0, sticky='nsew', pady=5, padx=5)
 
         # Begin refreshing of plot
         self.__draw_canv__()
@@ -2344,7 +2348,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.frame.destroy()
 
 
-class DOASFOVSearchFrame:
+class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     """
     Frame to control some basic parameters in pyplis doas fov search and display the results if there are any
     """
@@ -2376,8 +2380,27 @@ class DOASFOVSearchFrame:
         Initiate tkinter variables
         :return:
         """
+        self.vars = {}
         self._maxrad_doas = tk.DoubleVar()
         self.maxrad_doas = self.spec_specs.fov * 1.1
+        self._centre_pix_x = tk.IntVar()
+        self._centre_pix_y = tk.IntVar()
+
+        # Time [minutes] before a doas point is removed from the calibration (no need to totally redo calibration,
+        # unless changing FOV, actually what I want to define is a limit to the time that a DOAS point contributes to
+        # the scatter plot - so eseentially as we step forward in time we lose the oldest DOAS points, as they are
+        # less likely to represent the current calibration conditions
+        self._remove_doas = tk.IntVar()
+        self._recal_fov_freq = tk.IntVar()      # Recalibration time [minutes] for FOV recalibration
+        self._recal_fov = tk.BooleanVar()       # Whether or not DOAS FOV should be recalibrated once it has been set
+        # Time [minutes] defining how often the calibration is saved - saves the calibration in its state at the time
+        # TODO If I make this the same as remove_doas I should get a saved file everytime the entire scatter plot has reset
+        # TODO e.g. once we lose all the old scatter points it will be time to save again - so below may not be needed?
+        self._save_doas = tk.IntVar()
+
+    def gather_vars(self):
+        """Updates pyplis worker settings"""
+        self.pyplis_worker.maxrad_doas = self.maxrad_doas
 
     def generate_frame(self):
         """
@@ -2395,21 +2418,94 @@ class DOASFOVSearchFrame:
 
         self.in_frame = True
 
+        self._build_opts()
+        self._build_figures()
+
+        self.frame_ui.grid(row=0, column=0, sticky='nsew')
+        self.frame_scat.grid(row=1, column=0, sticky='n', padx=5, pady=5)
+        self.frame_img.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
+        self.frame_ui.grid_columnconfigure(1, weight=1)
+
+    def _build_opts(self):
+        """Builds FOV options frame"""
+        # Frame holding all UI widgets
+        self.frame_ui = tk.Frame(self.frame)
+
+        # ---------------------------------------------------------------
+        # Options frame
+        self.frame_opts = ttk.LabelFrame(self.frame_ui, text='FOV options')
+        self.frame_opts.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+
+        row = 0
+
+        # Maximum accepted radius for FOV search
+        lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._maxrad_doas, from_=0.01, to=10.00, increment=0.05,
+                           width=5)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        app_butt = ttk.Button(self.frame_opts, text='Update settings', command=self.gather_vars)
+        app_butt.grid(row=row, column=1, sticky='e', padx=2, pady=2)
+        # --------------------------------------------------------------
+
+        # --------------------------------------------------------------
+        # FOV info frame
+        # Options frame
+        self.frame_info = tk.LabelFrame(self.frame_ui, text='FOV parameters', relief=tk.RAISED, borderwidth=2)
+        self.frame_info.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
+
+        row = 0
+
+        # Centre FOV pixels
+        lab = ttk.Label(self.frame_info, text='FOV centre pixel:')
+        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        frame_centre = ttk.Frame(self.frame_info)
+        frame_centre.grid(row=row, column=1, columnspan=2, sticky='nsew', padx=2, pady=2)
+        lab = ttk.Label(frame_centre, text='  x')
+        lab.grid(row=0, column=0, sticky='e', pady=2)
+        spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_x, from_=0, to=self.cam_specs.pix_num_x - 1,
+                           increment=1, width=5)
+        spin.grid(row=0, column=1, sticky='ew', pady=2)
+        lab = ttk.Label(frame_centre, text='  y')
+        lab.grid(row=0, column=2, sticky='e', pady=2)
+        spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_y, from_=0, to=self.cam_specs.pix_num_y - 1,
+                           increment=1, width=5)
+        spin.grid(row=0, column=3, sticky='ew', pady=2)
+
+        # DOAS FOV
+
+        # ---------------------------------------------------------------
+
+    def _build_figures(self):
+        """Builds figures for DOAS FOV"""
         # Create figure
         self.fig_img = plt.Figure(figsize=self.fig_size_doas_calib_img, dpi=self.dpi)
         self.ax_img = self.fig_img.subplots(1, 1)
         self.ax_img.set_aspect(1)
+        self.fig_img.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
+
+        self.frame_img = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame_img)
+        self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.img_canvas, self.frame_img)
+        toolbar.update()
+        self.img_canvas._tkcanvas.pack(side=tk.TOP)
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_doas_calib_fit, dpi=self.dpi)
         self.ax_fit = self.fig_fit.subplots(1, 1)
 
         # Finalise canvas and gridding
-        self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame)
-        self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
-
-        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame)
+        self.frame_scat = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.fit_canvas = FigureCanvasTkAgg(self.fig_fit, master=self.frame_scat)
         self.fit_canvas.get_tk_widget().pack(side=tk.LEFT)
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.fit_canvas, self.frame_scat)
+        toolbar.update()
+        self.fit_canvas._tkcanvas.pack(side=tk.TOP)
 
         # Setup thread-safe drawing
         self.__draw_canv__()
@@ -2428,6 +2524,39 @@ class DOASFOVSearchFrame:
     def maxrad_doas(self, value):
         self._maxrad_doas.set(value)
 
+    @property
+    def centre_pix_x(self):
+        return self._centre_pix_x.get()
+
+    @centre_pix_x.setter
+    def centre_pix_x(self, value):
+        self._centre_pix_x.set(value)
+
+    @property
+    def centre_pix_y(self):
+        return self._centre_pix_y.get()
+
+    @centre_pix_y.setter
+    def centre_pix_y(self, value):
+        self._centre_pix_y.set(value)
+
+    @property
+    def centre_coords(self):
+        """Access to tk variable _maxrad_doas. Defines maximum radius of doas FOV"""
+        return [self._centre_pix_x.get(), self._centre_pix_y.get()]
+
+    @centre_coords.setter
+    def centre_coords(self, value):
+        try:
+            if len(value) == 2:
+                self._centre_pix_x.set(value[0])
+                self._centre_pix_y.set(value[1])
+            else:
+                raise  IndexError
+        except (IndexError, TypeError):
+            print('Error when attempting to set DOAS FOV centre pixel. Aborting setting.\n'
+                  'Expected list with length 2, got type: {}'.format(type(value)))
+
     def update_plot(self, img_corr=None, fov=None):
         """
         Updates plot
@@ -2435,6 +2564,10 @@ class DOASFOVSearchFrame:
         :param fov:
         :return:
         """
+        if not self.in_frame:
+            self.generate_frame()
+            return
+
         if img_corr is None and fov is None:
             self.ax_img.cla()
             self.ax_fit.cla()
@@ -2450,6 +2583,10 @@ class DOASFOVSearchFrame:
         Closes frame
         :return:
         """
+        # Ensure all settings match pyplis worker (if Update settings button hasn't been pressed we don't want to update
+        # those settings)
+        self.maxrad_doas = self.pyplis_worker.maxrad_doas
+
         self.q.put(2)
         self.in_frame = False
         self.frame.destroy()

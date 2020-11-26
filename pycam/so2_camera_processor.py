@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
-from pycam.io import save_img, save_emission_rates_as_txt
+from pycam.io import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
 
 import pyplis
 from pyplis import LineOnImage
@@ -225,6 +225,9 @@ class PyplisWorker:
         self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
 
+        self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
+                          'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
+                          'img_SO2': {'save': False, 'compression': 0}}    # Arbitrary SO2 png image
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -560,6 +563,33 @@ class PyplisWorker:
         setattr(self, 'bg_{}'.format(band), img)
         self.generate_vign_mask(img.img, band)
         setattr(self, 'bg_{}_path'.format(band), bg_path)
+
+    def save_imgs(self):
+        """
+        Saves current set of images depending on if they are requested to be saved from save_dict
+        :return:
+        """
+        # Save AA image
+        if self.save_dict['img_aa']['save']:
+            if isinstance(self.img_tau, pyplis.Img):
+                save_so2_img_raw(self.processed_dir, self.img_tau, img_end='aa', ext=self.save_dict['img_aa']['ext'])
+
+        # Save calibrated image
+        if self.save_dict['img_cal']['save']:
+            if isinstance(self.img_tau, pyplis.Img):
+                save_so2_img_raw(self.processed_dir, self.img_cal, img_end='cal', ext=self.save_dict['img_cal']['ext'])
+
+        # Save arbitrary SO2 image (for visual representation only, since it is not calibrated)
+        if self.save_dict['img_SO2']['save']:
+            max_val = self.fig_tau.img_disp.get_clim()[-1]
+            if self.fig_tau.disp_cal:
+                if isinstance(self.img_cal, pyplis.Img):
+                    save_so2_img(self.processed_dir, self.img_cal, compression=self.save_dict['img_SO2']['compression'],
+                                 max_val=max_val)
+            else:
+                if isinstance(self.img_tau, pyplis.Img):
+                    save_so2_img(self.processed_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
+                                 max_val=max_val)
 
     def load_img(self, img_path, band=None, plot=True):
         """
@@ -1589,10 +1619,7 @@ class PyplisWorker:
 
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
-            if not self.fig_doas_fov.in_frame:
-                self.fig_doas_fov.generate_frame()  # Generating the frame will create the plot automatically
-            else:
-                self.fig_doas_fov.update_plot()
+            self.fig_doas_fov.update_plot()
 
     def doas_update_results(self, update_fov_search=False):
         """
@@ -1855,11 +1882,7 @@ class PyplisWorker:
 
         if plot:
             # TODO Think about this plotting - I have currently left it as img_tau_next when really it should be img_tau
-            # TODO to show the flow field of where the gas is flowing to (maybe?). But more importantly, I have changed
-            # TODO the function to accept tau images rather than only using self, which means I can go back thourhg the
-            # TODO buffer and generate flow later if I want. But this means that the img_cal from self will be totally
-            # TODO wrong and won't always relate to img_tau_next (if going through the buffer), so I need to maybe
-            # TODO also accept img_cal too?
+            # TODO to show the flow field of where the gas is flowing to (maybe?).
             self.fig_tau.update_plot(img_tau_next, img_cal=self.img_cal)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
@@ -2330,6 +2353,9 @@ class PyplisWorker:
             self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
                               plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
 
+            # Save all images that have been requested
+            self.save_imgs()
+
             # Once first image is processed we update the first_image bool
             if i == 0:
                 self.first_image = False
@@ -2381,6 +2407,9 @@ class PyplisWorker:
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
 
+            # Save all images that have been requested
+            self.save_imgs()
+
             # Attempt to get DOAS calibration point to add to list
             try:
                 doas_dict = self.q_doas.get()
@@ -2395,6 +2424,7 @@ class PyplisWorker:
 
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
+
 
 class ImageRegistration:
     """
@@ -2575,6 +2605,7 @@ class ImageRegistration:
             self.got_cv_transform = True
             try:
                 img_reg_frame.reg_meth = 2
+                img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
             except AttributeError:
                 pass
         else:

@@ -410,13 +410,14 @@ class ImageRegistrationFrame:
     """
     Class for generating a widget for image registration control
     """
-    def __init__(self, parent, generate_frame=True):
+    def __init__(self, parent, generate_frame=True, pyplis_work=pyplis_worker):
         self.parent = parent
 
         self.pdx = 2
         self.pdy = 2
 
         self.img_reg = pyplis_worker.img_reg
+        self.pyplis_worker = pyplis_work
 
         # CP select
         self.coordinates_A = []
@@ -523,7 +524,7 @@ class ImageRegistrationFrame:
                 self.img_reg.cv_opts[opt] = getattr(self, opt)
 
         # Once ImageRegistration object has been set up we call the registration function
-        pyplis_worker.register_image(**kwargs)
+        self.pyplis_worker.register_image(**kwargs)
 
         # # Now update off-band image
         # pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
@@ -534,4 +535,4 @@ class ImageRegistrationFrame:
 
         # Just rerun loading of sequence, which will mean that optical flow is run too (this requires updating
         # img_tau_prev as well as img_tau, which register_img() won't do on its own)
-        pyplis_worker.load_sequence(img_dir=pyplis_worker.img_dir, plot_bg=False)
+        self.pyplis_worker.load_sequence(img_dir=self.pyplis_worker.img_dir, plot_bg=False)

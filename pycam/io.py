@@ -6,9 +6,10 @@ Contains some simple functions for saving data
 
 from pyplis import LineOnImage
 from pyplis.fluxcalc import EmissionRates
-from .setupclasses import SpecSpecs
+from .setupclasses import SpecSpecs, CameraSpecs
 from .utils import check_filename
 import numpy as np
+import scipy.io
 import cv2
 import os
 
@@ -122,6 +123,83 @@ def load_pcs_line(filename, color='blue', line_id='line'):
                            line_id=line_id)
 
     return pcs_line
+
+
+def save_so2_img_raw(path, img, filename=None, img_end='cal', ext='.mat'):
+    """
+    Saves tau or calibrated image. Saves the raw_data
+    :param path:        str     Directory path to save image to
+    :param img:         Img     pyplis.Img object to be saved
+    :param filename:    str     Filename to be saved. If None, fielname is determined from meta data of Img
+    :param img_end:     str     End of filename - describes the type of file
+    :param ext:         str     File extension (takes .mat, .npy, .fts)
+    """
+    # Define accepted save types
+    save_funcs = {'.mat': scipy.io.savemat,
+                  '.npy': np.save,
+                  '.fts': None}
+
+    if filename is not None:
+        ext = '.' + filename.split('.')[-1]
+
+    # Check we have a valid filename
+    if ext not in save_funcs:
+        print('Unrecognised file extension for saving SO2 image. Image will not be saved')
+        return
+
+    if filename is None:
+        # Put time into a string
+        time_str = img.meta['start_acq'].strftime(CameraSpecs().file_datestr)
+
+        filename = '{}_{}{}'.format(time_str, img_end, ext)
+
+    if ext == '.fts':
+        img.save_as_fits(path, filename)    # Uee pyplis built-in function for saving
+    else:
+        full_path = os.path.join(path, filename)
+
+        if os.path.exists(full_path):
+            print('Overwriting file to save image: {}'.format(full_path))
+
+        # If we are saving as a matlab file we need to make a dictionary to save for the scipy.io.savemat argument
+        if ext == '.mat':
+            save_obj = {'img': img.img}
+        else:
+            save_obj = img.img
+
+        # SAVE IMAGE
+        save_funcs[ext](full_path, save_obj)
+
+
+def save_so2_img(path, img, filename=None, compression=0, max_val=None):
+    """
+    Scales image and saves as am 8-bit PNG image - for easy viewing. No data integrity is saved with this function
+    :param path:    str             Path to directory to save image
+    :param img:     pyplis.Img
+    :param compression:     int     Compression of PNG (0-9)
+    :param max_val:  float/int      Maximum value of image to normalise to
+    """
+    if filename is None:
+        # Put time into a string
+        time_str = img.meta['start_acq'].strftime(CameraSpecs().file_datestr)
+
+        filename = '{}_img.png'.format(time_str)
+    full_path = os.path.join(path, filename)
+    if os.path.exists(full_path):
+        print('Overwriting file to save image: {}'.format(full_path))
+
+    # Scale image and convert to 8-bit
+    if max_val is None:
+        max_val = np.nanmax(img.img)
+    arr = img.img
+    arr[arr > max_val] = max_val
+    arr[arr < 0] = 0
+    im2save = np.array((arr / max_val) * 255, dtype=np.uint8)
+
+    png_compression = [cv2.IMWRITE_PNG_COMPRESSION, compression]  # Set compression value
+
+    # Save image
+    cv2.imwrite(full_path, im2save, png_compression)
 
 
 def save_emission_rates_as_txt(path, emission_dict, save_all=False):

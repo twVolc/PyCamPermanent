@@ -31,6 +31,6 @@ indicator = Indicator()
 # GUI SETTINGS
 # ==============================
 gui_setts = GUISettings(FileLocator.GUI_SETTINGS)
-fig_face_colour = 'silver'
+fig_face_colour = 'gainsboro'
 axes_colour = 'black'
 
