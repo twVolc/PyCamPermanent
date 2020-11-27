@@ -2372,15 +2372,19 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.in_frame = False
 
         if generate:
-            self.initiate_variables()
             self.generate_frame()
+            self.initiate_variables()
 
     def initiate_variables(self):
         """
         Initiate tkinter variables
         :return:
         """
-        self.vars = {}
+        self.vars = {'remove_doas_mins': int,
+                     'doas_recal': int,
+                     'doas_fov_recal_mins': int,
+                     'doas_fov_recal': int,
+                     'fix_fov': int}
         self._maxrad_doas = tk.DoubleVar()
         self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
@@ -2390,17 +2394,24 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # unless changing FOV, actually what I want to define is a limit to the time that a DOAS point contributes to
         # the scatter plot - so eseentially as we step forward in time we lose the oldest DOAS points, as they are
         # less likely to represent the current calibration conditions
-        self._remove_doas = tk.IntVar()
-        self._recal_fov_freq = tk.IntVar()      # Recalibration time [minutes] for FOV recalibration
-        self._recal_fov = tk.BooleanVar()       # Whether or not DOAS FOV should be recalibrated once it has been set
-        # Time [minutes] defining how often the calibration is saved - saves the calibration in its state at the time
-        # TODO If I make this the same as remove_doas I should get a saved file everytime the entire scatter plot has reset
-        # TODO e.g. once we lose all the old scatter points it will be time to save again - so below may not be needed?
-        self._save_doas = tk.IntVar()
+        self._remove_doas_mins = tk.IntVar()
+        self._doas_recal = tk.BooleanVar()          # If False, DOAS data is never removed (until next day). Otherwise data is removed based on remove_doas_mins
+        self._doas_fov_recal_mins = tk.IntVar()     # Recalibration time [minutes] for FOV recalibration
+        self._doas_fov_recal = tk.BooleanVar()      # Whether or not DOAS FOV should be recalibrated once it has been set (if False, a first calibration will still be run unless fix_fov is True)
+
+        self._fov_rad = tk.DoubleVar()
+        self._fix_fov = tk.BooleanVar()             # Fixes the FOV - no FOV re-calibration at all will occur
+
+        self.load_defaults()
 
     def gather_vars(self):
         """Updates pyplis worker settings"""
         self.pyplis_worker.maxrad_doas = self.maxrad_doas
+
+        self.pyplis_worker.remove_doas_mins = self.remove_doas_mins
+        self.pyplis_worker.doas_recal = self.doas_recal
+        self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
+        self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
 
     def generate_frame(self):
         """
@@ -2422,7 +2433,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self._build_figures()
 
         self.frame_ui.grid(row=0, column=0, sticky='nsew')
-        self.frame_scat.grid(row=1, column=0, sticky='n', padx=5, pady=5)
+        self.frame_scat.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
         self.frame_img.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
         self.frame_ui.grid_columnconfigure(1, weight=1)
 
@@ -2433,7 +2444,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         # ---------------------------------------------------------------
         # Options frame
-        self.frame_opts = ttk.LabelFrame(self.frame_ui, text='FOV options')
+        self.frame_opts = tk.LabelFrame(self.frame_ui, text='Calibration options', relief=tk.RAISED, borderwidth=2)
         self.frame_opts.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
@@ -2441,13 +2452,43 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # Maximum accepted radius for FOV search
         lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:')
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(self.frame_opts, textvariable=self._maxrad_doas, from_=0.01, to=10.00, increment=0.05,
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._maxrad_doas, from_=0.05, to=10.00, increment=0.05,
                            width=5)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
-        app_butt = ttk.Button(self.frame_opts, text='Update settings', command=self.gather_vars)
-        app_butt.grid(row=row, column=1, sticky='e', padx=2, pady=2)
+        # Calibration data removal after defined time
+        lab = ttk.Label(self.frame_opts, text='Remove data after [minutes]:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._remove_doas_mins, from_=1, to=999, increment=1,
+                           width=5)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        check_frame = ttk.Frame(self.frame_opts, relief=tk.RAISED)
+        check_frame.grid(row=row, column=2, sticky='w', padx=2)
+        check = ttk.Checkbutton(check_frame, text='On', variable=self._doas_recal)
+        check.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        # DOAS FOV calibration rerun after set amount of time. If this time is larger than the buffer size, the
+        # calibration will only be able to run the buffer size as a maximum, so some data may be lost.
+        lab = ttk.Label(self.frame_opts, text='Recalibrate FOV after [minutes]:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._doas_fov_recal_mins, from_=1, to=999, increment=1,
+                           width=5)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        check_frame = ttk.Frame(self.frame_opts, relief=tk.RAISED)
+        check_frame.grid(row=row, column=2, sticky='w', padx=2)
+        check = ttk.Checkbutton(check_frame, text='On', variable=self._doas_fov_recal)
+        check.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        butt_frame = ttk.Frame(self.frame_opts)
+        butt_frame.grid(row=row, column=0, columnspan=3, sticky='nsew')
+        butt_frame.grid_columnconfigure(0, weight=1)
+        def_butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
+        def_butt.grid(row=0, column=0, sticky='e', padx=2, pady=2)
+        app_butt = ttk.Button(butt_frame, text='Update settings', command=self.gather_vars)
+        app_butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
         # --------------------------------------------------------------
 
         # --------------------------------------------------------------
@@ -2458,11 +2499,18 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         row = 0
 
+        # Warning label
+        lab = tk.Label(self.frame_info, relief=tk.RAISED, anchor='w', justify='left',
+                       text='WARNING!!! Editing parameters will\n'
+                            'cause direct changes to the calibration')
+        lab.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=2, pady=2)
+        row += 1
+
         # Centre FOV pixels
         lab = ttk.Label(self.frame_info, text='FOV centre pixel:')
-        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         frame_centre = ttk.Frame(self.frame_info)
-        frame_centre.grid(row=row, column=1, columnspan=2, sticky='nsew', padx=2, pady=2)
+        frame_centre.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         lab = ttk.Label(frame_centre, text='  x')
         lab.grid(row=0, column=0, sticky='e', pady=2)
         spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_x, from_=0, to=self.cam_specs.pix_num_x - 1,
@@ -2473,8 +2521,19 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_y, from_=0, to=self.cam_specs.pix_num_y - 1,
                            increment=1, width=5)
         spin.grid(row=0, column=3, sticky='ew', pady=2)
+        row += 1
 
         # DOAS FOV
+        lab = ttk.Label(self.frame_info, text='FOV radius [°]:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_info, textvariable=self._fov_rad, from_=0.05, to=90.00,
+                           increment=0.05, width=5)
+        spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
+        row += 1
+
+        # Fixing parameters (no calibration will be performed
+        check = ttk.Checkbutton(self.frame_info, text='Fix FOV parameters (no calibration run)', variable=self._fix_fov)
+        check.grid(row=row, column=0, columnspan=2, sticky='e', padx=2, pady=2)
 
         # ---------------------------------------------------------------
 
@@ -2525,6 +2584,52 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self._maxrad_doas.set(value)
 
     @property
+    def remove_doas_mins(self):
+        """
+        Access to tk variable _remove_doas_mins. Defines number of minutes before a DOAS point is removed from
+        calibration
+        """
+        return self._remove_doas_mins.get()
+
+    @remove_doas_mins.setter
+    def remove_doas_mins(self, value):
+        self._remove_doas_mins.set(value)
+
+    @property
+    def doas_recal(self):
+        """
+        Access to tk variable _doas_recal. Defines whether calibration points should be removed after time defined by
+        remove_doas_mins. If False, previous points remain in calibration for whole day (reset each day whatever)
+        """
+        return self._doas_recal.get()
+
+    @doas_recal.setter
+    def doas_recal(self, value):
+        self._doas_recal.set(value)
+
+    @property
+    def doas_fov_recal_mins(self):
+        """
+        Access to tk variable _doas_fov_recal_mins. Defines number of minutes DOAS FOV is recalibrated
+        """
+        return self._doas_fov_recal_mins.get()
+
+    @doas_fov_recal_mins.setter
+    def doas_fov_recal_mins(self, value):
+        self._doas_fov_recal_mins.set(value)
+
+    @property
+    def doas_fov_recal(self):
+        """
+        Access to tk variable _doas_fov_recal_mins. Defines number of minutes DOAS FOV is recalibrated
+        """
+        return self._doas_fov_recal.get()
+
+    @doas_fov_recal.setter
+    def doas_fov_recal(self, value):
+        self._doas_fov_recal.set(value)
+
+    @property
     def centre_pix_x(self):
         return self._centre_pix_x.get()
 
@@ -2556,6 +2661,24 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         except (IndexError, TypeError):
             print('Error when attempting to set DOAS FOV centre pixel. Aborting setting.\n'
                   'Expected list with length 2, got type: {}'.format(type(value)))
+
+    @property
+    def fov_rad(self):
+        """FOV radius"""
+        return self._fov_rad.get()
+
+    @fov_rad.setter
+    def fov_rad(self, value):
+        self._fov_rad.set(value)
+
+    @property
+    def fix_fov(self):
+        """If True, FOV is set and no calibration is run"""
+        return self._fix_fov.get()
+
+    @fix_fov.setter
+    def fix_fov(self, value):
+        self._fix_fov.set(value)
 
     def update_plot(self, img_corr=None, fov=None):
         """

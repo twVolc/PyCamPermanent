@@ -387,7 +387,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.frame.destroy()
 
 
-class SaveFrame:
+class SaveFrame(LoadSaveProcessingSettings):
     """
     Class giving options to save a range of variables, either during processing or upon click
     """
@@ -397,18 +397,26 @@ class SaveFrame:
         self.pdx, self.pdy = 2, 2
 
         self.initiate_variables()
+        self.load_defaults()
 
         if generate_frame:
             self.generate_frame()
 
     def initiate_variables(self):
         """Setup tk variables for save options"""
+        # Objects to save with a click
         self._pcs_line = tk.IntVar()
         self.pcs_ext = '.txt'
 
         self._img_reg = tk.StringVar()
         self.reg_ext = {'cp': '.pkl',
                         'cv': '.npy'}
+
+        # Objects to save in processing
+        self.vars = {'save_img_aa': int,
+                     'save_img_cal': int,
+                     'save_img_so2': int,
+                     'save_doas_cal': int}
 
         self.img_types = ['.npy', '.mat']
         self._save_img_aa = tk.BooleanVar()
@@ -421,6 +429,8 @@ class SaveFrame:
         self._png_compression = tk.IntVar()
         self.png_compression = 0
 
+        self._save_doas_cal = tk.BooleanVar()
+
     def gather_vars(self):
         self.pyplis_worker.save_dict['img_aa']['save'] = self.save_img_aa
         self.pyplis_worker.save_dict['img_aa']['ext'] = self.type_img_aa
@@ -431,9 +441,12 @@ class SaveFrame:
         self.pyplis_worker.save_dict['img_SO2']['save'] = self.save_img_so2
         self.pyplis_worker.save_dict['img_SO2']['compression'] = self.png_compression
 
-        tk.messagebox.showinfo('Save settings updated',
-                               'Save settings have been updated and will apply to next processing run',
-                               parent=self.frame)
+        self.pyplis_worker.save_doas_cal = self.save_doas_cal
+
+        if hasattr(self, 'frame'):
+            tk.messagebox.showinfo('Save settings updated',
+                                   'Save settings have been updated and will apply to next processing run',
+                                   parent=self.frame)
 
     @property
     def img_reg(self):
@@ -486,6 +499,14 @@ class SaveFrame:
     @png_compression.setter
     def png_compression(self, value):
         self._png_compression.set(value)
+
+    @property
+    def save_doas_cal(self):
+        return self._save_doas_cal.get()
+
+    @save_doas_cal.setter
+    def save_doas_cal(self, value):
+        self._save_doas_cal.set(value)
 
     def generate_frame(self):
         """Build frame"""
@@ -564,9 +585,19 @@ class SaveFrame:
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
         row += 1
 
-        # Apply button
-        butt = ttk.Button(self.save_proc_frame, text='Apply settings', command=self.gather_vars)
-        butt.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        # DOAS fit save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save DOAS-AA calibration', variable=self._save_doas_cal)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # BUTTONS
+        butt_frame = ttk.Frame(self.save_proc_frame)
+        butt_frame.grid(row=row, column=0, columnspan=2, sticky='nsew')
+        butt_frame.grid_columnconfigure(0, weight=1)
+        butt = ttk.Button(butt_frame, text='Apply settings', command=self.gather_vars)
+        butt.grid(row=0, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
+        butt.grid(row=0, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
 
     def save_pcs(self):
         """Saves PCS line"""

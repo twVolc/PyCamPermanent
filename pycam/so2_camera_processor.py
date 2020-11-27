@@ -162,8 +162,13 @@ class PyplisWorker:
         self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
-        self.doas_recal_fov = True              # If True DOAS FOV is recalibrated every doas_recal_num images
+        self.remove_doas_mins = 120
+        self.doas_fov_recal = True              # If True DOAS FOV is recalibrated every doas_recal_num images
+        self.doas_fov_recal_mins = 120
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
+        self.fix_fov = False                    # If True, FOV calibration is not performed and current FOV is used
+        self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
+        self.doas_last_save = 0
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -429,6 +434,7 @@ class PyplisWorker:
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
         self.doas_file_num = 1
+        self.doas_last_save = 0
 
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
@@ -1592,7 +1598,7 @@ class PyplisWorker:
         doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 
-    def doas_fov_search(self, img_stack, doas_results, polyorder=1, save=True, plot=True):
+    def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
         """
         Performs FOV search for doas
         :param img_stack:
@@ -1609,13 +1615,20 @@ class PyplisWorker:
         self.got_cal_doas = True  # Flag that we now have a calibration
 
         # Save as FITS file if requested
-        if save:
-            # Get filename which doesn't exist yet by incrementing number
-            full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-            while os.path.exists(full_path):
-                self.doas_file_num += 1
+        # TODO This saving may need to be moved to the updating DOAS function, rather the FOV search
+        if self.save_doas_cal:
+            time_gap = self.img_A.meta['start_acq'] - self.doas_last_save
+            time_gap = time_gap.total_seconds() / 60
+            if force_save or time_gap >= self.remove_doas_mins:
+                # Get filename which doesn't exist yet by incrementing number
                 full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-            self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                while os.path.exists(full_path):
+                    self.doas_file_num += 1
+                    full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+
+                # Set new time of most recent save
+                self.doas_last_save = self.img_A.meta['start_acq']
 
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
@@ -2219,10 +2232,12 @@ class PyplisWorker:
         # Generate optical depth image (and calibrate if available)
         self.generate_optical_depth(plot=plot, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
 
+        # Update some initial times which we keep track of throughout
         # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
         # the start time.
         if self.first_image:
             self.cross_corr_last = self.img_A.meta['start_acq']
+            self.doas_last_save = self.img_A.meta['start_acq']
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -2250,6 +2265,7 @@ class PyplisWorker:
                     self.get_cross_corr_emissions_from_buff()
 
             # TODO all of processing if not the first image pair
+            # TODO I need to add data for DOAS calibration if I have some
 
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
@@ -2345,7 +2361,10 @@ class PyplisWorker:
                 cross_corr = True
 
             # If we have a short image list we need to force calibration on the last image
-            if len(self.img_list) < self.doas_recal_num and i == len(self.img_list) - 1:
+            # TODO I think I need to change doas_recal_num to doas_recal_time, so it's based on time rather than
+            # TODO number of images - I can then check in the same way but just look at time differnce using:
+            # TODO self.doas_last_save
+            if i == len(self.img_list) - 1 and len(self.img_list) < self.doas_recal_num:
                 if self.cal_type in [1, 2]:
                     force_cal = True
 
