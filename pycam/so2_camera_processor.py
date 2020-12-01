@@ -17,14 +17,18 @@ from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties, find_signal_correlation
 from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
+from pyplis.doascalib import DoasCalibData, DoasFOV
 import pydoas
 
+import pandas as pd
 from math import log10, floor
 import datetime
 import time
+from itertools import compress
 import queue
 import threading
 import pickle
+import copy
 from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
@@ -155,7 +159,10 @@ class PyplisWorker:
         self.seq_info = None            # Object displaying details of the current imaging directory
 
         # Calibration attributes
-        self.calib_pears = None                 # Pyplis object holding functions to plot results
+        self.doas_worker = None                 # DOASWorker object
+        sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
+        self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=sens_mask)     # Pyplis object holding functions to plot results
+        self.fov = DoasFOV(self.cam)
         self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
         self.doas_fov_y = None                  # Y FOV of DOAS
         self.doas_fov_extent = None             # DOAS FOV radius
@@ -168,7 +175,8 @@ class PyplisWorker:
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
         self.fix_fov = False                    # If True, FOV calibration is not performed and current FOV is used
         self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
-        self.doas_last_save = 0
+        self.doas_last_save = datetime.datetime.now()
+        self.doas_last_fov_cal = datetime.datetime.now()
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -196,7 +204,7 @@ class PyplisWorker:
         self.img_cal_prev = None
 
         # Calibration attributes
-        self.got_cal_doas = False
+        self.got_doas_fov = False
         self.got_cal_cell = False
         self._cell_cal_dir = None
         self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
@@ -424,7 +432,7 @@ class PyplisWorker:
         self.reset_buff()
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
-        self.got_cal_doas = False
+        self.got_doas_fov = False
         self.got_cal_cell = False
         self.got_light_dil = False
         self.vel_glob = []
@@ -434,7 +442,8 @@ class PyplisWorker:
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
         self.doas_file_num = 1
-        self.doas_last_save = 0
+        self.doas_last_save = datetime.datetime.now()
+        self.doas_last_fov_cal = datetime.datetime.now()
 
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
@@ -895,7 +904,7 @@ class PyplisWorker:
         # TODO I have checked this with pacaya data too, and my implementation seems better, perhaps because I can use
         # TODO pyr_lvl 2, I think that is better than 1 used by pyplis. Also I only use one tau image, pyplis uses the
         # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
-        if self.cal_type in [1, 2] and self.got_cal_doas:
+        if self.cal_type in [1, 2] and self.got_doas_fov:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
             #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
             #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
@@ -1068,7 +1077,7 @@ class PyplisWorker:
 
             # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
             # DOAS FOV for normalisation region
-            if self.cal_type in [1, 2] and self.got_cal_doas:
+            if self.cal_type in [1, 2] and self.got_doas_fov:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
                                                                        pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
                                                                        radius=self.doas_fov_extent, pyr_lvl=2)
@@ -1345,13 +1354,24 @@ class PyplisWorker:
         # Increment doas index
         self.idx_current_doas += 1
 
-    def make_img_stack(self):
+    def make_img_stack(self, time_start=None, time_stop=None):
         """
         Generates image stack from self.img_buff (tau images)
+        :param time_start:  datetime    Start time to get data from
+        :param time_stop:   datetime    End time to get data from
         :return stack:  ImgStack        Stack with all loaded images
         """
+        if time_start is not None:
+            # If we are not given a time to stop we go until current time and use all images up to that
+            if time_stop is None:
+                time_stop = datetime.datetime.now()
+            img_buff = [x for x in self.img_buff[:self.idx_current] if time_start <= x['time'] <= time_stop]
+        else:
+            img_buff = self.img_buff[:self.idx_current]
+        stack_len = len(img_buff)
+
         # Create empty pyplis ImgStack
-        stack = pyplis.processing.ImgStack(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, self.idx_current,
+        stack = pyplis.processing.ImgStack(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, stack_len,
                                            np.float32, 'tau', camera=self.cam, img_prep={'is_tau': True})
 
         # Add all images of the current image buffer to stack
@@ -1362,8 +1382,9 @@ class PyplisWorker:
         else:
             buff_len = self.img_buff_size
 
-        for i in range(buff_len):
-            stack.add_img(self.img_buff[i]['img_tau'], self.img_buff[i]['time'])
+        # Loop through image buffer adding each images
+        for img in img_buff:
+            stack.add_img(img['img_tau'], img['time'])
 
         stack.img_prep['pyrlevel'] = 0
 
@@ -1546,13 +1567,16 @@ class PyplisWorker:
         :param run_cal_doas: bool   If True the DOAS FOV calibration is performed
         :return:
         """
+        # Make a deep copy of the image so we aren't changing the tau image
+        img = copy.deepcopy(img)
+
         # Perform DOAS calibration if we are at the set calibration size
         # idx_current will have been incremented by 1 in process_pair so the current image idx is actually
         # idx_current - 1, but because the idx starts at 0, we need idx + 1 to find when we should be calibrating,
         # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
         # Since this comes after
-        if self.cal_type in [1, 2] and self.idx_current > 0:
-            if self.idx_current % self.doas_recal_num == 0 or run_cal_doas:
+        if self.cal_type in [1, 2]:
+            if (self.idx_current % self.doas_recal_num == 0 and self.idx_current > 0) or run_cal_doas:
                 # TODO ========================================
                 # TODO
                 # TODO IMPORTANT!!!!
@@ -1562,15 +1586,19 @@ class PyplisWorker:
                 # TODO
                 # TODO ======================================
                 stack = self.make_img_stack()
-                doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                self.doas_results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
                                                       stds=self.test_doas_stds)
-                self.doas_fov_search(stack, doas_results)
+                self.doas_fov_search(stack, self.doas_results)
+
+            # This should be run every time possibly? Let the function decide what work needs doing and when,
+            # based on time flags etc
+            self.update_doas_calibration(img)
 
         # TODO test function - I have not confirmed that all types of calibration work yet.
         cal_img = None
 
         # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
-        if self.got_cal_doas and self.cal_type in [1, 2]:
+        if self.got_doas_fov and self.cal_type in [1, 2]:
             cal_img = self.calib_pears.calibrate(img)
 
         elif self.cal_type == 0:
@@ -1587,17 +1615,6 @@ class PyplisWorker:
 
         return cal_img
 
-    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
-        """
-        Makes pydoas DOASResults object from timeseries
-        :param times:   arraylike           Datetimes of column densities
-        :param column_densities: arraylike  Column densities
-        :param stds:    arraylike           Standard errors in the column density values
-        :param species: str                 Gas species
-        """
-        doas_results = pydoas.analysis.DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
-        return doas_results
-
     def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
         """
         Performs FOV search for doas
@@ -1612,7 +1629,11 @@ class PyplisWorker:
         self.calib_pears.fit_calib_data(polyorder=polyorder)
         self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
         self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
-        self.got_cal_doas = True  # Flag that we now have a calibration
+        self.fov = self.calib_pears.fov
+
+        # Flag that we now have a calibration and update time of last calibration to this time
+        self.got_doas_fov = True
+        self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
         # Save as FITS file if requested
         # TODO This saving may need to be moved to the updating DOAS function, rather the FOV search
@@ -1634,13 +1655,160 @@ class PyplisWorker:
         if plot:
             self.fig_doas_fov.update_plot()
 
-    def doas_update_results(self, update_fov_search=False):
+    def update_doas_calibration(self, img_tau=None, force_fov_cal=False):
         """
-        Updates DOAS results to include more data, if update_fov_search is True then the FOV location is also updates
+        Updates DOAS results to include more data, or FOV location is also updated if this is requested and in the
+        alloted time for FOV recalibration
+        :param img_tau:     pyplis.Img
+                            Image to get average apparent absorption for adding to calibration - or I may need to add
+                            to stack
+        :param bool force_fov_cal:
+            If True, FOV calibration is forced to happen (can use this at the end of a processing sequence where all
+            other DOAS FOV criteria have not been fulfilled but we still want a calibration
         :return:
         """
-        pass
-        # TODO write script to update DOAS calibration with or without DOAS FOV update
+        if img_tau is None:
+            img_tau = self.img_tau
+        img_time = img_tau.meta['start_acq']
+
+        # TODO I may want to keep this time series, since it shouldn't take up too much memory, and it isn't
+        # TODO necessary for this series to be within the correct times for the calibration - calibration times
+        # TODO are extracted directly from image times, and other data is ignored, so I don't need to delete it.
+        # Remove DOAS results that are too old (this might not be necessary)
+        if self.doas_recal:
+            oldest_time = img_time - datetime.timedelta(minutes=self.remove_doas_mins)
+            self.doas_worker.rem_doas_results(oldest_time, inplace=True)
+
+            # Update calibration data
+            self.rem_doas_cal_data(oldest_time, recal=False)
+
+        # Update FOV calibration if requested and if the allotted time since the last calibration has occured
+        # We also need to run this if we don't have a calibration yet
+        if (force_fov_cal or self.doas_fov_recal or not self.got_doas_fov) and not self.fix_fov:
+            dt = datetime.timedelta(minutes=self.doas_fov_recal_mins)
+            oldest_time = img_time - dt
+            if oldest_time >= self.doas_last_fov_cal or force_fov_cal:
+                stack = self.make_img_stack(time_start=oldest_time)
+                # TODO =========================================
+                # TODO For testing!!!
+                self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                                                                              stds=self.test_doas_stds)
+                # TODO ==========================================
+                self.doas_fov_search(stack, self.doas_worker.results)
+
+        # If we don't update fov search then we just update current cal object with new image (as long as we have
+        # a doas calibration)
+        elif self.got_doas_fov:
+            if len(self.doas_worker.results) < 1:
+                print('No DOAS data available for CD-tau calibration')
+                return
+
+            doas_fov = self.fov
+
+            # Extract values from current image
+            tau_fov = img_tau.crop(self.calib_pears.fov.fov_mask_rel, new_img=True)   # TODO test
+            # TODO this may be a different way of extrcating data - using this mask - test the two, not sure the difference
+            cx, cy = doas_fov.pixel_position_center(abs_coords=True)
+            roi = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                     cx, cy, doas_fov.pixel_extend())
+            roi = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                     cx, cy, doas_fov.pixel_extend())
+            tau_fov = img_tau.crop(roi, new_img=True)
+
+            # Get single tau value for area
+            tau = tau_fov.mean()
+
+            try:
+                cd = self.doas_worker.results[img_time]
+                # Get index for cd_err
+                cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == img_time]
+            except BaseException:
+                # If there is no data for the specific time of the image we will have to interpolate
+                # TODO sort out interpolation!
+                print('Interpolated image time with DOAS times of {} and {}')
+                dts = self.doas_worker.results.index - img_time
+                zero = datetime.timedelta(0)
+                seconds_plus = [x for x in dts if x > zero]
+                seconds_minus = [x for x in dts if x < zero]
+
+                if len(seconds_plus) == 0:
+                    idx = np.argmin(abs(seconds_minus))
+                    time_val = img_time + seconds_minus[idx]
+                    cd = self.doas_worker.results[time_val]
+                    # Get index for cd_err
+                    cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
+                    print('Warning, no DOAS data beyond image time for interpolation, using single closest point')
+                    print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
+                                                                 time_val.strftime('%H:%M:%S')))
+
+                elif len(seconds_minus) == 0:
+                    idx = np.argmin(seconds_plus)
+                    time_val = img_time + seconds_plus[idx]
+                    cd = self.doas_worker.results[time_val]
+                    # Get index for cd_err
+                    cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
+                    print('Warning, no DOAS data before image time for interpolation, using single closest point')
+                    print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
+                                                                 time_val.strftime('%H:%M:%S')))
+                else:
+                    # Starting manual interpolation (may not be needed, if below works, see below)
+                    idx_1 = np.argmin(abs(seconds_minus))
+                    idx_2 = np.argmin(seconds_plus)
+                    times = [img_time + seconds_minus[idx_1],
+                             img_time + seconds_plus[idx_2]]
+                    cds = [self.doas_worker.results[time_val] for time_val in times]
+                    time_flt = None
+
+                    # This may work for interpolating TODO check. If so, the above part isn't needed
+                    cd = np.interp(pd.to_numeric(pd.Series(img_time)).values,
+                              pd.to_numeric(self.doas_worker.results.index).values, self.doas_worker.results)
+                    cd_err = np.interp(pd.to_numeric(pd.Series(img_time)).values,
+                                       pd.to_numeric(self.doas_worker.results.index).values,
+                                       self.doas_worker.results.fit_errs)
+
+            # Update calibration object
+            cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_tau.meta['start_acq']}
+            self.add_doas_cal_data(cal_dict)
+
+            # Update doas figure, but no need to change the correlation image as we haven't changed that
+            self.fig_doas_fov.update_plot(update_img=False)
+
+    def add_doas_cal_data(self, cal_dict, recal=True):
+        """
+        Extracts doas calibration data so that it can remain saved even once it goas beyond the length of the buffer.
+        i.e. this doesn't save the image stack so isn't taking up an unnecessary amount of space
+        """
+        self.calib_pears.tau_vec = np.append(self.calib_pears.tau_vec, cal_dict['tau'])
+        self.calib_pears.cd_vec = np.append(self.calib_pears.cd_vec, cal_dict['cd'])
+        self.calib_pears.cd_vec_err = np.append(self.calib_pears.cd_vec_err, cal_dict['cd_err'])
+        self.calib_pears.time_stamps = np.append(self.calib_pears.time_stamps, cal_dict['time'])
+
+        # Rerun fit
+        if recal:
+            self.calib_pears.fit_calib_data()
+
+    def rem_doas_cal_data(self, time_obj, inplace=True, recal=True):
+        """
+        Removes data which is earlier than the time represetned by the time object
+        :param datetime.datetime time_obj:
+        :param bool inplace:    If True, the object is changed. Else, a new object is created
+        :return:
+        """
+        if inplace:
+            calib_dat = self.calib_pears
+        else:
+            calib_dat = copy.deepcopy(self.calib_pears)
+
+        # Edit all vectors
+        calib_dat.tau_vec = calib_dat.tau_vec[calib_dat.time_stamps >= time_obj]
+        calib_dat.cd_vec = calib_dat.cd_vec[calib_dat.time_stamps >= time_obj]
+        calib_dat.cd_vec_err = calib_dat.cd_vec_err[calib_dat.time_stamps >= time_obj]
+        calib_dat.time_stamps = calib_dat.time_stamps[calib_dat.time_stamps >= time_obj]
+
+        # Rerun calibration fitting and then return object
+        if recal:
+            calib_dat.fit_calib_data()
+        return calib_dat
 
     def calc_line_dist(self, line_1, line_2):
         """
@@ -2230,7 +2398,17 @@ class PyplisWorker:
             self.load_img(img_path_B, band='B', plot=plot)
 
         # Generate optical depth image (and calibrate if available)
-        self.generate_optical_depth(plot=plot, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
+        # If not first image, and we have optical flow, then we will update the plot with opt flow, so to save
+        # drawing too often and unnecessary processing, we don't plot the image here
+        if plot:
+            if (self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or
+                self.velo_modes['flow_hybrid']) and not self.first_image:
+                plot_img = False
+            else:
+                plot_img = True
+        else:
+            plot_img = False
+        self.generate_optical_depth(plot=plot_img, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
 
         # Update some initial times which we keep track of throughout
         # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
@@ -2238,6 +2416,7 @@ class PyplisWorker:
         if self.first_image:
             self.cross_corr_last = self.img_A.meta['start_acq']
             self.doas_last_save = self.img_A.meta['start_acq']
+            self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -2365,7 +2544,7 @@ class PyplisWorker:
             # TODO number of images - I can then check in the same way but just look at time differnce using:
             # TODO self.doas_last_save
             if i == len(self.img_list) - 1 and len(self.img_list) < self.doas_recal_num:
-                if self.cal_type in [1, 2]:
+                if self.cal_type in [1, 2] and not self.got_doas_fov:
                     force_cal = True
 
             # Process image pair
@@ -2429,14 +2608,18 @@ class PyplisWorker:
             # Save all images that have been requested
             self.save_imgs()
 
-            # Attempt to get DOAS calibration point to add to list
-            try:
-                doas_dict = self.q_doas.get()
-                # If we have been passed a processed spectrum, we load it into the buffer
-                if 'column_density' in doas_dict and 'time' in doas_dict:
-                    self.update_doas_buff(doas_dict)
-            except queue.Empty:
-                pass
+            # # Attempt to get DOAS calibration point to add to list
+            # # TODO DOAS results should now all be handled in the doas_worker and can be accessed with
+            # #  self.doas_worker.results, so I think I don't need to do this handling here now?
+            # try:
+            #     doas_dict = self.q_doas.get()
+            #     # If we have been passed a processed spectrum, we load it into the buffer
+            #     if 'column_density' in doas_dict and 'time' in doas_dict:
+            #         # self.update_doas_buff(doas_dict)      # Old version - now trying loading straight into DoasResults object (see line below)
+            #         self.add_doas_results(doas_dict)
+            #
+            # except queue.Empty:
+            #     pass
 
             # TODO After a certain amount of time we need to perform doas calibration (maybe once DOAS buff is full?
             # TODO start of day will be uncalibrated until this point
@@ -2600,7 +2783,7 @@ class ImageRegistration:
             pathname = pathname.split('.')[0] + '.pkl'
             pickle.dump(self.cp_tform, pathname, pickle.HIGHEST_PROTOCOL)
 
-    def load_registration(self, pathname, img_reg_frame=None):
+    def load_registration(self, pathname, img_reg_frame=None, rerun=True):
         """
         Loads registration from path
         :param pathname:        str     Path to save object
@@ -2624,7 +2807,8 @@ class ImageRegistration:
             self.got_cv_transform = True
             try:
                 img_reg_frame.reg_meth = 2
-                img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
+                if rerun:
+                    img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
             except AttributeError:
                 pass
         else:

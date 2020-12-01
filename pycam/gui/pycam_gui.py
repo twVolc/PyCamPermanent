@@ -88,6 +88,7 @@ class PyCam(ttk.Frame):
         self.menu.load_frame.load_all()
 
         # Load in initial sequence directory
+        pyplis_worker.doas_worker = doas_worker     # Set DOAS worker to pyplis attribute
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         doas_worker.load_dir(prompt=False, plot=True)
 

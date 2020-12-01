@@ -1,0 +1,5 @@
+# -*- coding: utf-8 -*-
+# File containing doas FOV data
+x_pos=245
+y_pos=300
+radius=10

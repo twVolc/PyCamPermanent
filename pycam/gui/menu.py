@@ -359,8 +359,9 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.img_registration = ''
         self.img_reg_lab.configure(text=self.img_registration)
 
-    def load_img_reg(self, filename=None):
-        """Loads in image registration to the pyplis object"""
+    def load_img_reg(self, filename=None, rerun=True):
+        """Loads in image registration to the pyplis object
+        :param bool rerun:  If true, the load directory is rerun, with the new image registration in place"""
         if filename is None:
             kwargs = {}
             if self.in_frame:
@@ -374,12 +375,13 @@ class LoadFrame(LoadSaveProcessingSettings):
                 return
 
         if os.path.exists(filename):
-            self.pyplis_worker.img_reg.load_registration(filename, img_reg_frame=self.img_reg_frame)
+            self.pyplis_worker.img_reg.load_registration(filename, img_reg_frame=self.img_reg_frame, rerun=rerun)
 
     def load_all(self):
         """Runs all load functions to prepare pyplis worker"""
         self.set_all_pcs_lines()
-        self.load_img_reg(filename=self.img_registration)
+        # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
+        self.load_img_reg(filename=self.img_registration, rerun=False)
 
     def close_frame(self):
         """CLose window"""

@@ -5,7 +5,9 @@
 from pycam.setupclasses import SpecSpecs
 from pycam.io import load_spectrum, save_spectrum
 import pyplis
+from pydoas.analysis import DoasResults
 
+from itertools import compress
 import numpy as np
 from scipy import signal
 import os
@@ -21,6 +23,10 @@ import threading
 from tkinter import filedialog
 import copy
 import datetime
+try:
+    from scipy.constants import N_A
+except BaseException:
+    N_A = 6.022140857e+23
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
@@ -45,6 +51,10 @@ class DOASWorker:
         # Initial Definitions
         # ======================================================================================================================
         self.ppmm_conversion = 2.7e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
+        self._conversion_factor = 2.663 * 1e-6  # Conversion for ppm.m into Kg m-2
+        MOL_MASS_SO2 = 64.0638  # g/mol
+        self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (
+                    100 ** 2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
         self.shift = 0                  # Shift of spectrum in number of pixels
         self.shift_tol = 0              # Shift tolerance (will process data at multiple shifts defined by tolerance)
@@ -135,6 +145,14 @@ class DOASWorker:
         # Figures
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
+
+        # Results object
+        self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+
+    def reset_self(self):
+        """Some resetting of object, before processing occurs"""
+        # Reset results objecct
+        self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
 
     @property
     def start_stray_wave(self):
@@ -745,6 +763,66 @@ class DOASWorker:
         # Set flag defining that data has been fully processed
         self.processed_data = True
 
+    def add_doas_results(self, doas_dict):
+        """
+        Add column densities to DoasResults object, which should be already created
+        Also controls removal of old doas points, if we wish to
+        :param doas_dict:   dict       Containing at least keys 'column_density' and 'time'
+        """
+        # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
+        # case). So then we need to convert to molecules/cm
+        if abs(doas_dict['column_density']) < 100000:
+            cd = doas_dict['column_density'] * self.ppmm_conv
+            cd_err = doas_dict['std_err'] * self.ppmm_conv
+        else:
+            cd = doas_dict['column_density']
+            cd_err = doas_dict['std_err']
+
+        # Faster append method - seems to work
+        self.results.loc[doas_dict['time']] = cd
+        try:
+            self.results.fit_errs.append(cd_err)
+        except KeyError:
+            self.results.fit_errs.append(np.nan)
+
+    def rem_doas_results(self, time_obj, inplace=False):
+        """
+        Remove DOAS result values from time series
+        :param time_obj:  datetime.datetime     Any value equal to or earlier than this time will be removed
+        :param inplace:     bool
+                            If False, the new cut array is returned. If True, the self.results array is overwritten
+                            to contain the new cut data
+        :return:
+        """
+        indices = [x for x in self.results.index if x < time_obj]
+        fit_errs = list(compress(self.results.fit_errs, [not x for x in indices]))
+        if inplace:
+            self.results.drop(indices, inplace=True)
+            self.results.fit_errs = fit_errs
+            results = None
+        else:
+            results = DoasResults(self.results.drop(indices, inplace=False))
+            results.fit_errs = fit_errs
+
+        return results
+
+    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
+        """
+        Makes pydoas DOASResults object from timeseries
+        :param times:   arraylike           Datetimes of column densities
+        :param column_densities: arraylike  Column densities
+        :param stds:    arraylike           Standard errors in the column density values
+        :param species: str                 Gas species
+        """
+        # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
+        # case). So then we need to convert to molecules/cm
+        if abs(np.mean(column_densities)) < 100000:
+            column_densities = column_densities * self.ppmm_conv
+            if stds is not None:
+                stds = stds * self.ppmm_conv
+        doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
+        return doas_results
+
     def start_processing_threadless(self):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop
@@ -752,6 +830,9 @@ class DOASWorker:
         """
         # Flag that we are running processing outside of thread
         self.processing_in_thread = False
+
+        # Reset self
+        self.reset_self()
 
         # Get all files
         spec_files = [f for f in os.listdir(self.spec_dir) if '.npy' in f]
@@ -778,6 +859,9 @@ class DOASWorker:
 
     def start_processing_thread(self):
         """Public access thread starter for _processing"""
+        # Reset self
+        self.reset_self()
+
         self.processing_in_thread = True
         self.process_thread = threading.Thread(target=self._process_loop, args=())
         self.process_thread.daemon = True
@@ -844,20 +928,24 @@ class DOASWorker:
                                   'std_err': self.std_err,          # Standard error of fit
                                   'column_density': self.column_density}    # Column density
 
-            # Pass data dictionary to PyplisWorker queue
+                # Update results object
+                self.add_doas_results(processed_dict)
+
+            # Pass data dictionary to PyplisWorker queue (might not need to do this if I hold all the data here
             if self.processing_in_thread:
                 self.q_doas.put(processed_dict)
 
             # Or if we are not in a processing thread we update the plots directly here
+            # else:
+            # TODO check this works, but I think I can update whether processing_in_thread or not - always do it here?
+            self.fig_spec.update_dark()
+            if first_spec:
+                self.fig_spec.update_clear()
             else:
-                self.fig_spec.update_dark()
-                if first_spec:
-                    self.fig_spec.update_clear()
-                else:
-                    self.fig_spec.update_plume()
+                self.fig_spec.update_plume()
 
-                    # Update doas plot
-                    self.fig_doas.update_plot()
+                # Update doas plot
+                self.fig_doas.update_plot()
 
             if first_spec:
                 # Now that we have processed first_spec, set flag to False

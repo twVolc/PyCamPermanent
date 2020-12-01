@@ -34,6 +34,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
 import time
 import queue
+import threading
 from pandas import Series
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
@@ -190,6 +191,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.specs = CameraSpecs()
 
         self.q = queue.Queue()      # Queue for requesting canvas draw (when in processing thread)
+        self.lock = threading.Lock()
         self.plot_lag = 0.5             # Lag between images to be plotted (don't plot every image, it freezes the GUI)
         self.draw_time = time.time()
 
@@ -892,7 +894,6 @@ class ImageSO2(LoadSaveProcessingSettings):
     def plt_opt_flow(self, draw=True):
         """Plots optical flow onto figure"""
         # Delete old optical flow lines
-        # TODO Currently this will probably delete ICA lines too. Need to find a way of excluding these
         for child in self.ax.get_children():
             del_line = False
 
@@ -956,16 +957,16 @@ class ImageSO2(LoadSaveProcessingSettings):
                     self.ax_xsect.plot(line.get_line_profile(self.image_tau), color=line.color, label=line_id)
             self.ax_xsect.set_ylabel(r'$\tau$', color=axes_colour)
 
-        # Set xsection aspect ratio
-        xlims = self.ax_xsect.get_xlim()
-        self.ax_xsect.set_xlim([0, xlims[-1]])
-        asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
-        asp /= np.abs(np.diff(self.ax.get_xlim())[0] / np.diff(self.ax.get_ylim())[0])
-        asp /= self.h_ratio
-        self.ax_xsect.set_aspect(asp)
+            # Set xsection aspect ratio
+            xlims = self.ax_xsect.get_xlim()
+            self.ax_xsect.set_xlim([0, xlims[-1]])
+            asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
+            asp /= np.abs(np.diff(self.ax.get_xlim())[0] / np.diff(self.ax.get_ylim())[0])
+            asp /= self.h_ratio
+            self.ax_xsect.set_aspect(asp)
 
-        self.ax_xsect.grid(b=True, which='major')
-        self.ax_xsect.legend(loc='upper right')
+            self.ax_xsect.grid(b=True, which='major')
+            self.ax_xsect.legend(loc='upper right')
 
     def update_plot(self, img_tau, img_cal=None, draw=True):
         """
@@ -997,9 +998,11 @@ class ImageSO2(LoadSaveProcessingSettings):
             self.img_disp.set_data(img_tau)
         self.scale_img(draw=False)
 
+        # with self.lock:
         # Plot optical flow
         self.plt_opt_flow(draw=False)
 
+        # with self.lock:
         # Update cross-section plot
         self.update_xsect()
 
@@ -1011,8 +1014,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         try:
             update = self.q.get(block=False)
             if update == 1:
-                self.img_canvas.draw()
-                self.cbar.draw_all()
+                with self.lock:
+                    self.img_canvas.draw()
+                    self.cbar.draw_all()
             else:
                 return
         except queue.Empty:
@@ -2384,9 +2388,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                      'doas_recal': int,
                      'doas_fov_recal_mins': int,
                      'doas_fov_recal': int,
-                     'fix_fov': int}
+                     'fix_fov': int,
+                     'maxrad_doas': float}          # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
-        self.maxrad_doas = self.spec_specs.fov * 1.1
+        # self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
         self._centre_pix_y = tk.IntVar()
 
@@ -2404,7 +2409,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         self.load_defaults()
 
-    def gather_vars(self):
+    def gather_vars(self, message=False):
         """Updates pyplis worker settings"""
         self.pyplis_worker.maxrad_doas = self.maxrad_doas
 
@@ -2412,6 +2417,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.doas_recal = self.doas_recal
         self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
         self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
+        self.pyplis_worker.fix_fov = self.fix_fov
+
+        if message:
+            messagebox.showinfo('Settings updated', )
 
     def generate_frame(self):
         """
@@ -2487,7 +2496,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         butt_frame.grid_columnconfigure(0, weight=1)
         def_butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
         def_butt.grid(row=0, column=0, sticky='e', padx=2, pady=2)
-        app_butt = ttk.Button(butt_frame, text='Update settings', command=self.gather_vars)
+        app_butt = ttk.Button(butt_frame, text='Update settings', command=lambda: self.gather_vars(message=True))
         app_butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
         # --------------------------------------------------------------
 
@@ -2680,24 +2689,45 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def fix_fov(self, value):
         self._fix_fov.set(value)
 
-    def update_plot(self, img_corr=None, fov=None):
+    def update_vars(self):
+        """Updates FOV variables based on pyplis worker"""
+        try:
+            self.centre_coords = (self.pyplis_worker.doas_fov_x, self.pyplis_worker.doas_fov_y)
+            self.fov_rad = self.pyplis_worker.doas_fov_extent
+        except AttributeError:
+            pass
+
+    def update_plot(self, update_scat=True, update_img=True):
         """
         Updates plot
-        :param img_corr:
-        :param fov:
         :return:
         """
         if not self.in_frame:
             self.generate_frame()
             return
 
-        if img_corr is None and fov is None:
-            self.ax_img.cla()
-            self.ax_fit.cla()
-            self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
-            self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
-        self.img_corr = img_corr
-        self.fov = fov
+        # Update FOV variables
+        self.update_vars()
+
+        # Update calibration scatter plot
+        if update_scat:
+            try:
+                self.ax_fit.cla()
+                self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
+            except AttributeError:
+                pass
+
+        # Update correlation image plot
+        if update_img:
+            try:
+                self.ax_img.images[-1].colorbar.remove()
+            except (AttributeError, IndexError):
+                pass
+            try:
+                self.ax_img.cla()
+                self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
+            except AttributeError:
+                return
 
         self.q.put(1)
 
@@ -2709,6 +2739,12 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # Ensure all settings match pyplis worker (if Update settings button hasn't been pressed we don't want to update
         # those settings)
         self.maxrad_doas = self.pyplis_worker.maxrad_doas
+
+        self.remove_doas_mins = self.pyplis_worker.remove_doas_mins
+        self.doas_recal = self.pyplis_worker.doas_recal
+        self.doas_fov_recal_misn = self.pyplis_worker.doas_fov_recal_mins
+        self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
+        self.fix_fov = self.pyplis_worker.fix_fov
 
         self.q.put(2)
         self.in_frame = False

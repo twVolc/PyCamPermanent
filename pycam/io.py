@@ -125,6 +125,22 @@ def load_pcs_line(filename, color='blue', line_id='line'):
     return pcs_line
 
 
+def save_fov_txt(filename, fov_obj):
+    """
+    Saves fov data to text file
+    
+    """
+    pass
+
+def load_fov_txt(filename):
+    """
+    Loads fov data from a txt file
+    :param filename:
+    :return:
+    """
+    pass
+
+
 def save_so2_img_raw(path, img, filename=None, img_end='cal', ext='.mat'):
     """
     Saves tau or calibrated image. Saves the raw_data

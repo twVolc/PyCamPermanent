@@ -21,7 +21,7 @@ from pycam.gui.settings import GUISettings
 # plt.style.use('dark_background')
 plt.style.use('default')
 
-refresh_rate = 100
+refresh_rate = 200
 
 
 class SpectraPlot:
