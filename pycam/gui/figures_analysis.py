@@ -889,7 +889,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Set new limits
 
         if draw:
-            self.img_canvas.draw()
+            # If in processing, the canvas is drawn a lot, so we don't draw it here
+            if not self.pyplis_worker.in_processing:
+                self.img_canvas.draw()
 
     def plt_opt_flow(self, draw=True):
         """Plots optical flow onto figure"""
@@ -957,16 +959,16 @@ class ImageSO2(LoadSaveProcessingSettings):
                     self.ax_xsect.plot(line.get_line_profile(self.image_tau), color=line.color, label=line_id)
             self.ax_xsect.set_ylabel(r'$\tau$', color=axes_colour)
 
-            # Set xsection aspect ratio
-            xlims = self.ax_xsect.get_xlim()
-            self.ax_xsect.set_xlim([0, xlims[-1]])
-            asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
-            asp /= np.abs(np.diff(self.ax.get_xlim())[0] / np.diff(self.ax.get_ylim())[0])
-            asp /= self.h_ratio
-            self.ax_xsect.set_aspect(asp)
+        # Set xsection aspect ratio
+        xlims = self.ax_xsect.get_xlim()
+        self.ax_xsect.set_xlim([0, xlims[-1]])
+        asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
+        asp /= np.abs(np.diff(self.ax.get_xlim())[0] / np.diff(self.ax.get_ylim())[0])
+        asp /= self.h_ratio
+        self.ax_xsect.set_aspect(asp)
 
-            self.ax_xsect.grid(b=True, which='major')
-            self.ax_xsect.legend(loc='upper right')
+        self.ax_xsect.grid(b=True, which='major')
+        self.ax_xsect.legend(loc='upper right')
 
     def update_plot(self, img_tau, img_cal=None, draw=True):
         """
@@ -998,13 +1000,13 @@ class ImageSO2(LoadSaveProcessingSettings):
             self.img_disp.set_data(img_tau)
         self.scale_img(draw=False)
 
-        # with self.lock:
+        with self.lock:
         # Plot optical flow
-        self.plt_opt_flow(draw=False)
+            self.plt_opt_flow(draw=False)
 
-        # with self.lock:
+        with self.lock:
         # Update cross-section plot
-        self.update_xsect()
+            self.update_xsect()
 
         if draw:
             self.q.put(1)
@@ -1014,9 +1016,16 @@ class ImageSO2(LoadSaveProcessingSettings):
         try:
             update = self.q.get(block=False)
             if update == 1:
-                with self.lock:
-                    self.img_canvas.draw()
-                    self.cbar.draw_all()
+                # self.img_canvas.draw()
+                # self.cbar.draw_all()
+
+                # If the lock is currently in use (updating images, exit and will return to try again later)
+                if self.lock.locked():
+                    self.q.put(1)
+                else:
+                    with self.lock:
+                        self.img_canvas.draw()
+                        self.cbar.draw_all()
             else:
                 return
         except queue.Empty:
@@ -2358,6 +2367,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     """
     def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
                  fig_setts=gui_setts):
+        self.parent = None
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.pyplis_worker = pyplis_work
@@ -2378,6 +2388,14 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         if generate:
             self.generate_frame()
             self.initiate_variables()
+
+    def start_draw(self, parent):
+        """
+        Starts canvas drawing in the main thread (so that when generate frame is run the canvas is already drawing).
+        This means that if update_plot/generate_frame is run from a thread there won't be any thread-drawing issues
+        """
+        self.parent = parent
+        self.__draw_canv__()
 
     def initiate_variables(self):
         """
@@ -2420,7 +2438,11 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.fix_fov = self.fix_fov
 
         if message:
-            messagebox.showinfo('Settings updated', )
+            messagebox.showinfo('Settings updated',
+                                'FOV settings have been updated and will be used on the processing next run',
+                                parent=self.frame)
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
 
     def generate_frame(self):
         """
@@ -2575,13 +2597,11 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         toolbar.update()
         self.fit_canvas._tkcanvas.pack(side=tk.TOP)
 
-        # Setup thread-safe drawing
-        self.__draw_canv__()
-        self.q.put(1)
-
         # If there is a calibration already available we can plot it
         if self.pyplis_worker.calib_pears is not None:
             self.update_plot()
+        else:
+            self.q.put(1)
 
     @property
     def maxrad_doas(self):
@@ -2714,7 +2734,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             try:
                 self.ax_fit.cla()
                 self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
-            except AttributeError:
+            except (AttributeError, ValueError):
                 pass
 
         # Update correlation image plot
@@ -2746,23 +2766,23 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
         self.fix_fov = self.pyplis_worker.fix_fov
 
-        self.q.put(2)
         self.in_frame = False
         self.frame.destroy()
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
-            update = self.q.get(block=False)
-            if update == 1:
-                if self.in_frame:
-                    self.img_canvas.draw()
-                    self.fit_canvas.draw()
-            else:
-                return
+            if self.in_frame:
+                update = self.q.get(block=False)
+                if update == 1:
+                    if self.in_frame:
+                        self.img_canvas.draw()
+                        self.fit_canvas.draw()
+                else:
+                    pass
         except queue.Empty:
             pass
-        self.frame.after(refresh_rate, self.__draw_canv__)
+        self.parent.after(refresh_rate, self.__draw_canv__)
 
 
 class CellCalibFrame:
@@ -3091,6 +3111,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.parent = None
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_cross_corr = self
         self.q = queue.Queue()
@@ -3107,6 +3128,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if generate_frame:
             self.initiate_variables()
             self.generate_frame()
+
+    def start_draw(self, parent):
+        self.parent = parent
+        self.__draw_canv__()
 
     def initiate_variables(self):
         """
@@ -3157,8 +3182,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
-        self.__draw_canv__()
-
     @property
     def cross_corr_recal(self):
         """Time in minutes to rerun cross-correlation analysis"""
@@ -3200,7 +3223,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.in_frame = False
-        self.q.put(2)
         # Close frame
         self.frame.destroy()
 
@@ -3212,10 +3234,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                 if self.in_frame:
                     self.fig_canvas.draw()
             else:
-                return
+                pass
         except queue.Empty:
             pass
-        self.frame.after(refresh_rate, self.__draw_canv__)
+        self.parent.after(refresh_rate, self.__draw_canv__)
 
 
 class OptiFlowSettings(LoadSaveProcessingSettings):
@@ -3863,6 +3885,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             self.initiate_variables()
             self.generate_frame()
 
+    def start_draw(self, parent):
+        self.parent = parent
+        self.__draw_canv__()
+
     def initiate_variables(self):
         """
         Initiates all tkinter variables
@@ -3999,7 +4025,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.frame_xtra_figs.grid(row=0, column=2, rowspan=2, sticky='nsew')
         self.fig_canvas_xtra = [[None, None], [None, None]]
 
-        self.__draw_canv__()
+        # self.__draw_canv__()
 
     def _build_fig_img(self):
         """Build figure frame for dilution correction"""
@@ -4223,7 +4249,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                         toolbar.update()
                         self.fig_canvas_xtra[i][x]._tkcanvas.pack(side=tk.TOP)
 
-
     def close_frame(self):
         """
         Closes frame and makes sure current values are correct
@@ -4232,7 +4257,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.in_frame = False
 
         # Stop draw_canv
-        self.q.put(2)
+        # self.q.put(2)
 
         # Close frame
         self.frame.destroy()
@@ -4245,7 +4270,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                 if self.in_frame:
                     self.img_canvas.draw()
             else:
-                return
+                pass
         except queue.Empty:
             pass
-        self.frame.after(refresh_rate, self.__draw_canv__)
+        self.parent.after(refresh_rate, self.__draw_canv__)

@@ -248,6 +248,7 @@ class PyplisWorker:
         self.plot_iter = True   # Bool defining if plotting iteratively is active. If it is, all images are passed to qs
 
         self.process_thread = None  # Placeholder for threading object
+        self.in_processing = False
 
     @property
     def location(self):
@@ -450,6 +451,9 @@ class PyplisWorker:
 
         # Initiate results
         self.init_results()
+
+        # Reset time series figure
+        self.fig_series.update_plot()
 
     def init_results(self):
         """Initiates results dictionary"""
@@ -733,9 +737,9 @@ class PyplisWorker:
         new_dict = {'directory': self.img_dir,
                     'file_A': file_A,
                     'file_B': file_B,
-                    'time': self.get_img_time(file_A),
-                    'img_tau': img_tau,
-                    'opt_flow': opt_flow
+                    'time': copy.deepcopy(self.get_img_time(file_A)),
+                    'img_tau': copy.deepcopy(img_tau),
+                    'opt_flow': copy.deepcopy(opt_flow)
                     }
 
         # If we haven't exceeded buffer size then we simply add new data to buffer
@@ -1576,22 +1580,7 @@ class PyplisWorker:
         # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
         # Since this comes after
         if self.cal_type in [1, 2]:
-            if (self.idx_current % self.doas_recal_num == 0 and self.idx_current > 0) or run_cal_doas:
-                # TODO ========================================
-                # TODO
-                # TODO IMPORTANT!!!!
-                # TODO Currently using the test/dummy DOAS data so this needs editing!!!
-                # TODO I also need to think about recalibrating the FOV vs just adding the new data to the calibration
-                # TODO and leaving the FOV the same
-                # TODO
-                # TODO ======================================
-                stack = self.make_img_stack()
-                self.doas_results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
-                                                      stds=self.test_doas_stds)
-                self.doas_fov_search(stack, self.doas_results)
-
-            # This should be run every time possibly? Let the function decide what work needs doing and when,
-            # based on time flags etc
+            # Perform any necessary DOAS calibration updates
             self.update_doas_calibration(img)
 
         # TODO test function - I have not confirmed that all types of calibration work yet.
@@ -1622,6 +1611,7 @@ class PyplisWorker:
         :param doas_results:
         :return:
         """
+        print('Performing DOAS FOV search')
         s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
         s.maxrad = self.maxrad_doas  # Set maximum radius of FOV to close to that expected from optical calculations
         s.g2dasym = False  # Allow only circular FOV (not eliptical)
@@ -1630,6 +1620,7 @@ class PyplisWorker:
         self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
         self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
+        print('DOAS FOV search complete')
 
         # Flag that we now have a calibration and update time of last calibration to this time
         self.got_doas_fov = True
@@ -1653,6 +1644,7 @@ class PyplisWorker:
 
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
+            print('Updating DOAS FOV plot')
             self.fig_doas_fov.update_plot()
 
     def update_doas_calibration(self, img_tau=None, force_fov_cal=False):
@@ -1688,6 +1680,7 @@ class PyplisWorker:
             dt = datetime.timedelta(minutes=self.doas_fov_recal_mins)
             oldest_time = img_time - dt
             if oldest_time >= self.doas_last_fov_cal or force_fov_cal:
+                last_cal = copy.deepcopy(self.doas_last_fov_cal)    # For knowing when to update buffer from
                 stack = self.make_img_stack(time_start=oldest_time)
                 # TODO =========================================
                 # TODO For testing!!!
@@ -1695,6 +1688,10 @@ class PyplisWorker:
                                                                               stds=self.test_doas_stds)
                 # TODO ==========================================
                 self.doas_fov_search(stack, self.doas_worker.results)
+
+                # Once we have a calibration we need to go back through buffer and get emission rates
+                # Overwrite any emission rates since last calibration, as they require new FOV calibration
+                self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
 
         # If we don't update fov search then we just update current cal object with new image (as long as we have
         # a doas calibration)
@@ -2451,12 +2448,20 @@ class PyplisWorker:
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
                                  self.img_B_prev.filename, opt_flow=opt_flow)
 
-    def get_emission_rate_from_buffer(self):
+    def get_emission_rate_from_buffer(self, after=None, overwrite=False):
         """
         Script to go back through buffer and retrieve emission rates
+        :param datetime.datetime after:    Buffered images before or equal to this time will not be analysed
+        :param bool overwrite:      If True, emission rates will be calculated even if the results object already has
+                                    emission rate data for this time. Old emission rates will be overwritten
         :return:
         """
+        print('Processing image buffer to retrieve emission rate')
+
         img_buff = self.img_buff
+
+        if after is None:
+            after = datetime.datetime(2000, 1, 1)
 
         # TODO I may want to think about deciding how far to loop through the buffer here
         # Define number of images to loop through (I can try to go to last image, and if it contains optical flow data
@@ -2471,6 +2476,21 @@ class PyplisWorker:
             buff_dict = img_buff[i]
 
             img_tau = buff_dict['img_tau']
+
+            # If time of image is before or equal to "after", we ignore it
+            # If the results object already has emission rates for this time, we skip it if overwrite=False
+            img_time = img_tau.meta['start_acq']
+            if img_time <= after:
+                continue
+            if not overwrite:
+                velo_modes = [mode for mode in self.velo_modes if self.velo_modes[mode]]
+                lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
+                try:
+                    if img_time in self.results[lines[0].line_id][velo_modes[0]]._start_acq:
+                        continue    # If img_time is in list then we have an emission rate and so don't process
+                except AttributeError:
+                    # If that results key doesn't exist then we don't have data for this line and so need to process
+                    pass
 
             # Calibrate image if it hasn't already been
             if not img_tau.is_calibrated:
@@ -2491,8 +2511,10 @@ class PyplisWorker:
             else:
                 flow = buff_dict['opt_flow']
 
-            # Calculate emission rate
-            results = self.calculate_emission_rate(img=img_cal, flow=flow)
+            # Calculate emission rate - don't update plot, and then we will do that at the end, for speed
+            results = self.calculate_emission_rate(img=img_cal, flow=flow, plot=False)
+
+        self.fig_series.update_plot()
 
     def finalise_processing(self):
         """Finishes all processing requirements (mainly saving info)"""
@@ -2513,6 +2535,8 @@ class PyplisWorker:
         Processes the current image directory
         Direcotry should therefore already have been processed using load_sequence()
         """
+        self.in_processing = True
+
         # Reset important parameters to ensure we start processing correctly
         self.reset_self()
 
@@ -2543,7 +2567,7 @@ class PyplisWorker:
             # TODO I think I need to change doas_recal_num to doas_recal_time, so it's based on time rather than
             # TODO number of images - I can then check in the same way but just look at time differnce using:
             # TODO self.doas_last_save
-            if i == len(self.img_list) - 1 and len(self.img_list) < self.doas_recal_num:
+            if i == len(self.img_list) - 1:
                 if self.cal_type in [1, 2] and not self.got_doas_fov:
                     force_cal = True
 
@@ -2568,6 +2592,8 @@ class PyplisWorker:
         self.finalise_processing()
 
         print('Processing time: {}'.format(time.time() - time_proc))
+
+        self.in_processing = False
 
         # if self.cal_type in [1, 2]:
         #     # TODO Edit this test to use proper data (currently uses dummy random values) - I think this test is now automatic in process_pair/generate_optical_depth

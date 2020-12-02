@@ -290,7 +290,7 @@ class LoadSaveProcessingSettings:
                         if self.vars[key] is str:  # If string we need to write the value within quotes
                             f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
                         else:
-                            f_temp.write('{}={}\n'.format(key, getattr(self, key)))
+                            f_temp.write('{}={}\n'.format(key, self.vars[key](getattr(self, key))))
                     else:
                         f_temp.write(line)
 

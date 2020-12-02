@@ -26,7 +26,7 @@ img_registration='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPerman
 save_img_aa=0
 save_img_cal=0
 save_img_so2=0
-save_doas_cal=1
+save_doas_cal=0
 
 # Plume background model
 bg_mode=5
@@ -38,10 +38,10 @@ ref_check_mode=1
 
 # DOAS calibration and DOAS-AA calibration
 ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'
-maxrad_doas=20
+maxrad_doas=20.0
 remove_doas_mins=5
 doas_recal=1
-doas_fov_recal_mins=5
+doas_fov_recal_mins=10
 doas_fov_recal=1
 fix_fov=0
 
@@ -59,9 +59,9 @@ hist_dir_binres=10
 hist_sigma_tol=2
 use_roi=1
 roi_abs=[23, 36, 605, 236]
-flow_glob=1
-flow_raw=0
-flow_histo=1
+flow_glob=0
+flow_raw=1
+flow_histo=0
 flow_hybrid=0
 use_multi_gauss=1
 cross_corr_recal=30
