@@ -21,6 +21,7 @@ save_opt_flow=1
 # Start-up object loading
 pcs_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_1.txt,C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_2.txt'
 img_registration='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/image_registration/villarrica_cv_registration.npy'
+dil_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/dil_lines/villarica_line_1.txt'
 
 # Processing save settings
 save_img_aa=0
@@ -39,10 +40,10 @@ ref_check_mode=1
 # DOAS calibration and DOAS-AA calibration
 ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'
 maxrad_doas=20.0
-remove_doas_mins=5
+remove_doas_mins=10
 doas_recal=1
 doas_fov_recal_mins=10
-doas_fov_recal=1
+doas_fov_recal=0
 fix_fov=0
 
 # Optical flow

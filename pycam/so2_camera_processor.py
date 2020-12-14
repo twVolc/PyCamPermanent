@@ -125,6 +125,7 @@ class PyplisWorker:
         self.optflow_err_rel_veff = 0.15                # Empirically determined optical flow error (from pyplis)
         self.tau_thresh = 0.01                          # Threshold used for generating pixel mask
         self.min_cd = 0                                 # Minimum column density used in analysis
+        self.use_light_dilution = True                  # If True, light dilution correction is used
         self.light_dil_lines = []                       # Lines for light dilution correction
         self.ambient_roi = [0, 0, 0, 0]                 # Ambient intensity ROI coordinates for light dilution
         self.I0_MIN = 0                                 # Minimum intensity for dilution fit
@@ -1261,20 +1262,20 @@ class PyplisWorker:
 
         self.got_light_dil = True
 
+
         # Update light dilution plots if requested
         if draw:
             # Plot the results in a 3D map
             basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
-            basemap.fig.show()
 
             # Pass figures to LightDilutionSettings object to be plotted
-            ax0.set_ylabel("Terrain radiances (on band)")
-            ax1.set_ylabel("Terrain radiances (off band)")
-            fig_dict = {'1': ax0.figure,
-                        '2': ax1.figure,
-                        '3': None,
-                        '4': None}
-            self.fig_dilution.update_figs(fig_dict)
+            # These are updated even if draw is not requested
+            # ax0.set_ylabel("Terrain radiances (on band)")
+            # ax1.set_ylabel("Terrain radiances (off band)")
+            fig_dict = {'A': ax0.figure,
+                        'B': ax1.figure,
+                        'basemap': basemap}
+            self.fig_dilution.update_figs(fig_dict, draw=draw)
 
     def corr_light_dilution(self, img, tau_uncorr, band='A'):
         """
@@ -1539,6 +1540,11 @@ class PyplisWorker:
             # TODO I may need to model background, then I can use the light corr image as input into the background
             # TODO modelling, which will correctly generate tau images
 
+            # TODO USE self.use_light_dilution
+            if self.use_light_dilution:
+                tau_A = self.lightcorr_A
+                tau_B = self.lightcorr_B
+
 
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
@@ -1564,11 +1570,13 @@ class PyplisWorker:
             # TODO should include a tau vs cal flag check, to see whether the plot is displaying AA or ppmm
             self.fig_tau.update_plot(np.array(self.img_tau.img), img_cal=self.img_cal)
 
-    def calibrate_image(self, img, run_cal_doas=False):
+    def calibrate_image(self, img, run_cal_doas=False, doas_update=True):
         """
         Takes tau image and calibrates it using correct calibration mode
         :param img: pyplis.Img or pyplis.ImgStack      Tau image
         :param run_cal_doas: bool   If True the DOAS FOV calibration is performed
+        :param bool doas_update:    If False, no updae to doas will be performed
+                                    (mainly for use when getting emission rate from buffer)
         :return:
         """
         # Make a deep copy of the image so we aren't changing the tau image
@@ -1581,7 +1589,8 @@ class PyplisWorker:
         # Since this comes after
         if self.cal_type in [1, 2]:
             # Perform any necessary DOAS calibration updates
-            self.update_doas_calibration(img)
+            if doas_update:
+                self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
 
         # TODO test function - I have not confirmed that all types of calibration work yet.
         cal_img = None
@@ -1621,6 +1630,8 @@ class PyplisWorker:
         self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
         print('DOAS FOV search complete')
+        if self.calib_pears.polyorder == 1 and self.calib_pears.calib_coeffs[0] < 0:
+            print('Warning!! Calibration shows inverse tau-CD relationship. It is likely an error has occurred')
 
         # Flag that we now have a calibration and update time of last calibration to this time
         self.got_doas_fov = True
@@ -1703,33 +1714,28 @@ class PyplisWorker:
             doas_fov = self.fov
 
             # Extract values from current image
-            tau_fov = img_tau.crop(self.calib_pears.fov.fov_mask_rel, new_img=True)   # TODO test
-            # TODO this may be a different way of extrcating data - using this mask - test the two, not sure the difference
-            cx, cy = doas_fov.pixel_position_center(abs_coords=True)
-            roi = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                     cx, cy, doas_fov.pixel_extend())
-            roi = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                     cx, cy, doas_fov.pixel_extend())
-            tau_fov = img_tau.crop(roi, new_img=True)
-
-            # Get single tau value for area
+            bool_array = np.array(doas_fov.fov_mask_rel, dtype=bool)
+            tau_fov = img_tau.img[bool_array]
             tau = tau_fov.mean()
 
             try:
+                # TODO this isn't working. Need to see what is happening with doas_worker.results as it seems to change
+                # TODO at some point fit_errs disappears - empty list.
                 cd = self.doas_worker.results[img_time]
                 # Get index for cd_err
                 cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == img_time]
-            except BaseException:
+            except BaseException as e:
+                print(e)
                 # If there is no data for the specific time of the image we will have to interpolate
                 # TODO sort out interpolation!
-                print('Interpolated image time with DOAS times of {} and {}')
+
                 dts = self.doas_worker.results.index - img_time
                 zero = datetime.timedelta(0)
-                seconds_plus = [x for x in dts if x > zero]
-                seconds_minus = [x for x in dts if x < zero]
+                seconds_plus = np.array([x for x in dts if x > zero])
+                seconds_minus = np.array([x for x in dts if x < zero])
 
                 if len(seconds_plus) == 0:
-                    idx = np.argmin(abs(seconds_minus))
+                    idx = np.argmin(np.abs(seconds_minus))
                     time_val = img_time + seconds_minus[idx]
                     cd = self.doas_worker.results[time_val]
                     # Get index for cd_err
@@ -1749,7 +1755,7 @@ class PyplisWorker:
                                                                  time_val.strftime('%H:%M:%S')))
                 else:
                     # Starting manual interpolation (may not be needed, if below works, see below)
-                    idx_1 = np.argmin(abs(seconds_minus))
+                    idx_1 = np.argmin(np.abs(seconds_minus))
                     idx_2 = np.argmin(seconds_plus)
                     times = [img_time + seconds_minus[idx_1],
                              img_time + seconds_plus[idx_2]]
@@ -1762,6 +1768,8 @@ class PyplisWorker:
                     cd_err = np.interp(pd.to_numeric(pd.Series(img_time)).values,
                                        pd.to_numeric(self.doas_worker.results.index).values,
                                        self.doas_worker.results.fit_errs)
+                    print('Interpolated image time with DOAS times of {} and {}'.format(times[0].strftime('%H:%M%:S'),
+                                                                                        times[1].strftime('%H:%M%:S')))
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_tau.meta['start_acq']}
@@ -1860,7 +1868,6 @@ class PyplisWorker:
 
             # Calculate distance between centre points of lines
             distance = self.calc_line_dist(pcs1, pcs2) * pix_dist_avg
-
 
         # Find lag in seconds
         try:
@@ -2415,6 +2422,12 @@ class PyplisWorker:
             self.doas_last_save = self.img_A.meta['start_acq']
             self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
+            # If we have lines, and light dilution correction is requested, we run it here
+            if self.use_light_dilution:
+                lines = [line for line in self.light_dil_lines if isinstance(line, LineOnImage)]
+                if len(lines) > 0:
+                    self.model_light_dilution(draw=False)
+
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
 
@@ -2494,7 +2507,7 @@ class PyplisWorker:
 
             # Calibrate image if it hasn't already been
             if not img_tau.is_calibrated:
-                img_cal = self.calibrate_image(img_tau)
+                img_cal = self.calibrate_image(img_tau, doas_update=False)
             else:
                 img_cal = img_tau
 

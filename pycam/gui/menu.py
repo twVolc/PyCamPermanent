@@ -8,13 +8,15 @@ import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
     opti_flow, light_dilution, cross_correlation, doas_fov
 from pycam.gui.misc import About, LoadSaveProcessingSettings
-from pycam.io import save_pcs_line, load_pcs_line
+from pycam.io import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg_menu_frames import calibration_wind
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
+
+from pyplis import LineOnImage
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -55,6 +57,7 @@ class PyMenu:
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
+        self.submenu_load.add_command(label='Load light dilution line', command=self.load_frame.load_dil)
         self.submenu_load.add_command(label='Load image registration', command=self.load_frame.load_img_reg)
         self.submenu_load.add_separator()
         self.submenu_load.add_command(label='Configure start-up', command=self.load_frame.generate_frame)
@@ -187,7 +190,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         super().__init__()
         self.pyplis_worker = pyplis_work
         self.init_dir = init_dir
-        self.pdx, self.pdy = 2, 2
+        self.pdx, self.pdy = 2, 5
         self.sep = ','
         self.max_len_str = 50
         self.no_line = 'No line'
@@ -203,10 +206,13 @@ class LoadFrame(LoadSaveProcessingSettings):
     def initiate_variables(self):
         """Setup tk variables for save options"""
         self.vars = {'pcs_lines': str,
-                     'img_registration': str}
+                     'img_registration': str,
+                     'dil_lines': str}
         self.num_pcs_lines = 5
         self._pcs_lines = [self.no_line] * self.num_pcs_lines
         self.img_registration = ''
+        self.num_dil_lines = 5
+        self._dil_lines = [self.no_line] * self.num_dil_lines
 
     def gather_vars(self):
         """Required for LoadSaveProcessSettings as it is called after loading. Do some general house keeping"""
@@ -232,7 +238,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.load_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         row = 0
-        pcs_frame = ttk.LabelFrame(self.load_frame, text='ICA lines')
+        pcs_frame = tk.LabelFrame(self.load_frame, text='ICA lines', relief=tk.RAISED, borderwidth=2)
         pcs_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
         self.pcs_lines_labs = [None] * self.num_pcs_lines
         self.pcs_add_butt = [None] * self.num_pcs_lines
@@ -253,7 +259,7 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         # Image registration load
         row += 1
-        img_reg_frame = ttk.LabelFrame(self.load_frame, text='Image registration')
+        img_reg_frame = tk.LabelFrame(self.load_frame, text='Image registration', relief=tk.RAISED, borderwidth=2)
         img_reg_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
         lab = ttk.Label(img_reg_frame, text='File:')
         lab.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
@@ -263,6 +269,27 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.reg_add_butt.grid(row=0, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
         self.reg_rem_butt = ttk.Button(img_reg_frame, text='Remove', command=self.remove_reg_startup)
         self.reg_rem_butt.grid(row=0, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        # Light dilution lines
+        row += 1
+        dil_frame = tk.LabelFrame(self.load_frame, text='Light dilution lines', relief=tk.RAISED, borderwidth=2)
+        dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self.dil_lines_labs = [None] * self.num_dil_lines
+        self.dil_add_butt = [None] * self.num_dil_lines
+        self.dil_rem_butt = [None] * self.num_dil_lines
+        row_line = 0
+        for i in range(self.num_dil_lines):
+            lab = ttk.Label(dil_frame, text='File:')
+            lab.grid(row=row_line, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+            self.dil_lines_labs[i] = ttk.Label(dil_frame, text=self.dil_lines_short[i], width=self.max_len_str)
+            self.dil_lines_labs[i].grid(row=row_line, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+            self.dil_add_butt[i] = ttk.Button(dil_frame, text='Change line',
+                                              command=lambda i=i: self.add_dil_startup(i))
+            self.dil_add_butt[i].grid(row=row_line, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
+            self.dil_rem_butt[i] = ttk.Button(dil_frame, text='Remove line',
+                                              command=lambda i=i: self.remove_dil_startup(i))
+            self.dil_rem_butt[i].grid(row=row_line, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
+            row_line += 1
 
         row += 1
         update_butt = ttk.Button(self.load_frame, text='Save changes', command=lambda: self.set_defaults(self.frame))
@@ -286,6 +313,31 @@ class LoadFrame(LoadSaveProcessingSettings):
     def pcs_lines_short(self):
         short_list = [''] * self.num_pcs_lines
         for i, line in enumerate(self._pcs_lines):
+            if len(line) > self.max_len_str:
+                short_list[i] = '...' + line[-self.max_len_str+3:]
+            else:
+                short_list[i] = line
+
+        return short_list
+
+    @property
+    def dil_lines(self):
+        return self.sep.join([line for line in self._dil_lines if line != self.no_line])
+
+    @dil_lines.setter
+    def dil_lines(self, value):
+        """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
+        lines = value.split(self.sep)
+        for i, line in enumerate(lines):
+            if i < self.num_dil_lines:
+                if line == '':
+                    line = self.no_line
+                self._dil_lines[i] = line
+
+    @property
+    def dil_lines_short(self):
+        short_list = [''] * self.num_dil_lines
+        for i, line in enumerate(self._dil_lines):
             if len(line) > self.max_len_str:
                 short_list[i] = '...' + line[-self.max_len_str+3:]
             else:
@@ -339,6 +391,45 @@ class LoadFrame(LoadSaveProcessingSettings):
             if line is not self.no_line:
                 self.load_pcs(filename=line)
 
+    def load_dil(self, filename=None):
+        """Loads light dilution line into GUI"""
+        if filename is None:
+            kwargs = {}
+            if self.in_frame:
+                kwargs['parent'] = self.frame
+            filename = filedialog.askopenfilename(initialdir=os.path.join(self.init_dir, 'dil_lines'), **kwargs)
+
+        if len(filename) > 0:
+            line = load_light_dil_line(filename)
+            self.pyplis_worker.fig_dilution.add_dil_line(line, force_add=True)
+
+    def add_dil_startup(self, num):
+        """
+        Edits light dilution lines used at startup
+        :param num:     int     Line index to add
+        """
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=os.path.join(self.init_dir, 'dil_lines'),
+                                              filetypes=[('Text file', '*.txt')])
+
+        if len(filename) > 0:
+            # Update line list
+            self._dil_lines[num] = filename
+            self.dil_lines_labs[num].configure(text=self.dil_lines_short[num])
+
+    def remove_dil_startup(self, num):
+        """
+        Remove light dilution lines used at startup
+        :param num:     int     Line index to add
+        """
+        self._dil_lines[num] = self.no_line
+        self.dil_lines_labs[num].configure(text=self.dil_lines_short[num])
+
+    def set_all_dil_lines(self):
+        """Loads all lines held in this object and updates pyplis_worker.fig_dil to contain these lines"""
+        for line in self._dil_lines:
+            if line is not self.no_line:
+                self.load_dil(filename=line)
+
     def add_reg_startup(self):
         """
         Edits image registration object used at startup
@@ -380,6 +471,7 @@ class LoadFrame(LoadSaveProcessingSettings):
     def load_all(self):
         """Runs all load functions to prepare pyplis worker"""
         self.set_all_pcs_lines()
+        self.set_all_dil_lines()
         # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
         self.load_img_reg(filename=self.img_registration, rerun=False)
 
@@ -409,6 +501,9 @@ class SaveFrame(LoadSaveProcessingSettings):
         # Objects to save with a click
         self._pcs_line = tk.IntVar()
         self.pcs_ext = '.txt'
+
+        self._dil_line = tk.IntVar()
+        self.dil_ext = '.txt'
 
         self._img_reg = tk.StringVar()
         self.reg_ext = {'cp': '.pkl',
@@ -534,6 +629,18 @@ class SaveFrame(LoadSaveProcessingSettings):
         butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_pcs)
         butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
 
+        # light dilution line saving
+        row += 1
+        self.dil_lines = [i+1 for i, x in enumerate(self.pyplis_worker.fig_dilution.lines_pyplis)
+                          if isinstance(x, LineOnImage)]
+        label = ttk.Label(self.save_now_frame, text='Save light dilution line:')
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin_dil = ttk.OptionMenu(self.save_now_frame, self._dil_line, self.pyplis_worker.fig_dilution.current_line,
+                                  *self.dil_lines)
+        spin_dil.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(self.save_now_frame, text='Save', command=self.save_dil)
+        butt.grid(row=row, column=2, stick='w', padx=self.pdx, pady=self.pdy)
+
         # Image registration saving
         row += 1
         self.img_reg_opts = []
@@ -620,7 +727,24 @@ class SaveFrame(LoadSaveProcessingSettings):
             # Save line
             save_pcs_line(line, filename)
 
-            self.init_dir = filename.rsplit('\\', 1)[0].rsplit('/', 1)
+    def save_dil(self):
+        """Saves PCS line"""
+        if len(self.dil_lines) == 0:
+            print('There are no lines to be saved. Please draw an light dilution line first')
+            return
+
+        filename = filedialog.asksaveasfilename(parent=self.frame, initialdir=os.path.join(self.init_dir, 'dil_lines'))
+
+        if len(filename) > 0:
+            if self.dil_ext not in filename:
+                filename += self.dil_ext
+
+            # Adjust line number by -1 to get the index in python indexing (start at 0)
+            line_idx = self._dil_line.get() - 1
+            line = self.pyplis_worker.fig_dilution.lines_pyplis[line_idx]
+
+            # Save line
+            save_light_dil_line(line, filename)
 
     def save_img_reg(self):
         """

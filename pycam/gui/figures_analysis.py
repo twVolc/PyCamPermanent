@@ -2516,7 +2516,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.frame_opts)
         butt_frame.grid(row=row, column=0, columnspan=3, sticky='nsew')
         butt_frame.grid_columnconfigure(0, weight=1)
-        def_butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
+        def_butt = ttk.Button(butt_frame, text='Set as defaults', command=lambda: self.set_defaults(parent=self.frame))
         def_butt.grid(row=0, column=0, sticky='e', padx=2, pady=2)
         app_butt = ttk.Button(butt_frame, text='Update settings', command=lambda: self.gather_vars(message=True))
         app_butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
@@ -3864,6 +3864,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.fig_setts = fig_setts
         self.dpi = self.fig_setts.dpi
         self.fig_size = self.fig_setts.fig_SO2
+        self.fig_scat_size = (self.fig_size[0], self.fig_size[1]-2)
         self.img_A = None
         self.img_B = None
 
@@ -3958,6 +3959,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.frame = tk.Toplevel()
         self.frame.title('Optical flow settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+        self.frame.grid_rowconfigure(1, weight=1)
 
         frame_setts = ttk.Frame(self.frame)
         frame_setts.grid(row=0, column=0, sticky='nsew')
@@ -4016,14 +4018,38 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         butt.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         # -------------------------
-        # Build light dilution flow figure
+        # Build light dilution figure
         # -------------------------
         self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
-        self.frame_fig.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+        self.frame_fig.grid(row=1, column=0, columnspan=2, sticky='n', padx=5, pady=5)
         self._build_fig_img()
         self.frame_xtra_figs = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
-        self.frame_xtra_figs.grid(row=0, column=2, rowspan=2, sticky='nsew')
+        self.frame_xtra_figs.grid(row=0, column=2, rowspan=2, sticky='nsew', padx=5, pady=5)
         self.fig_canvas_xtra = [[None, None], [None, None]]
+        # Build figure displaying cross-correlation
+
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_scat_A'):
+            self.fig_scat_A = plt.Figure(figsize=self.fig_scat_size, dpi=self.dpi)
+            self.fig_scat_B = plt.Figure(figsize=self.fig_scat_size, dpi=self.dpi)
+
+        self.fig_canvas_A = FigureCanvasTkAgg(self.fig_scat_A, master=self.frame_xtra_figs)
+        self.fig_canvas_A.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_A.draw()
+        # Add toolbar so figures can be saved
+        self.toolbar_A = NavigationToolbar2Tk(self.fig_canvas_A, self.frame_xtra_figs)
+        self.toolbar_A.update()
+        # self.fig_canvas_A._tkcanvas.pack(side=tk.TOP)
+        self.toolbar_A.pack(side=tk.TOP)
+
+        self.fig_canvas_B = FigureCanvasTkAgg(self.fig_scat_B, master=self.frame_xtra_figs)
+        self.fig_canvas_B.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_B.draw()
+        # Add toolbar so figures can be saved
+        self.toolbar_B = NavigationToolbar2Tk(self.fig_canvas_B, self.frame_xtra_figs)
+        self.toolbar_B.update()
+        # self.fig_canvas_B._tkcanvas.pack(side=tk.TOP)
+        self.toolbar_B.pack(side=tk.TOP)
 
         # self.__draw_canv__()
 
@@ -4056,8 +4082,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Plot any existing lines
         for i, line in enumerate(self.lines_pyplis):
-            if line is not None:
-                self.ax.plot([line.x0, line.x1], [line.y0, line.y1], color=self.line_colours[i])
+            if isinstance(line, LineOnImage):
+                self.draw_line_obj(line, line_idx=i, draw=False)
         crop_x = self.amb_roi[2] - self.amb_roi[0]
         crop_y = self.amb_roi[3] - self.amb_roi[1]
         self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
@@ -4089,7 +4115,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                 if self.lines_pyplis[line_idx] is not None:
                     resp = messagebox.askokcancel('Overwriting line',
                                                   'You are about to overwrite an existing line.\n'
-                                                  'This could affect processing results if it is currently running.')
+                                                  'This could affect processing results if it is currently running.',
+                                                  parent=self.frame)
                     self.frame.attributes('-topmost', 1)
                     self.frame.attributes('-topmost', 0)
                     if not resp:
@@ -4146,6 +4173,50 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
             self.q.put(1)
 
+    def draw_line_obj(self, line, line_idx=None, draw=False):
+        """
+        Draws line from object that is passed to it
+        :param line: LineOnImage    Line to be drawn
+        """
+        if line_idx is None:
+            line_idx = self.current_line - 1
+
+        x0, x1 = line.x0, line.x1
+        y0, y1 = line.y0, line.y1
+        self.lines_A[line_idx] = self.ax.plot([x0, x1],  [y0, y1], color=self.line_colours[line_idx])
+
+        if draw:
+            self.q.put(1)
+
+    def add_dil_line(self, line, line_idx=None, force_add=True, run_model=True):
+        """Adds light dilution line """
+        if line_idx is None:
+            line_idx = self.current_line - 1
+
+        # Remove previous line if it is present - only if we are forcing the add
+        if self.lines_pyplis[line_idx] is not None:
+            if force_add:
+                self.del_line(line_idx)
+            else:
+                return
+
+        # Update pyplis line object and objects in pyplis_worker
+        lbl = "{}".format(line_idx)
+        self.lines_pyplis[line_idx] = line
+
+        self.pyplis_worker.light_dil_lines = self.lines_pyplis
+
+        # Add line if in frame
+        if self.in_frame:
+            self.draw_line_obj(line, line_idx=line_idx, draw=True)
+
+        if self.current_line < self.max_lines:
+            self.current_line += 1
+
+        # if run_model:
+        #     self.run_dil_corr(draw=False)
+
+
     def del_line(self, idx):
         """Deletes line"""
         # Get line
@@ -4193,7 +4264,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.I0_MIN = self.I0_MIN
         self.pyplis_worker.tau_thresh = self.tau_thresh
 
-    def run_dil_corr(self):
+    def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""
         if all(x is None for x in self.lines_pyplis):
             messagebox.showerror('Run error',
@@ -4203,51 +4274,55 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             return
 
         self.gather_vars()
-        self.pyplis_worker.model_light_dilution()
+        self.pyplis_worker.model_light_dilution(draw=draw)
 
-    def update_figs(self, figs):
+    def update_figs(self, figs, draw=True):
         """
         Takes a dictionary of figures and puts them into canvases in current window
-        :param figs:    dict     Dictionary of figures
+        :param figs:    dict    Dictionary of figures
+        :param draw:    bool    If True, all plots are drawn
         :return:
         """
-        # TODO =========================================================================================================
-        # TODO These plots are deleted when the frame is closed, since generate_frame rebuilds everything and forgets
-        # TODO these plot. Need to redo this so that plots are remembered - look at cross-correlation class
-        # TODO which has this working
-        # TODO =========================================================================================================
-
-        # First delete any pre-existing canvases
-        for row in self.fig_canvas_xtra:
-            for fig in row:
-                if fig is not None:
-                    fig.grid_forget()
-
-
         # Loop through figures placing them into the figure array
-        figs_list = list(figs.keys())
+        for i, band in enumerate(['A', 'B']):
+            fig_canvas = getattr(self, 'fig_canvas_{}'.format(band))
+            fig = figs[band]
+            setattr(self, 'fig_scat_{}'.format(band), fig)
+            # Adjust figure size
+            fig.set_size_inches(self.fig_scat_size[0], self.fig_scat_size[1], forward=True)
+            ax = fig.axes[0]
+            ax.set_ylabel("Terrain radiances ({} band)".format(band))
+
+            # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
+            # the updated plot will be built
+            if self.in_frame:
+                fig_canvas.get_tk_widget().destroy()
+
+                fig_canvas = FigureCanvasTkAgg(fig, master=self.frame_xtra_figs)
+                setattr(self, 'fig_canvas_{}'.format(band), fig_canvas)
+                fig_canvas.get_tk_widget().pack(side=tk.TOP)
+                fig_canvas.draw()
+
+                # Add toolbar so figures can be saved
+                getattr(self, 'toolbar_{}'.format(band)).pack_forget()
+                toolbar = NavigationToolbar2Tk(fig_canvas, self.frame_xtra_figs)
+                toolbar.update()
+                # fig_canvas._tkcanvas.pack(side=tk.TOP)
+                toolbar.pack(side=tk.TOP)
+                setattr(self, 'toolbar_{}'.format(band), toolbar)
+
+        if draw:
+            self.basemap = figs['basemap']
+            self.basemap.fig.canvas.set_window_title('Light dilution geometry')
+            self.basemap.fig.show()
+
+            # If we are not in_frame, but draw was requested, we draw it all
+            if not self.in_frame:
+                self.generate_frame()
+                return
+
         if self.in_frame:
-            for i in range(2):
-                for x in range(2):
-                    idx = (i * 2) + x
-                    fig = figs[figs_list[idx]]
-
-                    if fig is not None:
-                        # Finalise canvas and gridding
-                        fig_frame = ttk.Frame(self.frame_xtra_figs)
-                        fig_frame.grid(row=i, column=x)
-
-                        # Adjust figure size
-                        fig.set_size_inches(self.fig_setts.fig_dil[0], self.fig_setts.fig_dil[1], forward=True)
-
-                        self.fig_canvas_xtra[i][x] = FigureCanvasTkAgg(fig, master=fig_frame)
-                        self.fig_canvas_xtra[i][x].get_tk_widget().pack(side=tk.TOP)
-                        self.fig_canvas_xtra[i][x].draw()
-
-                        # Add toolbar so figures can be saved
-                        toolbar = NavigationToolbar2Tk(self.fig_canvas_xtra[i][x], fig_frame)
-                        toolbar.update()
-                        self.fig_canvas_xtra[i][x]._tkcanvas.pack(side=tk.TOP)
+            self.q.put(1)
 
     def close_frame(self):
         """

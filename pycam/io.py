@@ -125,6 +125,17 @@ def load_pcs_line(filename, color='blue', line_id='line'):
     return pcs_line
 
 
+def save_light_dil_line(line, filename):
+    """Saves light dilution line to text file - same function as draw_pcs_line, so just a wrapper for this"""
+    save_pcs_line(line, filename)
+
+
+def load_light_dil_line(filename, color='blue', line_id='line'):
+    """Loads light dilution line from text file"""
+    line = load_pcs_line(filename, color, line_id)
+    return line
+
+
 def save_fov_txt(filename, fov_obj):
     """
     Saves fov data to text file

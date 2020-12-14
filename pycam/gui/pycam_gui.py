@@ -86,6 +86,7 @@ class PyCam(ttk.Frame):
         cross_correlation.initiate_variables()
         opti_flow.initiate_variables()
         light_dilution.initiate_variables()
+        light_dilution.start_draw(self.root)
         self.menu.load_frame.img_reg_frame = self.cam_wind.img_reg_frame
         self.menu.load_frame.load_all()
 

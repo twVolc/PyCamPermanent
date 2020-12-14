@@ -616,6 +616,10 @@ class Spectrometer(SpecSpecs):
         min_idx = np.argmin(np.abs(wavelengths[0] - self.wavelengths))
         max_idx = np.argmin(np.abs(wavelengths[1] - self.wavelengths))
 
+        # Need a spectrum to extract values from - if object has just been loaded it won'thave a spectrum
+        if self.spectrum is None:
+            self.get_spec()
+
         return self.wavelengths[min_idx:max_idx+1], self.spectrum[min_idx:max_idx+1]
 
     def check_saturation(self):
