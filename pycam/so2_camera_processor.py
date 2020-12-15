@@ -1303,8 +1303,8 @@ class PyplisWorker:
         # Calculate plume pixel mask
         plume_pix_mask = self.calc_plume_pix_mask(tau_uncorr, tau_thresh=self.tau_thresh)
 
-        # Perform light dilution correction using pyplis function
-        corr_img = correct_img(img, ext_coeff, plume_bg_vigncorr, self.plume_dists, plume_pix_mask)
+        # Perform light dilution correction using pyplis function (on a copy of the image so we don't alter original)
+        corr_img = correct_img(copy.deepcopy(img), ext_coeff, plume_bg_vigncorr, self.plume_dists, plume_pix_mask)
 
         return corr_img
 
@@ -1409,25 +1409,65 @@ class PyplisWorker:
         new_image.meta['pix_height'] = meta_image.meta['pix_height']
         new_image.edit_log['darkcorr'] = meta_image.edit_log['darkcorr']
 
-    def model_background(self, mode=None, params=None, plot=True):
+    def model_background(self, imgs={'A': None, 'B': None, 'B_warped': None}, set_vign=True, mode=None, params=None,
+                         plot=True):
         """
         Models plume background for image provided.
+        :param imgs:        dict    Dictionary of images - if images aren't None, they are used, instead of self.img_A
+                                    and self.img_B
+        :param set_vign:   bool    If True, we generate vignette corrected images (else it assumes they already exist)
+        :param mode:        bool    Background model mode
+        :param params:      dict    Background sky reference parameters
+        :param plot:        bool    If True, modelled background is plotted afterwards
         """
-        self.vigncorr_A = pyplis.Img(self.img_A.img / self.vign_A)
-        self.update_meta(self.vigncorr_A, self.img_A)
-        self.vigncorr_B = pyplis.Img(self.img_B.img / self.vign_B)
-        self.update_meta(self.vigncorr_B, self.img_B)
-        self.vigncorr_A.edit_log['vigncorr'] = True
-        self.vigncorr_B.edit_log['vigncorr'] = True
+        # If we are passed images (probably from light dilution correction) we set them to img_A and B
+        # We then may also set vign corr images to these too, as the vigncorr images are used to generate tau in
+        # some modes. But we don't want to update self.vigncorr in this case
+        if isinstance(imgs['A'], pyplis.Img):
+            img_A = imgs['A']
+            if not set_vign:
+                vigncorr_A = img_A
+                vigncorr_A.edit_log['vigncorr'] = True
+        else:
+            img_A = self.img_A
+        if isinstance(imgs['B'], pyplis.Img):
+            img_B = imgs['B']
+            if not set_vign:
+                vigncorr_B = img_B
+                vigncorr_B.edit_log['vigncorr'] = True
+        else:
+            img_B = self.img_B
 
-        # Create a warped version - required for light dilution work
-        self.vigncorr_B_warped = pyplis.Img(self.img_reg.register_image(self.vigncorr_A.img, self.vigncorr_B.img))
-        self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
-        self.vigncorr_B_warped.edit_log['vigncorr'] = True
+        if isinstance(imgs['B_warped'], pyplis.Img):
+            img_B_warped = imgs['B_warped']
+            if not set_vign:
+                vigncorr_B_warped = img_B_warped
+                vigncorr_B_warped.edit_log['vigncorr'] = True
+        else:
+            img_B_warped = pyplis.Img(self.img_B.img_warped)
+            self.update_meta(img_B_warped, self.img_B)
+
+        # Generate vignette corrected images if requested.
+        if set_vign:
+            vigncorr_A = pyplis.Img(img_A.img / self.vign_A)
+            self.vigncorr_A = vigncorr_A
+            self.update_meta(self.vigncorr_A, img_A)
+            vigncorr_B = pyplis.Img(img_B.img / self.vign_B)
+            self.vigncorr_B = vigncorr_B
+            self.update_meta(self.vigncorr_B, img_B)
+            self.vigncorr_A.edit_log['vigncorr'] = True
+            self.vigncorr_B.edit_log['vigncorr'] = True
+
+            # Create a warped version - required for light dilution work
+            vigncorr_B_warped = pyplis.Img(self.img_reg.register_image(self.vigncorr_A.img, self.vigncorr_B.img))
+            self.vigncorr_B_warped = vigncorr_B_warped
+            self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
+            self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
         if self.auto_param_bg and params is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
-            params = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
+            self.background_params = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
+            params = self.background_params
         self.plume_bg.update(**params)
 
         if mode in self.BG_CORR_MODES:
@@ -1442,23 +1482,44 @@ class PyplisWorker:
         # Get tau_A and tau_B
         if self.plume_bg.mode == 0:
             # mask for corr mode 0 (i.e. 2D polyfit)
-            mask_A = np.ones(self.vigncorr_A.img.shape, dtype=np.float32)
-            mask_A[self.vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
-            mask_B = np.ones(self.vigncorr_B.img.shape, dtype=np.float32)
-            mask_B[self.vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
+            mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
+            mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
+            mask_B = np.ones(vigncorr_B.img.shape, dtype=np.float32)
+            mask_B[vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
 
             # First method: retrieve tau image using poly surface fit
-            tau_A = self.plume_bg.get_tau_image(self.vigncorr_A,
+            tau_A = self.plume_bg.get_tau_image(vigncorr_A,
                                                 mode=self.BG_CORR_MODES[0],
                                                 surface_fit_mask=mask_A,
                                                 surface_fit_polyorder=1)
-            tau_B = self.plume_bg.get_tau_image(self.vigncorr_B,
+            tau_B = self.plume_bg.get_tau_image(vigncorr_B,
                                                 mode=self.BG_CORR_MODES[0],
                                                 surface_fit_mask=mask_B,
                                                 surface_fit_polyorder=1)
         else:
-            tau_A = self.plume_bg.get_tau_image(self.img_A, self.bg_A)
-            tau_B = self.plume_bg.get_tau_image(self.img_B, self.bg_B)
+            if img_A.edit_log['vigncorr']:
+                img_A.edit_log['vigncorr'] = False
+                img_B.edit_log['vigncorr'] = False
+            tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
+            tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
+
+            # Generating warped B from warped images
+            bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
+            self.update_meta(bg_B_warped, self.bg_B)
+            img_B_warped.edit_log['vigncorr'] = False
+            tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
+            self.update_meta(tau_B_warped, img_B_warped)
+
+        # Update metadata of images
+        self.update_meta(tau_A, img_A)
+        self.update_meta(tau_B, img_B)
+
+        # # Register off-band image
+        # img = self.img_reg.register_image(tau_A.img, tau_B.img)
+        # tau_B_warped = pyplis.image.Img(img)
+        # self.update_meta(tau_B_warped, tau_B)
+        # tau_B_warped.edit_log['is_tau'] = True
+        # tau_B_warped.edit_log['is_aa'] = True
 
         # Plots
         if plot:
@@ -1485,17 +1546,12 @@ class PyplisWorker:
 
             # Reference areas
             self.fig_bg_ref, axes = plt.subplots(1, 1, figsize=(16, 6))
-            pyplis.plumebackground.plot_sky_reference_areas(self.vigncorr_A, params, ax=axes)
+            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, params, ax=axes)
             axes.set_title("Automatically set parameters")
             self.fig_bg_ref.canvas.set_window_title('Background model: Reference parameters')
             self.fig_bg_ref.show()
 
-        self.tau_A = tau_A
-        self.update_meta(self.tau_A, self.img_A)
-        self.tau_B = tau_B
-        self.update_meta(self.tau_B, self.img_B)
-
-        return tau_A, tau_B
+        return tau_A, tau_B, tau_B_warped
 
     def generate_optical_depth(self, plot=True, plot_bg=True, run_cal=False, img_path_A=None):
         """
@@ -1521,31 +1577,37 @@ class PyplisWorker:
         self.img_cal_prev = self.img_cal
 
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
-        self.model_background(plot=plot_bg)
-
-        # Register off-band image
-        img = self.img_reg.register_image(self.tau_A.img, self.tau_B.img)
-        self.tau_B_warped = pyplis.image.Img(img)
-        self.update_meta(self.tau_B_warped, self.tau_B)
+        self.tau_A, self.tau_B, self.tau_B_warped = self.model_background(plot=plot_bg)
 
         # Perform light dilution if we have a correction
         if self.got_light_dil:
             self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
             self.update_meta(self.lightcorr_A, self.vigncorr_A)
-            self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='B')
+            # self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B_warped, self.tau_B_warped, band='B')
+            self.lightcorr_B = self.corr_light_dilution(self.vigncorr_B, self.tau_B, band='B')
             self.update_meta(self.lightcorr_B, self.vigncorr_B_warped)
-            # TODO Presumably I want to make img_tau the difference between lightcorr A and B instead of tau_A and B?
-            # TODO I haven't checked any of this yet though!! And I think maybe lightcorr A and B are the corrected
-            # TODO intensity images, not the corrected tau images? Need to check all of this
-            # TODO I may need to model background, then I can use the light corr image as input into the background
-            # TODO modelling, which will correctly generate tau images
+            lightcorr_B_warped = self.img_reg.register_image(self.lightcorr_A.img, self.lightcorr_B.img)
+            self.lightcorr_B_warped = pyplis.Img(lightcorr_B_warped)
+            self.update_meta(self.lightcorr_B_warped, self.vigncorr_B_warped)
 
-            # TODO USE self.use_light_dilution
+            # If use_light_dilution, we generate new tau images from light dilution
             if self.use_light_dilution:
-                tau_A = self.lightcorr_A
-                tau_B = self.lightcorr_B
+                # Re-introduce vignetting, as this is corrected for in the background modelling, and we don't
+                # want to have a double-/over-correction for this
+                img_A = pyplis.Img(self.lightcorr_A * self.vign_A)
+                img_B = pyplis.Img(self.lightcorr_B * self.vign_B)
+                img_B_warped = pyplis.Img(self.img_reg.register_image(img_A.img, img_B.img))
+                self.update_meta(img_A, self.lightcorr_A)
+                self.update_meta(img_B, self.lightcorr_B)
+                self.update_meta(img_B_warped, self.lightcorr_B_warped)
 
+                # Run model background with light-dilution corrected images
+                img_dict = {'A': img_A, 'B': img_B, 'B_warped': img_B_warped}
+                tau_A, tau_B, tau_B_warped = self.model_background(imgs=img_dict, set_vign=False,
+                                                                   params=self.background_params, plot=False)
+                self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
 
+        print(self.tau_B_warped.img[0, :])
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True

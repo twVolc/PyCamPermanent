@@ -1967,6 +1967,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'cell_cal_dir': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
                      'use_sensitivity_mask': int,
+                     'use_light_dilution': int,
                      'min_cd': float,
                      'buff_size': int,
                      'save_opt_flow': int       # If True, optical flow is saved to buffer (takes up more space)
@@ -1981,6 +1982,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._cal_type = tk.StringVar()
         self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
         self._use_sensitivity_mask = tk.IntVar()
+        self._use_light_dilution = tk.IntVar()
         self._min_cd = tk.DoubleVar()
         self._buff_size = tk.IntVar()
         self._save_opt_flow = tk.IntVar()
@@ -2096,10 +2098,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_type_widg.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        # Plot iteratively checkbutton
+        # Use sensitivity mask checkbutton
         self.sens_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
                                           variable=self._use_sensitivity_mask)
         self.sens_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Use light dilution checkbutton
+        self.dil_check = ttk.Checkbutton(settings_frame, text='Light dilution correction',
+                                          variable=self._use_light_dilution)
+        self.dil_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Plot iteratively checkbutton
@@ -2200,6 +2208,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @use_sensitivity_mask.setter
     def use_sensitivity_mask(self, value):
         self._use_sensitivity_mask.set(value)
+
+    @property
+    def use_light_dilution(self):
+        return self._use_light_dilution.get()
+
+    @use_light_dilution.setter
+    def use_light_dilution(self, value):
+        self._use_light_dilution.set(value)
 
     @property
     def bg_A(self):
@@ -2328,6 +2344,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
         pyplis_worker.cal_type = self.cal_type_int
         pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
+        pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.load_BG_img(self.bg_A, band='A')
         pyplis_worker.load_BG_img(self.bg_B, band='B')
@@ -2353,6 +2370,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
         self.cal_type_int = pyplis_worker.cal_type
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
+        self.use_light_dilution = int(pyplis_worker.use_light_dilution)
         self.min_cd = pyplis_worker.min_cd
         self.buff_size = pyplis_worker.img_buff_size
         self.save_opt_flow = pyplis_worker.save_opt_flow

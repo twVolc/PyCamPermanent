@@ -287,7 +287,10 @@ class ImageFigure:
         # Select correct image
         if self.img_type == 3:
             if pyplis_worker.got_light_dil:
-                self.image = getattr(pyplis_worker, 'lightcorr_{}'.format(self.band)).img
+                if self.band == 'A':
+                    self.image = pyplis_worker.lightcorr_A.img
+                elif self.band == 'B':
+                    self.image = pyplis_worker.lightcorr_B_warped.img
             else:
                 self.img_type = 1
 
