@@ -71,4 +71,4 @@ cross_corr_recal=30
 # Light dilution
 amb_roi=[550, 20, 600, 70]
 I0_MIN=0
-tau_thresh=0.05
+tau_thresh=0.01

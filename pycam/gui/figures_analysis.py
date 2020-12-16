@@ -864,7 +864,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         if self.disp_cal:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
-                self.vmax_cal = np.percentile(self.image_cal, 99.99)
+                self.vmax_cal = np.nanpercentile(self.image_cal, 99)
             else:
                 self.vmax_cal = self.ppmm_max
             if self.cmap.name == 'seismic':
@@ -876,7 +876,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         else:
             # Get vmax either automatically or by defined spinbox value
             if self.auto_tau:
-                self.vmax_tau = np.percentile(self.image_tau, 99.99)
+                self.vmax_tau = np.nanpercentile(self.image_tau, 99)
             else:
                 self.vmax_tau = self.tau_max
             if self.cmap.name == 'seismic':
@@ -4294,6 +4294,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.gather_vars()
         self.pyplis_worker.model_light_dilution(draw=draw)
 
+        # Reload whole sequence to show updated plots
+        self.pyplis_worker.load_sequence(self.pyplis_worker.img_dir, plot_bg=False)
+
     def update_figs(self, figs, draw=True):
         """
         Takes a dictionary of figures and puts them into canvases in current window
@@ -4303,7 +4306,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         """
         # Loop through figures placing them into the figure array
         for i, band in enumerate(['A', 'B']):
-            fig_canvas = getattr(self, 'fig_canvas_{}'.format(band))
             fig = figs[band]
             setattr(self, 'fig_scat_{}'.format(band), fig)
             # Adjust figure size
@@ -4314,6 +4316,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
             # the updated plot will be built
             if self.in_frame:
+                fig_canvas = getattr(self, 'fig_canvas_{}'.format(band))
                 fig_canvas.get_tk_widget().destroy()
 
                 fig_canvas = FigureCanvasTkAgg(fig, master=self.frame_xtra_figs)

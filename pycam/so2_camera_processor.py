@@ -1253,29 +1253,27 @@ class PyplisWorker:
         self.ext_on, _, _, ax0 = dil.apply_dilution_fit(img=self.vigncorr_A,
                                                    rad_ambient=amb_int_on,
                                                    i0_min=self.I0_MIN,
-                                                   plot=draw)
+                                                   plot=True)
         # Off-band
         self.ext_off, _, _, ax1 = dil.apply_dilution_fit(img=self.vigncorr_B_warped,
                                                    rad_ambient=amb_int_off,
                                                    i0_min=self.I0_MIN,
-                                                   plot=draw)
+                                                   plot=True)
 
         self.got_light_dil = True
 
+        # Update light dilution plots - they will only be drawn in widget if requested
+        # Plot the results in a 3D map
+        basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
 
-        # Update light dilution plots if requested
-        if draw:
-            # Plot the results in a 3D map
-            basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
-
-            # Pass figures to LightDilutionSettings object to be plotted
-            # These are updated even if draw is not requested
-            # ax0.set_ylabel("Terrain radiances (on band)")
-            # ax1.set_ylabel("Terrain radiances (off band)")
-            fig_dict = {'A': ax0.figure,
-                        'B': ax1.figure,
-                        'basemap': basemap}
-            self.fig_dilution.update_figs(fig_dict, draw=draw)
+        # Pass figures to LightDilutionSettings object to be plotted
+        # These are updated even if draw is not requested
+        # ax0.set_ylabel("Terrain radiances (on band)")
+        # ax1.set_ylabel("Terrain radiances (off band)")
+        fig_dict = {'A': ax0.figure,
+                    'B': ax1.figure,
+                    'basemap': basemap}
+        self.fig_dilution.update_figs(fig_dict, draw=draw)
 
     def corr_light_dilution(self, img, tau_uncorr, band='A'):
         """
@@ -1579,6 +1577,14 @@ class PyplisWorker:
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.tau_A, self.tau_B, self.tau_B_warped = self.model_background(plot=plot_bg)
 
+        # If we have lines, and light dilution correction is requested, we run it here
+        # TODO change the use of not self.got_light_dilution here to check time since last light dilution model
+        # TODO e.g. then we can recalibrate light dilution every 30 mins
+        if self.use_light_dilution and not self.got_light_dil:
+            lines = [line for line in self.light_dil_lines if isinstance(line, LineOnImage)]
+            if len(lines) > 0:
+                self.model_light_dilution(draw=False)
+
         # Perform light dilution if we have a correction
         if self.got_light_dil:
             self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
@@ -1607,7 +1613,7 @@ class PyplisWorker:
                                                                    params=self.background_params, plot=False)
                 self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
 
-        print(self.tau_B_warped.img[0, :])
+        # Create apparent absorbance image from off and on-band tau images
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
@@ -2483,12 +2489,6 @@ class PyplisWorker:
             self.cross_corr_last = self.img_A.meta['start_acq']
             self.doas_last_save = self.img_A.meta['start_acq']
             self.doas_last_fov_cal = self.img_A.meta['start_acq']
-
-            # If we have lines, and light dilution correction is requested, we run it here
-            if self.use_light_dilution:
-                lines = [line for line in self.light_dil_lines if isinstance(line, LineOnImage)]
-                if len(lines) > 0:
-                    self.model_light_dilution(draw=False)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
