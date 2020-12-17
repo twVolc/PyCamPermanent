@@ -3921,11 +3921,13 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         self.vars = {'amb_roi': list,
                      'I0_MIN': int,
-                     'tau_thresh': float}
+                     'tau_thresh': float,
+                     'dil_recal_time': int}     # Time [minutes] until recalibration of light dilution
 
         self.amb_roi = [0, 0, 0, 0]
         self._I0_MIN = tk.IntVar()
         self._tau_thresh = tk.DoubleVar()
+        self._dil_recal_time = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -3945,6 +3947,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     @tau_thresh.setter
     def tau_thresh(self, value):
         self._tau_thresh.set(value)
+
+    @property
+    def dil_recal_time(self):
+        return self._dil_recal_time.get()
+
+    @dil_recal_time.setter
+    def dil_recal_time(self, value):
+        self._dil_recal_time.set(value)
 
     @property
     def current_line(self):
@@ -3979,12 +3989,17 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
         self.frame.grid_rowconfigure(1, weight=1)
 
-        frame_setts = ttk.Frame(self.frame)
-        frame_setts.grid(row=0, column=0, sticky='nsew')
+        frame_setts = ttk.LabelFrame(self.frame, text='Settings', borderwidth=3)
+        frame_setts.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        lab = ttk.Label(frame_setts, text='Recalibration time [minutes]:')
+        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(frame_setts, textvariable=self._dil_recal_time, from_=0, to=600)
+        spin.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
         # Line settings
-        line_frame = ttk.LabelFrame(frame_setts, text='Settings', borderwidth=5)
-        line_frame.grid(row=0, column=0, padx=2, pady=2, sticky='nsew')
+        line_frame = tk.Frame(frame_setts, borderwidth=2, relief=tk.RAISED)
+        line_frame.grid(row=1, column=0, columnspan=2, padx=2, pady=2, sticky='nsew')
 
         row = 0
         lab = ttk.Label(line_frame, text='Edit line:')
@@ -3993,7 +4008,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
         del_butt = ttk.Button(line_frame, text='Delete line', command=lambda: self.del_line(self.current_line - 1))
-        del_butt.grid(row=row, column=2)
+        del_butt.grid(row=row, column=2, padx=2)
 
         row += 1
         check_butt_1 = ttk.Radiobutton(line_frame, text='Draw line', variable=self._draw_meth, value=1,
@@ -4006,6 +4021,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         right_frame = ttk.Frame(self.frame)
         right_frame.grid(row=0, column=1)
+        right_frame.grid_rowconfigure(0, weight=1)
 
         # # Threshold value for plume mask
         thresh_frame = ttk.LabelFrame(right_frame, text='Image thresholds')
@@ -4028,12 +4044,16 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(right_frame)
         butt_frame.grid(row=1, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
+        # Apply button
+        butt = ttk.Button(butt_frame, text='Apply', command=self.gather_vars)
+        butt.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+
         # Run button
         butt = ttk.Button(butt_frame, text='Run', command=self.run_dil_corr)
-        butt.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
 
         butt = ttk.Button(butt_frame, text='Save defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=2, sticky='ew', padx=2, pady=2)
 
         # -------------------------
         # Build light dilution figure
@@ -4281,6 +4301,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.ambient_roi = self.amb_roi
         self.pyplis_worker.I0_MIN = self.I0_MIN
         self.pyplis_worker.tau_thresh = self.tau_thresh
+        self.pyplis_worker.dil_recal_time = self.dil_recal_time
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""
@@ -4322,7 +4343,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                 fig_canvas = FigureCanvasTkAgg(fig, master=self.frame_xtra_figs)
                 setattr(self, 'fig_canvas_{}'.format(band), fig_canvas)
                 fig_canvas.get_tk_widget().pack(side=tk.TOP)
-                fig_canvas.draw()
 
                 # Add toolbar so figures can be saved
                 getattr(self, 'toolbar_{}'.format(band)).pack_forget()
@@ -4333,9 +4353,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                 setattr(self, 'toolbar_{}'.format(band), toolbar)
 
         if draw:
-            self.basemap = figs['basemap']
-            self.basemap.fig.canvas.set_window_title('Light dilution geometry')
-            self.basemap.fig.show()
+            if figs['basemap'] is not None:
+                self.basemap = figs['basemap']
+                self.basemap.fig.canvas.set_window_title('Light dilution geometry')
+                self.q.put(2)   # For drawing basemap we add to queue
 
             # If we are not in_frame, but draw was requested, we draw it all
             if not self.in_frame:
@@ -4350,10 +4371,13 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Closes frame and makes sure current values are correct
         :return:
         """
-        self.in_frame = False
+        # Make sure any non-saved settings are reverted back to pyplis settings
+        self.amb_roi = self.pyplis_worker.ambient_roi
+        self.I0_MIN = self.pyplis_worker.I0_MIN
+        self.tau_thresh = self.pyplis_worker.tau_thresh
+        self.dil_recal_time = self.pyplis_worker.dil_recal_time
 
-        # Stop draw_canv
-        # self.q.put(2)
+        self.in_frame = False
 
         # Close frame
         self.frame.destroy()
@@ -4365,6 +4389,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             if update == 1:
                 if self.in_frame:
                     self.img_canvas.draw()
+            elif update == 2:
+                self.basemap.fig.show()
             else:
                 pass
         except queue.Empty:

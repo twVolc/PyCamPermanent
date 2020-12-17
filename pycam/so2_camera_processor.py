@@ -38,6 +38,7 @@ import cv2
 from skimage import transform as tf
 import warnings
 warnings.simplefilter("ignore", UserWarning)
+warnings.simplefilter("ignore", RuntimeWarning)
 
 
 class PyplisWorker:
@@ -127,6 +128,8 @@ class PyplisWorker:
         self.min_cd = 0                                 # Minimum column density used in analysis
         self.use_light_dilution = True                  # If True, light dilution correction is used
         self.light_dil_lines = []                       # Lines for light dilution correction
+        self.dil_recal_time = 0                         # Time in minutes before modelling light dilution coeffs
+        self.dil_recal_last = 0                         # Datetime of last light dilution model run
         self.ambient_roi = [0, 0, 0, 0]                 # Ambient intensity ROI coordinates for light dilution
         self.I0_MIN = 0                                 # Minimum intensity for dilution fit
         self.ext_off = None                             # Extinction coefficient for off-band
@@ -437,6 +440,7 @@ class PyplisWorker:
         self.got_doas_fov = False
         self.got_cal_cell = False
         self.got_light_dil = False
+        self.dil_recal_last = 0
         self.vel_glob = []
         self.vel_glob_err = None
         self.cross_corr_last = 0
@@ -1239,32 +1243,21 @@ class PyplisWorker:
         self.light_dil_lines = [f for f in self.light_dil_lines if isinstance(f, LineOnImage)]
 
         # Create the pyplis light dilution object
-        dil = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
+        self.dil_corr = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
 
         # Determine distances to the two lines defined above (every 6th pixel)
-        for line_id in dil.line_ids:
-            dil.det_topo_dists_line(line_id)
+        for line_id in self.dil_corr.line_ids:
+            self.dil_corr.det_topo_dists_line(line_id)
 
-        # Estimate ambient intensity using defined ROI
-        amb_int_on = self.vigncorr_A.crop(self.ambient_roi, True).mean()
-        amb_int_off = self.vigncorr_B_warped.crop(self.ambient_roi, True).mean()
+        # Update light dilution plots - they will only be drawn in widget if requested
+        # Plot the geometry and line results in a 3D map
+        basemap = self.dil_corr.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
 
-        # perform dilution anlysis and retrieve extinction coefficients (on-band)
-        self.ext_on, _, _, ax0 = dil.apply_dilution_fit(img=self.vigncorr_A,
-                                                   rad_ambient=amb_int_on,
-                                                   i0_min=self.I0_MIN,
-                                                   plot=True)
-        # Off-band
-        self.ext_off, _, _, ax1 = dil.apply_dilution_fit(img=self.vigncorr_B_warped,
-                                                   rad_ambient=amb_int_off,
-                                                   i0_min=self.I0_MIN,
-                                                   plot=True)
+        # Get light dilution coefficients
+        ax0, ax1 = self.get_light_dilution_coefficients(plot=False)
 
         self.got_light_dil = True
 
-        # Update light dilution plots - they will only be drawn in widget if requested
-        # Plot the results in a 3D map
-        basemap = dil.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
 
         # Pass figures to LightDilutionSettings object to be plotted
         # These are updated even if draw is not requested
@@ -1274,6 +1267,34 @@ class PyplisWorker:
                     'B': ax1.figure,
                     'basemap': basemap}
         self.fig_dilution.update_figs(fig_dict, draw=draw)
+
+    def get_light_dilution_coefficients(self, plot=True):
+        """Gets light dilution coefficients from existing pyplis.DilutionCorr object"""
+        # Estimate ambient intensity using defined ROI
+        amb_int_on = self.vigncorr_A.crop(self.ambient_roi, True).mean()
+        amb_int_off = self.vigncorr_B_warped.crop(self.ambient_roi, True).mean()
+
+        # perform dilution anlysis and retrieve extinction coefficients (on-band)
+        self.ext_on, _, _, ax0 = self.dil_corr.apply_dilution_fit(img=self.vigncorr_A,
+                                                                  rad_ambient=amb_int_on,
+                                                                  i0_min=self.I0_MIN,
+                                                                  plot=True)
+        # Off-band
+        self.ext_off, _, _, ax1 = self.dil_corr.apply_dilution_fit(img=self.vigncorr_B_warped,
+                                                                   rad_ambient=amb_int_off,
+                                                                   i0_min=self.I0_MIN,
+                                                                   plot=True)
+        # Flag that we have made a new model
+        self.dil_recal_last = self.vigncorr_A.meta['start_acq']
+
+        # Plot coefficients if requested
+        if plot:
+            fig_dict = {'A': ax0.figure,
+                        'B': ax1.figure,
+                        'basemap': None}
+            self.fig_dilution.update_figs(fig_dict, draw=plot)
+
+        return ax0, ax1
 
     def corr_light_dilution(self, img, tau_uncorr, band='A'):
         """
@@ -1577,15 +1598,21 @@ class PyplisWorker:
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.tau_A, self.tau_B, self.tau_B_warped = self.model_background(plot=plot_bg)
 
-        # If we have lines, and light dilution correction is requested, we run it here
-        # TODO change the use of not self.got_light_dilution here to check time since last light dilution model
-        # TODO e.g. then we can recalibrate light dilution every 30 mins
-        if self.use_light_dilution and not self.got_light_dil:
+        # If we have lines, and light dilution correction is requested, we run it here,
+        # If sufficient time has passed since last model run we get new coefficients, but don't need to rerun the whole
+        # model, so that is only done on the first image
+        dt = self.tau_A.meta['start_acq'] - self.dil_recal_last
+        if self.use_light_dilution and self.first_image:
             lines = [line for line in self.light_dil_lines if isinstance(line, LineOnImage)]
             if len(lines) > 0:
+                print('Modelling light dilution')
                 self.model_light_dilution(draw=False)
+        elif self.use_light_dilution and datetime.timedelta(minutes=self.dil_recal_time) <= dt:
+            print('Estimating new light dilution scattering coefficients')
+            self.get_light_dilution_coefficients(plot=False)
 
         # Perform light dilution if we have a correction
+        t = time.time()
         if self.got_light_dil:
             self.lightcorr_A = self.corr_light_dilution(self.vigncorr_A, self.tau_A, band='A')
             self.update_meta(self.lightcorr_A, self.vigncorr_A)
@@ -1612,6 +1639,8 @@ class PyplisWorker:
                 tau_A, tau_B, tau_B_warped = self.model_background(imgs=img_dict, set_vign=False,
                                                                    params=self.background_params, plot=False)
                 self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
+        print('Light dilution correction time: {}'.format(time.time()-t))
+
 
         # Create apparent absorbance image from off and on-band tau images
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
@@ -2469,6 +2498,15 @@ class PyplisWorker:
         if img_path_B is not None:
             self.load_img(img_path_B, band='B', plot=plot)
 
+        # Update some initial times which we keep track of throughout
+        # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
+        # the start time.
+        if self.first_image:
+            self.cross_corr_last = self.img_A.meta['start_acq']
+            self.doas_last_save = self.img_A.meta['start_acq']
+            self.doas_last_fov_cal = self.img_A.meta['start_acq']
+            self.dil_recal_last = self.img_A.meta['start_acq']
+
         # Generate optical depth image (and calibrate if available)
         # If not first image, and we have optical flow, then we will update the plot with opt flow, so to save
         # drawing too often and unnecessary processing, we don't plot the image here
@@ -2481,14 +2519,6 @@ class PyplisWorker:
         else:
             plot_img = False
         self.generate_optical_depth(plot=plot_img, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
-
-        # Update some initial times which we keep track of throughout
-        # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
-        # the start time.
-        if self.first_image:
-            self.cross_corr_last = self.img_A.meta['start_acq']
-            self.doas_last_save = self.img_A.meta['start_acq']
-            self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:
@@ -2666,16 +2696,11 @@ class PyplisWorker:
         # Run final processing work
         self.finalise_processing()
 
-        print('Processing time: {}'.format(time.time() - time_proc))
+        proc_time = time.time() - time_proc
+        print('Processing time: {:.1f}'.format(proc_time))
+        print('Time per image: {:.2f}'.format(proc_time / len(self.img_list)))
 
         self.in_processing = False
-
-        # if self.cal_type in [1, 2]:
-        #     # TODO Edit this test to use proper data (currently uses dummy random values) - I think this test is now automatic in process_pair/generate_optical_depth
-        #     # Current test for performing DOAS FOV search
-        #     stack = self.make_img_stack()
-        #     doas_results = self.make_doas_results(self.test_doas_times, self.test_doas_cds, stds=self.test_doas_stds)
-        #     self.doas_fov_search(stack, doas_results)
 
     def start_processing(self):
         """Public access thread starter for _processing"""
