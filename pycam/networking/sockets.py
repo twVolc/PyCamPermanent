@@ -108,8 +108,9 @@ class CommsFuncs(SendRecvSpecs):
             'WMX': (int, [300, 400]),           # Maximum wavelength of spectra to check saturation
             'SNS': (float, [0.0, 0.9]),         # Minimum saturation accepted for spectra before adjusting int. time
             'SXS': (float, [0.1, 1.0]),         # Maximum saturation accepted for spectra before adjusting int. time
-            'TPC': (str, [a for a in CameraSpecs().file_img_type]),     # Type of image
-            'TPS': (str, [a for a in SpecSpecs().file_spec_type]),      # Type of spectrum
+            'TPA': (str, []),           # Type of image (empty list shows it will accept any form) - for on band acq
+            'TPB': (str, []),           # Type of image (empty list shows it will accept any form) - for off band acq
+            'TPS': (str, []),           # Type of spectrum
             'DKC': (bool, 1),           # Starts capture of dark sequence in camera (stops continuous capt if necessary)
             'DKS': (bool, 1),           # Starts capture of dark sequence in spectrometer
             'SPC': (bool, 1),           # Stops continuous image acquisitions
@@ -380,15 +381,19 @@ class SocketMeths(CommsFuncs):
 
                 # If we have a str, check it within the accepted str list
                 elif self.cmd_dict[mess_list[i]][0] is str:
-
-                    # Flag error with command if it is not recognised
-                    if mess_list[i+1] not in self.cmd_dict[mess_list[i]][1]:
-                        # Only flag error on socket server to save duplication
-                        if isinstance(self, SocketServer):
-                            cmd_ret['ERR'].append(mess_list[i])
-                        continue
-                    else:
+                    # Some messages accept any input form - this is signified by an empty list in cmd_dict.
+                    # So if this is the case we don't check if the command is valid
+                    if len(self.cmd_dict[mess_list[i]]) == 0:
                         cmd = mess_list[i+1]
+                    else:
+                        # Flag error with command if it is not recognised
+                        if mess_list[i+1] not in self.cmd_dict[mess_list[i]][1]:
+                            # Only flag error on socket server to save duplication
+                            if isinstance(self, SocketServer):
+                                cmd_ret['ERR'].append(mess_list[i])
+                            continue
+                        else:
+                            cmd = mess_list[i+1]
 
                 # Otherwise we convert message to its type and then test that outcome is within defined bounds
                 else:
@@ -824,16 +829,29 @@ class PiSocketCamComms(SocketClient):
 
         self.send_comms(self.sock, comm)
 
-    def TPC(self, value):
-        """Acts on TPC command, requesting this type of image from the camera"""
-        try:
-            self.camera.capture_q.put({'type': value})
-            comm = self.encode_comms({'TPC': value})
-        except:
-            comm = self.encode_comms({'ERR': 'TPC'})
+    def TPA(self, value):
+        """Acts on TPA command, requesting this type of image from the camera"""
+        if self.camera.band.lower() in ['on', 'a']:
+            try:
+                self.camera.capture_q.put({'type': value})
+                comm = self.encode_comms({'TPA': value})
+            except:
+                comm = self.encode_comms({'ERR': 'TPA'})
 
-        # Send response
-        self.send_comms(self.sock, comm)
+            # Send response
+            self.send_comms(self.sock, comm)
+
+    def TPB(self, value):
+        """Acts on TPB command, requesting this type of image from the camera"""
+        if self.camera.band.lower() in ['off', 'b']:
+            try:
+                self.camera.capture_q.put({'type': value})
+                comm = self.encode_comms({'TPB': value})
+            except:
+                comm = self.encode_comms({'ERR': 'TPB'})
+
+            # Send response
+            self.send_comms(self.sock, comm)
 
     def DKC(self, value):
         """Acts on DKC command, stopping continuous capture if necessary then instigating dark sequence"""

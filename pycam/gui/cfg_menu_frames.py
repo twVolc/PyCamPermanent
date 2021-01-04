@@ -10,6 +10,7 @@ from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackg
     CellCalibFrame, CrossCorrelationSettings, OptiFlowSettings, LightDilutionSettings
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts
+from pycam.gui.acquisition import BasicAcqHandler
 
 # Geometry settings
 geom_settings = GeomSettings()
@@ -37,3 +38,6 @@ opti_flow = OptiFlowSettings(fig_setts=gui_setts)
 
 # Light dilution frame
 light_dilution = LightDilutionSettings(fig_setts=gui_setts)
+
+# Communications handler
+basic_acq_handler = BasicAcqHandler()

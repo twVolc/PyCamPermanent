@@ -131,6 +131,7 @@ class CameraSpecs:
                               'dark': 'Dark',
                               'cal': 'ppmm',
                               'clear': 'Clear',
+                              'test': 'Test',
                               'dark_corr': 'darkcorr'}
         self.file_type_loc = 4                                  # Img type location in filename
 
@@ -366,7 +367,7 @@ class SpecSpecs:
         self.file_ext = '.npy'  # Spectra saved as numpy array
         self.file_ss = '{}ss'   # Shutter speed format spec
         self.file_ss_loc = 1    # Shutter speed location in filename
-        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear'}
+        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear', 'test': 'Test'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
         self.file_datestr_loc = 0
 

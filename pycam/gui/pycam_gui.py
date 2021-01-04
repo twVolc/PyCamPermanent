@@ -14,7 +14,7 @@ from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
-    light_dilution, cross_correlation
+    light_dilution, cross_correlation, basic_acq_handler
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -77,6 +77,7 @@ class PyCam(ttk.Frame):
 
     def info_load(self):
         """Instantiates all frames which require some kind of start-up instantiation"""
+        basic_acq_handler.initiate_variables()
         geom_settings.initiate_variables()
         process_settings.initiate_variables()
         plume_bg.initiate_variables()

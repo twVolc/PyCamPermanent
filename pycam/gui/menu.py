@@ -6,7 +6,7 @@ from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
-    opti_flow, light_dilution, cross_correlation, doas_fov
+    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
@@ -91,6 +91,8 @@ class PyMenu:
         self.submenu_cmd.add_command(label='Restart spectrometer', command=lambda: instrument_cmd('RSS'))
         self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
+        self.menus[tab].add_separator()
+        self.menus[tab].add_command(label='Manual acquisition', command=basic_acq_handler.build_manual_capture_frame)
         self.menus[tab].add_separator()
 
         # Geometry setup
