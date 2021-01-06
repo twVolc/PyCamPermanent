@@ -79,6 +79,7 @@ class PyMenu:
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
+        # General networking commands
         self.menus[tab].add_command(label='Connect', command=cfg.indicator.connect_sock)
         self.menus[tab].add_command(label='Disconnect', command=cfg.indicator.disconnect_sock)
 
@@ -92,6 +93,16 @@ class PyMenu:
         self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
         self.menus[tab].add_separator()
+
+        # Data transfer
+        self.submenu_data = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Data Transfer', menu=self.submenu_data)
+        self.submenu_data.add_command(label='Start transfer', command=cfg.ftp_client.watch_dir)
+        self.submenu_data.add_command(label='Stop transfer', command=cfg.ftp_client.stop_watch)
+        self.submenu_data.add_command(label='Options')  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
+        self.menus[tab].add_separator()
+
+        # Manual acquisition
         self.menus[tab].add_command(label='Manual acquisition', command=basic_acq_handler.build_manual_capture_frame)
         self.menus[tab].add_separator()
 

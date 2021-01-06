@@ -6,6 +6,7 @@ from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
 from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
+from pycam.networking.FTP import FTPClient
 from .settings import GUISettings
 
 # ======================================================================================================================
@@ -25,6 +26,10 @@ send_comms = ExternalSendConnection(sock=sock, acc_conn=False)
 
 # Connection indicator
 indicator = Indicator()
+
+# FTP client
+ftp_client = FTPClient(network_info=config)
+
 # ======================================================================================================================
 
 # ==============================

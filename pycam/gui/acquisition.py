@@ -5,7 +5,7 @@ Module containing widgets for camera and spectrometer control, by connecting to 
 messages other comms
 """
 
-from pycam.setupclasses import CameraSpecs, SpecSpecs
+from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 
@@ -13,6 +13,8 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter.messagebox import askyesno
 import numpy as np
+import os
+import datetime
 
 
 class TkVariables:
@@ -642,6 +644,13 @@ class BasicAcqHandler:
         self.frame = None
         self.in_frame = False
 
+        self.root_dir = FileLocator.IMG_SPEC_PATH_WINDOWS
+        self.date_fmt = "%Y-%m-%d"
+        self.date_dir = self.find_current_dir()
+        self.cal_dir_fmt = '/Cal_{}/'
+        self.cal_num = 1
+        self.cal_dir = self.cal_dir_fmt.format(self.cal_num)   # Calibration directory
+
     def initiate_variables(self):
         self._ss_A = tk.IntVar()
         self._ss_B = tk.IntVar()
@@ -720,7 +729,7 @@ class BasicAcqHandler:
     def stop_continuous(self):
         """Stops continuous capture in case it is running"""
         mess = askyesno('Stopping continuous capture',
-                        'Continuing to manual capture will stop continuous capture mode from running on the instrument'
+                        'Continuing to manual capture will stop continuous capture mode from running on the instrument '
                         '(if it is currently running). Do you wish to continue?')
         if mess:
             # Send commands to stop continuous capture of spectrometer and camera
@@ -728,6 +737,13 @@ class BasicAcqHandler:
             return 1
         else:
             return 0
+
+    def find_current_dir(self):
+        """Gets current directory based on date and root"""
+        date = datetime.datetime.now().strftime(self.date_fmt)
+        date_dir = os.path.join(self.root_dir, date)
+        return date_dir
+
 
     def build_manual_capture_frame(self):
         """Builds frame for controlling manual capture of images and spectra"""
@@ -741,13 +757,13 @@ class BasicAcqHandler:
         if not cfg.indicator.connected:
             x = tk.messagebox.showwarning('No insturment connected',
                                           'Acquisition will not be possible as no instrument is connected')
-
         # Ensure user wants to stop continuous capture of instrument
-        mess = self.stop_continuous()
-        if not mess:
-            tk.messagebox.showinfo('Stopped manual capture',
-                                   'Request to enter manual capture mode has been aborted.')
-            return
+        else:
+            mess = self.stop_continuous()
+            if not mess:
+                tk.messagebox.showinfo('Stopped manual capture',
+                                       'Request to enter manual capture mode has been aborted.')
+                return
 
         # Build capture frame
         self.frame = tk.Toplevel()
@@ -810,13 +826,20 @@ class BasicAcqHandler:
         self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3)
         self.frame_spec.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
-    def start_cal(self):
+    def new_cal(self):
         """Setup calibration directory and make widgets available"""
-        pass
+        # Edit buttons so that filter B is enabled first
+        self.fltr_b_butt.configure(state=tk.DISABLED)
+        self.fltr_a_butt.configure(state=tk.NORMAL)
 
-    def end_cal(self):
-        """End calibration"""
-        pass
+        # Change calibration directory so new images are saved to correct place
+        self.date_dir = self.find_current_dir()
+        self.cal_num = 1
+        self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(self.cal_num))
+        while os.path.exists(self.cal_dir):
+            self.cal_num += 1
+            self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(self.cal_num))
+        os.mkdir(self.cal_dir)
 
     def acq_cal_img(self, band):
         """Takes calibration image for defined band"""
