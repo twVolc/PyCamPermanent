@@ -188,7 +188,7 @@ class Camera(CameraSpecs):
         time_str: str
             Time string containing date and time
         img_type: str
-            Type of image. Value should be retrieved from one of dictionary options in <self.file_img_type>"""
+            Type of image. Value should be retrieved from one of dictionary options in <self.file_type>"""
         return time_str + '_' + \
                self.file_filterids[self.band] + '_' + \
                self.file_ag.format(str(self.analog_gain)) + '_' + \
@@ -313,7 +313,7 @@ class Camera(CameraSpecs):
             else:
                 if 'type' in command:
                     # If a sequence isn't requested we take one typical image
-                    if command['type'] in self.file_img_type:
+                    if command['type'] in self.file_type:
 
                         # Get time and format
                         time_str = format_time(datetime.datetime.now(), self.file_datestr)
@@ -399,10 +399,10 @@ class Camera(CameraSpecs):
                 self.capture()
 
                 # Generate filename
-                filename = self.generate_filename(time_str, self.file_img_type['meas'])
+                filename = self.generate_filename(time_str, self.file_type['meas'])
 
                 # Generate filename for image and save it
-                # self.save_current_image(self.generate_filename(time_str, self.file_img_type['meas']))
+                # self.save_current_image(self.generate_filename(time_str, self.file_type['meas']))
 
                 # Put filename and image into q
                 img_q.put([filename, self.image])
@@ -441,7 +441,7 @@ class Camera(CameraSpecs):
             self.capture()
 
             # Generate filename for image and save it
-            self.save_current_image(self.generate_filename(time_str, self.file_img_type['dark']))
+            self.save_current_image(self.generate_filename(time_str, self.file_type['dark']))
 
 
 class Spectrometer(SpecSpecs):
@@ -702,7 +702,7 @@ class Spectrometer(SpecSpecs):
             else:
                 if 'type' in command:
                     # If a sequence isn't requested we take one typical image
-                    if command['type'] in self.file_spec_type:
+                    if command['type'] in self.file_type:
 
                         # Get time and format
                         time_str = format_time(datetime.datetime.now(), self.file_datestr)
@@ -784,7 +784,7 @@ class Spectrometer(SpecSpecs):
                 self.get_spec()
 
                 # Generate filename
-                filename = self.generate_filename(time_str, self.file_spec_type['meas'])
+                filename = self.generate_filename(time_str, self.file_type['meas'])
 
                 # Add spectrum and filename to queue
                 spec_q.put([filename, self.spectrum])
@@ -819,7 +819,7 @@ class Spectrometer(SpecSpecs):
             self.get_spec()
 
             # Generate filename for spectrum
-            filename = self.generate_filename(time_str, self.file_spec_type['dark'])
+            filename = self.generate_filename(time_str, self.file_type['dark'])
 
             # Add data to queue
             self.spec_q.put(filename)

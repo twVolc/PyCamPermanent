@@ -638,24 +638,104 @@ class BasicAcqHandler:
     """
     Handles basic acquisitions - outside of continuous capture
     """
-    def __init__(self, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.frame = None
         self.in_frame = False
 
-        self.root_dir = FileLocator.IMG_SPEC_PATH_WINDOWS
-        self.date_fmt = "%Y-%m-%d"
-        self.date_dir = self.find_current_dir()
-        self.cal_dir_fmt = '/Cal_{}/'
-        self.cal_num = 1
-        self.cal_dir = self.cal_dir_fmt.format(self.cal_num)   # Calibration directory
+        self.img_dir = img_dir
+        self.spec_dir = spec_dir
 
     def initiate_variables(self):
         self._ss_A = tk.IntVar()
         self._ss_B = tk.IntVar()
         self._ss_spec = tk.IntVar()
         self._cell_ppmm = tk.IntVar()
+
+    def build_manual_capture_frame(self):
+        """Builds frame for controlling manual capture of images and spectra"""
+        # Ensure we tell the directory handler that we will work out what directory to use from here
+        self.img_dir.auto_mode = False
+        self.spec_dir.auto_mode = False
+
+        # If we are already in the frame we don't build it again
+        if self.in_frame:
+            return
+        else:
+            self.in_frame = True
+
+        # Check there is a connection
+        if not cfg.indicator.connected:
+            x = tk.messagebox.showwarning('No insturment connected',
+                                          'Acquisition will not be possible as no instrument is connected')
+        # Ensure user wants to stop continuous capture of instrument
+        else:
+            mess = self.stop_continuous()
+            if not mess:
+                tk.messagebox.showinfo('Stopped manual capture',
+                                       'Request to enter manual capture mode has been aborted.')
+                return
+
+        # Build capture frame
+        self.frame = tk.Toplevel()
+        self.frame.title('Manual acquisition')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        self.frame_cam = tk.LabelFrame(self.frame, text='Camera', relief=tk.RAISED, borderwidth=3)
+        self.frame_cam.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        row = 0
+        frame_norm = tk.Frame(self.frame_cam)
+        frame_norm.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        test_butt = ttk.Button(frame_norm, text='Test',
+                               command=lambda: self.acq_cam(self.cam_specs.file_type['test']))
+        test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        # Shutter speed frame
+        frame_ss = ttk.LabelFrame(self.frame_cam, text=u'Shutter Speed (\u03bcs)')
+        frame_ss.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        ttk.Label(frame_ss, text='Filter A:').grid(row=0, column=0, padx=2, pady=2)
+        ttk.Label(frame_ss, text='Filter B:').grid(row=1, column=0, padx=2, pady=2)
+        ttk.Entry(frame_ss, width=7, textvariable=self._ss_A).grid(row=0, column=1, padx=2, pady=2)
+        ttk.Entry(frame_ss, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=2, pady=2)
+        row += 1
+
+        # Calibration images
+        frame_cal = ttk.LabelFrame(self.frame_cam, text='Calibration')
+        frame_cal.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        # Cell ppmm value UI
+        frame_ent = ttk.Frame(frame_cal)
+        frame_ent.grid(row=0, column=0, columnspan=2, sticky='nsew')
+
+        row = 0
+
+        ttk.Label(frame_ent, text='Cell column density [ppm.m]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        ttk.Entry(frame_ent, width=6, textvariable=self._cell_ppmm).grid(row=row, column=1, sticky='ew', padx=2, pady=2)
+        row += 1
+
+        self.dark_butt = ttk.Button(frame_cal, text='Dark',
+                                    command=lambda: self.acq_cam(self.cam_specs.file_type['dark']))
+        self.dark_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        self.clear_butt = ttk.Button(frame_cal, text='Clear',
+                                     command=lambda: self.acq_cam(self.cam_specs.file_type['clear']))
+        self.clear_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        self.fltr_a_butt = ttk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
+        self.fltr_a_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        self.fltr_b_butt = ttk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
+        self.fltr_b_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        self.fltr_b_butt.configure(state=tk.DISABLED)
+        row += 1
+
+        # Spectrometer acquisition
+        self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3)
+        self.frame_spec.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
     @property
     def ss_A(self):
@@ -693,6 +773,12 @@ class BasicAcqHandler:
         """Send camera communications
         :param acq_type:    str   Type of acquisition - forms the final section of the filename of the resulting image
         """
+        # Setup directories depending on the acquisition type
+        if acq_type == self.cam_specs.file_type['test']:
+            self.img_dir.set_test_dir()
+        elif acq_type == self.cam_specs.file_type['meas']:
+            self.img_dir.set_seq_dir()
+
         # Setup empty command dictionary
         cmd_dict = dict()
 
@@ -738,108 +824,13 @@ class BasicAcqHandler:
         else:
             return 0
 
-    def find_current_dir(self):
-        """Gets current directory based on date and root"""
-        date = datetime.datetime.now().strftime(self.date_fmt)
-        date_dir = os.path.join(self.root_dir, date)
-        return date_dir
-
-
-    def build_manual_capture_frame(self):
-        """Builds frame for controlling manual capture of images and spectra"""
-        # If we are already in the frame we don't build it again
-        if self.in_frame:
-            return
-        else:
-            self.in_frame = True
-
-        # Check there is a connection
-        if not cfg.indicator.connected:
-            x = tk.messagebox.showwarning('No insturment connected',
-                                          'Acquisition will not be possible as no instrument is connected')
-        # Ensure user wants to stop continuous capture of instrument
-        else:
-            mess = self.stop_continuous()
-            if not mess:
-                tk.messagebox.showinfo('Stopped manual capture',
-                                       'Request to enter manual capture mode has been aborted.')
-                return
-
-        # Build capture frame
-        self.frame = tk.Toplevel()
-        self.frame.title('Manual acquisition')
-        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
-
-        self.frame_cam = tk.LabelFrame(self.frame, text='Camera', relief=tk.RAISED, borderwidth=3)
-        self.frame_cam.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
-
-        row = 0
-        frame_norm = tk.Frame(self.frame_cam)
-        frame_norm.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        row += 1
-
-        test_butt = ttk.Button(frame_norm, text='Test',
-                               command=lambda: self.acq_cam(self.cam_specs.file_img_type['test']))
-        test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
-
-        # Shutter speed frame
-        frame_ss = ttk.LabelFrame(self.frame_cam, text=u'Shutter Speed (\u03bcs)')
-        frame_ss.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        ttk.Label(frame_ss, text='Filter A:').grid(row=0, column=0, padx=2, pady=2)
-        ttk.Label(frame_ss, text='Filter B:').grid(row=1, column=0, padx=2, pady=2)
-        ttk.Entry(frame_ss, width=7, textvariable=self._ss_A).grid(row=0, column=1, padx=2, pady=2)
-        ttk.Entry(frame_ss, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=2, pady=2)
-        row += 1
-
-        # Calibration images
-        frame_cal = ttk.LabelFrame(self.frame_cam, text='Calibration')
-        frame_cal.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        row += 1
-
-        # Cell ppmm value UI
-        frame_ent = ttk.Frame(frame_cal)
-        frame_ent.grid(row=0, column=0, columnspan=2, sticky='nsew')
-
-        row = 0
-
-
-        ttk.Label(frame_ent, text='Cell column density [ppm.m]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        ttk.Entry(frame_ent, width=6, textvariable=self._cell_ppmm).grid(row=row, column=1, sticky='ew', padx=2, pady=2)
-        row += 1
-
-        self.dark_butt = ttk.Button(frame_cal, text='Dark',
-                               command=lambda: self.acq_cam(self.cam_specs.file_img_type['dark']))
-        self.dark_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        self.clear_butt = ttk.Button(frame_cal, text='Clear',
-                               command=lambda: self.acq_cam(self.cam_specs.file_img_type['clear']))
-        self.clear_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-        row += 1
-
-        self.fltr_a_butt = ttk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
-        self.fltr_a_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        self.fltr_b_butt = ttk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
-        self.fltr_b_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-        self.fltr_b_butt.configure(state=tk.DISABLED)
-        row += 1
-
-        # Spectrometer acquisition
-        self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3)
-        self.frame_spec.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
-
     def new_cal(self):
         """Setup calibration directory and make widgets available"""
         # Edit buttons so that filter B is enabled first
         self.fltr_b_butt.configure(state=tk.DISABLED)
         self.fltr_a_butt.configure(state=tk.NORMAL)
 
-        # Change calibration directory so new images are saved to correct place
-        self.date_dir = self.find_current_dir()
-        self.cal_num = 1
-        self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(self.cal_num))
-        while os.path.exists(self.cal_dir):
-            self.cal_num += 1
-            self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(self.cal_num))
-        os.mkdir(self.cal_dir)
+        self.img_dir.set_cal_dir()
 
     def acq_cal_img(self, band):
         """Takes calibration image for defined band"""
@@ -851,11 +842,15 @@ class BasicAcqHandler:
             self.fltr_a_butt.configure(state=tk.NORMAL)
 
         # Request acquisition
-        self.acq_cam(self.cell_ppmm + self.cam_specs.file_img_type['cal'],
+        self.acq_cam(self.cell_ppmm + self.cam_specs.file_type['cal'],
                      band=band)
 
     def close_frame(self):
         """Closes acquisition frame"""
+        # Return the directory handling to auto mode (we only want it to be manual for manual acquisitions)
+        self.img_dir.auto_mode = True
+        self.spec_dir.auto_mode = True
+
         self.in_frame = False
         self.frame.destroy()
 

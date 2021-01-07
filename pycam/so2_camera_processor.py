@@ -357,7 +357,7 @@ class PyplisWorker:
         """
         # Create full list of images
         full_list = [f for f in os.listdir(self.img_dir)
-                     if self.cam_specs.file_img_type['meas'] in f and self.cam_specs.file_ext in f]
+                     if self.cam_specs.file_type['meas'] in f and self.cam_specs.file_ext in f]
 
         self.num_img_tot = len(full_list)
 
@@ -680,7 +680,7 @@ class PyplisWorker:
 
         # List all dark images in directory
         dark_list = [f for f in os.listdir(img_dir)
-                     if self.cam_specs.file_img_type['dark'] in f and self.cam_specs.file_ext in f
+                     if self.cam_specs.file_type['dark'] in f and self.cam_specs.file_ext in f
                      and self.cam_specs.file_filterids[band] in f]
 
         # Extract ss from each image and round to 2 significant figures
@@ -795,7 +795,7 @@ class PyplisWorker:
             # Try again, if we fail then the calibration directory doesn't contain valid images, so we exit
             # Get all dark corrected images in sequence
             img_list_full = [x for x in os.listdir(self.cell_cal_dir) if
-                             self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext in x]
+                             self.cam_specs.file_type['dark_corr'] + self.cam_specs.file_ext in x]
 
             if len(img_list_full) == 0:
                 print('Calibration directory: {} \n'
@@ -805,9 +805,9 @@ class PyplisWorker:
 
             # Clear sky.
             clear_list_A = [x for x in img_list_full
-                            if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['clear'] in x]
+                            if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_type['clear'] in x]
             clear_list_B = [x for x in img_list_full
-                            if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['clear'] in x]
+                            if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_type['clear'] in x]
             bg_on_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_A]
             bg_off_paths = [os.path.join(self.cell_cal_dir, f) for f in clear_list_B]
 
@@ -820,9 +820,9 @@ class PyplisWorker:
             # -------------------------------
             # Calibration file listssky
             cal_list_A = [x for x in img_list_full
-                          if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_img_type['cal'] in x]
+                          if self.cam_specs.file_filterids['on'] in x and self.cam_specs.file_type['cal'] in x]
             cal_list_B = [x for x in img_list_full
-                          if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_img_type['cal'] in x]
+                          if self.cam_specs.file_filterids['off'] in x and self.cam_specs.file_type['cal'] in x]
             num_cal_A = len(cal_list_A)
             num_cal_B = len(cal_list_B)
 
@@ -831,10 +831,10 @@ class PyplisWorker:
                 return
 
             cell_vals_A = [
-                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_type['cal'], '')
                 for x in cal_list_A]
             cell_vals_B = [
-                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+                x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_type['cal'], '')
                 for x in cal_list_B]
             cell_vals = list(set(cell_vals_A))
 
@@ -853,7 +853,7 @@ class PyplisWorker:
 
             for ppmm in cell_vals:
                 # Set id for this cell (based on its filename)
-                cal_id = ppmm + self.cam_specs.file_img_type['cal']
+                cal_id = ppmm + self.cam_specs.file_type['cal']
 
                 # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
                 # Pyplis doesn't like 0 cell CD so if we are using the 0 cell we just make it have a very small value
@@ -943,11 +943,11 @@ class PyplisWorker:
 
         # Clear sky. We use file_ext too to avoid using any dark_corr images which are created/saved by this function
         clear_list_A = [x for x in img_list_full
-                        if self.cam_specs.file_filterids['on'] in x  and
-                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+                        if self.cam_specs.file_filterids['on'] in x and
+                        self.cam_specs.file_type['clear'] + self.cam_specs.file_ext in x]
         clear_list_B = [x for x in img_list_full
                         if self.cam_specs.file_filterids['off'] in x and
-                        self.cam_specs.file_img_type['clear'] + self.cam_specs.file_ext in x]
+                        self.cam_specs.file_type['clear'] + self.cam_specs.file_ext in x]
         clear_list_A.sort()
         clear_list_B.sort()
         num_clear_A = len(clear_list_A)
@@ -1002,10 +1002,10 @@ class PyplisWorker:
         # Calibration file listssky
         cal_list_A = [x for x in img_list_full
                       if self.cam_specs.file_filterids['on'] in x and
-                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+                      self.cam_specs.file_type['cal'] + self.cam_specs.file_ext in x]
         cal_list_B = [x for x in img_list_full
                       if self.cam_specs.file_filterids['off'] in x and
-                      self.cam_specs.file_img_type['cal'] + self.cam_specs.file_ext in x]
+                      self.cam_specs.file_type['cal'] + self.cam_specs.file_ext in x]
         cal_list_A.sort()
         cal_list_B.sort()
         num_cal_A = len(cal_list_A)
@@ -1015,9 +1015,9 @@ class PyplisWorker:
             print('Calibration directory does not contain expected image. Aborting calibration load!')
             return
 
-        cell_vals_A = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+        cell_vals_A = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_type['cal'], '')
                        for x in cal_list_A]
-        cell_vals_B = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_img_type['cal'], '')
+        cell_vals_B = [x.split('.')[0].split('_')[self.cam_specs.file_type_loc].replace(self.cam_specs.file_type['cal'], '')
                        for x in cal_list_B]
         cell_vals = list(set(cell_vals_A))
 
@@ -1038,7 +1038,7 @@ class PyplisWorker:
 
         for ppmm in cell_vals:
             # Set id for this cell (based on its filename)
-            cal_id = ppmm + self.cam_specs.file_img_type['cal']
+            cal_id = ppmm + self.cam_specs.file_type['cal']
 
             for band in ['A', 'B']:
                 # Make list for specific calibration cell
@@ -1121,7 +1121,7 @@ class PyplisWorker:
                 # Clear image
                 img = np.uint16(np.round(locals()['img_clear_{}'.format(band)]))
                 filename = locals()['clear_list_{}'.format(band)][-1].split(self.cam_specs.file_ext)[0] + \
-                           '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
+                           '_' + self.cam_specs.file_type['dark_corr'] + self.cam_specs.file_ext
                 pathname = os.path.join(self.cell_cal_dir, filename)
                 if not os.path.exists(pathname):
                     save_img(img, pathname)
@@ -1129,14 +1129,14 @@ class PyplisWorker:
                 # Loop through cells and save those image
                 for ppmm in cell_vals:
                     # Set id for this cell (based on its filename)
-                    cal_id = ppmm + self.cam_specs.file_img_type['cal']
+                    cal_id = ppmm + self.cam_specs.file_type['cal']
 
                     # Make list for specific calibration cell and retrieve the most recent filename - this will be used
                     # as the filename for the dark_corr coadded image
                     cell_list = [x for x in locals()['cal_list_{}'.format(band)] if cal_id in x]
                     cell_list.sort()
                     filename = cell_list[-1].split(self.cam_specs.file_ext)[0] + \
-                               '_' + self.cam_specs.file_img_type['dark_corr'] + self.cam_specs.file_ext
+                               '_' + self.cam_specs.file_type['dark_corr'] + self.cam_specs.file_ext
                     pathname = os.path.join(self.cell_cal_dir, filename)
 
                     # Get image and round it to int for saving

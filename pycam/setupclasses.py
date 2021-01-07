@@ -70,6 +70,7 @@ class ConfigInfo:
     spec_script = 'spec_script'
     cam_specs = 'cam_specs'
 
+    local_data_dir = 'local_data_dir'
 
 
 class CameraSpecs:
@@ -94,7 +95,7 @@ class CameraSpecs:
                            'float': ['pix_size_x', 'pix_size_y', 'fov_x', 'fov_y', 'framerate', 'analog_gain',
                                      'min_saturation', 'max_saturation', 'file_ss_units'],
                            'str': ['save_path', 'file_ext', 'file_datestr', 'file_ss'],
-                           'dict': ['file_filterids', 'file_img_type'],
+                           'dict': ['file_filterids', 'file_type'],
                            'bool': ['auto_ss']
                            }
 
@@ -121,19 +122,21 @@ class CameraSpecs:
         self.save_path = '.\\Images\\'
         self.file_ext = '.png'                                  # File extension for images
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
-        self.file_date_loc = 0                                  # Location of date string in filename
         self.file_filterids = {'on': 'fltrA', 'off': 'fltrB'}   # Filter identifiers in filename
         self.file_ag = '{}ag'                                   # Analog gain format spec
         self.file_ss = '{}ss'                                   # Shutter speed format spec
-        self.file_ss_loc = 3                                    # Shutter speed location in filename
         self.file_ss_units = 1e-6                               # Shutter speed units relative to seconds
-        self.file_img_type = {'meas': 'Plume',
-                              'dark': 'Dark',
-                              'cal': 'ppmm',
-                              'clear': 'Clear',
-                              'test': 'Test',
-                              'dark_corr': 'darkcorr'}
-        self.file_type_loc = 4                                  # Img type location in filename
+        self.file_type = {'meas': 'Plume',
+                          'dark': 'Dark',
+                          'cal': 'ppmm',
+                          'clear': 'Clear',
+                          'test': 'Test',
+                          'dark_corr': 'darkcorr'}
+        self.file_date_loc = 0      # Location of date string in filename
+        self.file_fltr_loc = 1      # Location of filter string
+        self.file_gain_loc = 2      # Location of gain string
+        self.file_ss_loc = 3        # Shutter speed location in filename
+        self.file_type_loc = 4      # Img type location in filename
 
         # Pre-defined list of shutter speeds (used for auto shutter speed setting)
         self.ss_list = np.concatenate((np.arange(1000, 5000, 500),
@@ -366,10 +369,12 @@ class SpecSpecs:
         # File information
         self.file_ext = '.npy'  # Spectra saved as numpy array
         self.file_ss = '{}ss'   # Shutter speed format spec
-        self.file_ss_loc = 1    # Shutter speed location in filename
-        self.file_spec_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear', 'test': 'Test'}
+        self.file_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear', 'test': 'Test'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
-        self.file_datestr_loc = 0
+        self.file_date_loc = 0
+        self.file_ss_loc = 1        # Shutter speed location in filename
+        self.file_coadd_loc = 2     # Coadd location in filename
+        self.file_type_loc = 3      # File type location in filename
 
 
         # Acquisition settings

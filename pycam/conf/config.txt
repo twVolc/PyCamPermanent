@@ -6,7 +6,7 @@
 uname=pi                            # Raspberry pi username
 pwd=raspberry                       # Raspberry pi password
 data_dir=/home/pi/pycam/Images/     # Directory where images and spectra are saved. NOTE: Currently must mirror FileLocator.IMG_SPEC_PATH
-local_dir=../Data/                   # Local directory for saving data
+local_data_dir=../Data/                   # Local directory for saving data
 
 # IP ADDRESSES
 host_ip=169.254.10.180              # IP address of server pi (server pi runs the spectrometer)

@@ -3,29 +3,165 @@
 """Contains FTP classes for controlling transfer of images and spectra from remote camera to local processing machine"""
 
 from pycam.utils import read_file
-from pycam.setupclasses import CameraSpecs, SpecSpecs
+from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
 import ftplib
 import os
 import time
 import queue
 import threading
+import datetime
 
 
-# THIS CLASS IS UNDER CONSTRUCTION AND REQUIRES MUCH MORE WORK AT THIS POINT. ONLY THE SKELETON HAS BEEN MADE SO FAR!
+class CurrentDirectories:
+    """
+    Class holding the current active directories for file transfer
+    """
+    def __init__(self, root=FileLocator.IMG_SPEC_PATH_WINDOWS, specs=CameraSpecs()):
+        self.root_dir = root
+        if not os.path.exists(self.root_dir):
+            os.mkdir(self.root_dir)
+        self.specs = specs
+
+        self.date_fmt = "%Y-%m-%d"
+        self.date_dir = None
+
+        self.seq_dir = None
+        self.cal_dir = None
+        self.dark_dir = None    # For holding a list of dark images - calibration dirs can also hold dark images
+        self.test_dir = None
+
+        self.cal_dir_fmt = 'Cal_{}/'
+        self.seq_dir_fmt = 'Seq_{}/'
+        self.test_fmt = 'test_images/'
+        self.dark_fmt = 'dark_images/'
+
+        # If auto mode the object will find the most recent folder for that date and add files - if False (manual)
+        # no editing of sequences is done beyond changing the date directory
+        self.auto_mode = True
+
+    def set_date_dir(self, date=None, edit_all=True):
+        """
+        Gets current directory based on date and root
+
+        :param edit_all:    bool    If True, all directories will be updated if the date directory changes here.
+                                    Otherwise they remain unchanged - False is used when run from inside a setting func
+        """
+        if date is None:
+            date = datetime.datetime.now().strftime(self.date_fmt)
+        date_dir_old = self.date_dir
+        self.date_dir = os.path.join(self.root_dir, date)
+        if not os.path.exists(self.date_dir):
+            os.mkdir(self.date_dir)
+
+        # Update subdirectories, but don't create new sequences - append to old. Only need to do this if the new
+        # date_dir is actually different to the previous (i.e. if the date changes)
+        if date_dir_old != self.date_dir and edit_all:
+            self.set_test_dir(set_date=False)
+            self.set_seq_dir(set_date=False, new=False)
+            self.set_cal_dir(set_date=False, new=False)
+
+    def set_test_dir(self, set_date=True):
+        """Setup directory for test images"""
+        if set_date:
+            self.set_date_dir(edit_all=False)
+        self.test_dir = os.path.join(self.date_dir, 'test_images/')
+
+    def set_seq_dir(self, set_date=True, new=True):
+        """Setup directory for sequence images"""
+        if set_date:
+            self.set_date_dir(edit_all=False)
+
+        # If new requested we make a new sequence directory, otherwise find the most recent of that date, if one exists
+        if new:
+            seq_num = 1
+            self.seq_dir = os.path.join(self.date_dir, self.seq_dir_fmt.format(seq_num))
+            while os.path.exists(self.seq_dir):
+                seq_num += 1
+                self.seq_dir = os.path.join(self.date_dir, self.seq_dir_fmt.format(seq_num))
+            # os.mkdir(self.seq_dir)
+        else:
+            id = self.seq_dir_fmt.split('{}')[0]
+            seq_dirs = [x for x in os.listdir(self.date_dir) if id in x]
+            if len(seq_dirs) == 0:
+                self.seq_dir = os.path.join(self.date_dir, self.seq_dir_fmt.format(1))
+            else:
+                seq_dirs.sort()
+                self.seq_dir = os.path.join(self.date_dir, seq_dirs[-1])
+
+    def set_cal_dir(self, set_date=True, new=True):
+        """Setup directory for calibration images"""
+        # Change calibration directory so new images are saved to correct place
+        if set_date:
+            self.set_date_dir(edit_all=False)
+
+        # If new requested we make a new sequence directory, otherwise find the most recent of that date, if one exists
+        if new:
+            cal_num = 1
+            self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(cal_num))
+            while os.path.exists(self.cal_dir):
+                cal_num += 1
+                self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(cal_num))
+            # os.mkdir(self.cal_dir)
+        else:
+            id = self.cal_dir_fmt.split('{}')[0]
+            cal_dirs = [x for x in os.listdir(self.date_dir) if id in x]
+            if len(cal_dirs) == 0:
+                self.cal_dir = os.path.join(self.date_dir, self.cal_dir_fmt.format(1))
+            else:
+                cal_dirs.sort()
+                self.cal_dir = os.path.join(self.date_dir, cal_dirs[-1])
+
+    def get_file_dir(self, filename):
+        """Gets the directory to save the file to"""
+        # Extract date if in auto mode, otherwise the directories should already be set from the manual acquisition obj
+        if self.auto_mode:
+            date = filename.split('_')[self.specs.file_date_loc].split('T')[0]
+            self.set_date_dir(date)
+
+        # Check image type from filename and then place it in the correct folder from that
+        img_type = filename.split('_')[self.specs.file_type_loc]
+        if img_type == self.specs.file_type['test']:
+            local_date_dir = self.test_dir
+        elif img_type == self.specs.file_type['meas']:
+            local_date_dir = self.seq_dir
+        elif img_type == self.specs.file_type['clear']:
+            local_date_dir = self.cal_dir
+        elif self.specs.file_type['cal'] in img_type:
+            local_date_dir = self.cal_dir
+        # TODO dark could be in either cal_x or could go in the dark_list dir if I do that? Maybe just have dark_dir as cal_dir?
+        elif img_type == self.specs.file_type['dark']:
+            local_date_dir = self.dark_dir
+        # If unrecognised file type the image is just put straight in the date directory
+        else:
+            local_date_dir = self.date_dir
+
+        # Make directory if it doesn't already exist
+        if not os.path.exists(local_date_dir):
+            os.mkdir(local_date_dir)
+
+        return local_date_dir
+
+
 class FTPClient:
     """
     Main class for controlling FTP transfer
 
-    :param network_info:    dict    Contains network parameters defining information for FTP transfer
+    :param img_dir:         CurrentDirectories  Object holding info on all the current directories for img data storage
+    :param spec_dir:        CurrentDirectories  Object holding info on all the current directories for spec data storage
+    :param network_info:    dict                Contains network parameters defining information for FTP transfer
     """
 
-    def __init__(self, network_info=None):
+    def __init__(self, img_dir, spec_dir, network_info=None):
         self.refresh_time = 1   # Length of time directory watcher sleeps before listing server images again
         self.cam_specs = CameraSpecs()
         self.spec_specs = SpecSpecs()
         self.watch_q = queue.Queue()
         self.thread = None
         self.watching_dir = False
+
+        # Objects containing current working directories
+        self.img_dir = img_dir
+        self.spec_dir = spec_dir
 
         # If we are given a filename on instantiation we need to read in the data to class
         if network_info is not None:
@@ -36,7 +172,7 @@ class FTPClient:
             self.user = self.config['uname']
             self.pwd = self.config['pwd']
             self.dir_data_remote = self.config['data_dir']
-            self.local_dir = self.config['local_dir']
+            self.local_dir = self.config[ConfigInfo.local_data_dir]
             self.dir_img_local = os.path.join(self.local_dir, 'Images/')
             if not os.path.exists(self.dir_img_local):
                 os.mkdir(self.dir_img_local)
@@ -68,36 +204,50 @@ class FTPClient:
             self.connection.login(user=username, passwd=password)
             self.connection.cwd(self.dir_data_remote)
             print('Got FTP connection from {}. File transfer now available.'.format(ip))
+            return True
         except ftplib.all_errors as e:
             print('FTP connection encountered error - file transfer is inactive')
             print(e)
+            return False
 
     def close_connection(self):
         """Closes FTP connection"""
         self.connection.close()
 
-    def get_file(self, img, local_dir, rm=True):
+    def get_file(self, img, rm=True):
         """Downloads image
         :param img:         str     Filename of image on remote machine
-        :param local_dir:   str     Local directory to save image. Image will keep the same filename
         :param rm:          bool    If True, the file is deleted from the host once it has been transferred
+                                    If False, transfer will keep running indefinitely as the transfer does not directly
+                                    identify files it has already transferred previously
         """
         # Filename organisation for local machine
         # File always goes into dated directory (date is extracted from filename)
-        filename = os.path.split(img)[-1]
-        date = filename.split('_')[self.cam_specs.file_date_loc].split('T')[0]
-        local_date_dir = os.path.join(local_dir, date)
-        if not os.path.exists(local_date_dir):
-            os.mkdir(local_date_dir)
-        local_name = os.path.join(local_date_dir, filename)
+        file = os.path.split(img)[-1]
+        filename, ext = os.path.splitext(file)
 
-        # Download file
-        with open(local_name, 'wb') as f:
-            start_time = time.time()
-            self.connection.retrbinary('RETR ' + img, f.write)
-            elapsed_time = time.time() - start_time
-            print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
-                                                                                             elapsed_time))
+        # Get correct directory to save to from the directory handler object
+        if ext == self.cam_specs.file_ext:
+            local_date_dir = self.img_dir.get_file_dir(filename)
+        elif ext == self.spec_specs.file_ext:
+            local_date_dir = self.spec_dir.get_file_dir(filename)
+        else:
+            return
+
+        # Create full path to save to
+        local_name = os.path.join(local_date_dir, file)
+
+        # Check if file exists - dont overwrite it if so
+        if os.path.exists(local_name):
+            print('File already exists on local machine, transfer aborted: {}'.format(file))
+        else:
+            # Download file
+            with open(local_name, 'wb') as f:
+                start_time = time.time()
+                self.connection.retrbinary('RETR ' + img, f.write)
+                elapsed_time = time.time() - start_time
+                print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
+                                                                                                 elapsed_time))
 
         # Delete file after it has been transferred
         if rm:
@@ -109,6 +259,14 @@ class FTPClient:
 
     def watch_dir(self):
         """Public access thread starter for _watch_dir"""
+        try:
+            self.connection.voidcmd('NOOP')
+        except ftplib.all_errors:
+            conn = self.open_connection(self.host_ip, username=self.user, password=self.pwd)
+            if not conn:
+                'Could not watch directory for FTP transfer as connection failed'
+                return
+
         self.watch_thread = threading.Thread(target=self._watch_dir, args=())
         self.watch_thread.daemon = True
         self.watch_thread.start()
@@ -128,6 +286,7 @@ class FTPClient:
                 mess = self.watch_q.get(block=False)
                 if mess:
                     self.watching_dir = False
+                    print('Stopped FTP file watching ')
                     return
             except queue.Empty:
                 pass
@@ -147,6 +306,7 @@ class FTPClient:
                     mess = self.watch_q.get(block=False)
                     if mess:
                         self.watching_dir = False
+                        print('Stopped FTP file watching')
                         return
                 except queue.Empty:
                     pass
@@ -154,20 +314,11 @@ class FTPClient:
                 filename, ext = os.path.splitext(file)
 
                 # Camera image
-                if ext == self.cam_specs.file_ext:
-                    lock_file = filename + lock
-                    if lock_file in file_list:      # Don't download image if it is still locked
-                        continue
-                    else:
-                        self.get_file(os.path.join(self.dir_data_remote, file), self.dir_img_local)
-
-                # Spectrum
-                if ext == self.spec_specs.file_ext:
-                    lock_file = filename + lock
-                    if lock_file in file_list:      # Don't download image if it is still locked
-                        continue
-                    else:
-                        self.get_file(os.path.join(self.dir_data_remote, file), self.dir_spec_local)
+                lock_file = filename + lock
+                if lock_file in file_list:      # Don't download image if it is still locked
+                    continue
+                else:
+                    self.get_file(os.path.join(self.dir_data_remote, file))
 
             # Sleep for designated time, so I'm not constantly polling the host
             time.sleep(self.refresh_time)

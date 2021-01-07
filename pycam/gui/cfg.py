@@ -3,11 +3,12 @@
 """Contains all global variables, mainly relating to sockets and the GUI"""
 
 from pycam.utils import read_file
-from pycam.setupclasses import FileLocator, ConfigInfo
+from pycam.setupclasses import FileLocator, ConfigInfo, SpecSpecs, CameraSpecs
 from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
-from pycam.networking.FTP import FTPClient
+from pycam.networking.FTP import FTPClient, CurrentDirectories
 from .settings import GUISettings
+import os
 
 # ======================================================================================================================
 # SOCKET
@@ -27,9 +28,14 @@ send_comms = ExternalSendConnection(sock=sock, acc_conn=False)
 # Connection indicator
 indicator = Indicator()
 
-# FTP client
-ftp_client = FTPClient(network_info=config)
+# Current directory objects
+current_dir_img = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_data_dir] + 'Images/'),
+                                     specs=CameraSpecs())
+current_dir_spec = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_data_dir] + 'Spectra/'),
+                                      specs=SpecSpecs())
 
+# FTP client
+ftp_client = FTPClient(img_dir=current_dir_img, spec_dir=current_dir_spec, network_info=config)
 # ======================================================================================================================
 
 # ==============================

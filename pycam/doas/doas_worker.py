@@ -273,7 +273,7 @@ class DOASWorker:
         filename = filename.split('\\')[-1].split('/')[-1]
 
         # Extract time string from filename
-        time_str = filename.split('_')[self.spec_specs.file_datestr_loc]
+        time_str = filename.split('_')[self.spec_specs.file_date_loc]
 
         # Turn time string into datetime object
         spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
@@ -457,13 +457,13 @@ class DOASWorker:
         sd['all'] = [f for f in os.listdir(self.spec_dir) if self.spec_specs.file_ext in f]
         sd['all'].sort()
         sd['plume'] = [f for f in sd['all']
-                       if self.spec_specs.file_spec_type['meas'] + self.spec_specs.file_ext in f]
+                       if self.spec_specs.file_type['meas'] + self.spec_specs.file_ext in f]
         sd['plume'].sort()
         sd['clear'] = [f for f in sd['all']
-                       if self.spec_specs.file_spec_type['clear'] + self.spec_specs.file_ext in f]
+                       if self.spec_specs.file_type['clear'] + self.spec_specs.file_ext in f]
         sd['clear'].sort()
         sd['dark'] = [f for f in sd['all']
-                      if self.spec_specs.file_spec_type['dark'] + self.spec_specs.file_ext in f]
+                      if self.spec_specs.file_type['dark'] + self.spec_specs.file_ext in f]
         sd['dark'].sort()
         return sd
 
@@ -483,7 +483,7 @@ class DOASWorker:
 
         # List all dark images in directory
         dark_list = [f for f in os.listdir(spec_dir)
-                     if self.spec_specs.file_spec_type['dark'] in f and self.spec_specs.file_ext in f]
+                     if self.spec_specs.file_type['dark'] in f and self.spec_specs.file_ext in f]
 
         # Extract ss from each image and round to 2 significant figures
         ss_str = self.spec_specs.file_ss.replace('{}', '')
@@ -841,8 +841,8 @@ class DOASWorker:
         spec_files.sort()
 
         # Extract clear spectra if they exist. If not, the first file is assumed to be the clear spectrum
-        clear_spec = [f for f in spec_files if self.spec_specs.file_spec_type['clear'] + '.npy' in f]
-        plume_spec = [f for f in spec_files if self.spec_specs.file_spec_type['meas'] + '.npy' in f]
+        clear_spec = [f for f in spec_files if self.spec_specs.file_type['clear'] + '.npy' in f]
+        plume_spec = [f for f in spec_files if self.spec_specs.file_type['meas'] + '.npy' in f]
 
         # Loop through all files and add them to queue
         for file in clear_spec:
