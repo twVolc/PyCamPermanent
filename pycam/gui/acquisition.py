@@ -638,7 +638,8 @@ class BasicAcqHandler:
     """
     Handles basic acquisitions - outside of continuous capture
     """
-    def __init__(self, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, pyplis_worker, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+        self.pyplis_worker = pyplis_worker
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.frame = None
@@ -646,6 +647,9 @@ class BasicAcqHandler:
 
         self.img_dir = img_dir
         self.spec_dir = spec_dir
+
+        self.in_spec_seq = False
+        self.in_img_seq = False
 
     def initiate_variables(self):
         self._ss_A = tk.IntVar()
@@ -667,7 +671,7 @@ class BasicAcqHandler:
 
         # Check there is a connection
         if not cfg.indicator.connected:
-            x = tk.messagebox.showwarning('No insturment connected',
+            x = tk.messagebox.showwarning('No instrument connected',
                                           'Acquisition will not be possible as no instrument is connected')
         # Ensure user wants to stop continuous capture of instrument
         else:
@@ -677,23 +681,18 @@ class BasicAcqHandler:
                                        'Request to enter manual capture mode has been aborted.')
                 return
 
+        # Start pyplis worker watcher
+        self.pyplis_worker.start_watching(self.img_dir.root_dir)
+
         # Build capture frame
         self.frame = tk.Toplevel()
         self.frame.title('Manual acquisition')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
         self.frame_cam = tk.LabelFrame(self.frame, text='Camera', relief=tk.RAISED, borderwidth=3)
-        self.frame_cam.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.frame_cam.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
-        frame_norm = tk.Frame(self.frame_cam)
-        frame_norm.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        row += 1
-
-        test_butt = ttk.Button(frame_norm, text='Test',
-                               command=lambda: self.acq_cam(self.cam_specs.file_type['test']))
-        test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
-
         # Shutter speed frame
         frame_ss = ttk.LabelFrame(self.frame_cam, text=u'Shutter Speed (\u03bcs)')
         frame_ss.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
@@ -703,39 +702,82 @@ class BasicAcqHandler:
         ttk.Entry(frame_ss, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=2, pady=2)
         row += 1
 
+        # Buttons frame
+        frame_norm = tk.Frame(self.frame_cam)
+        frame_norm.grid(row=row, column=0, sticky='nsew')
+        frame_norm.grid_columnconfigure(0, weight=1)
+        frame_norm.grid_columnconfigure(1, weight=1)
+        row += 1
+
+        test_butt = tk.Button(frame_norm, text='Test', width=10,
+                              command=lambda: self.acq_cam(self.cam_specs.file_type['test']))
+        test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        if self.in_img_seq:
+            text = 'Stop sequence'
+        else:
+            text = 'Sequence'
+        self.cam_seq_butt = tk.Button(frame_norm, text=text, width=10,
+                             command=lambda: self.acq_cam(self.cam_specs.file_type['meas']))
+        self.cam_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+
         # Calibration images
         frame_cal = ttk.LabelFrame(self.frame_cam, text='Calibration')
         frame_cal.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
         row += 1
 
-        # Cell ppmm value UI
-        frame_ent = ttk.Frame(frame_cal)
-        frame_ent.grid(row=0, column=0, columnspan=2, sticky='nsew')
 
         row = 0
-
-        ttk.Label(frame_ent, text='Cell column density [ppm.m]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        ttk.Entry(frame_ent, width=6, textvariable=self._cell_ppmm).grid(row=row, column=1, sticky='ew', padx=2, pady=2)
+        # Cell ppmm value UI
+        frame_ent = ttk.Frame(frame_cal)
+        frame_ent.grid(row=row, column=0, columnspan=2, sticky='nsew')
+        ttk.Label(frame_ent, text='Cell column density [ppm.m]:').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Entry(frame_ent, width=6, textvariable=self._cell_ppmm).grid(row=0, column=1, sticky='ew', padx=2, pady=2)
         row += 1
 
-        self.dark_butt = ttk.Button(frame_cal, text='Dark',
+        self.dark_butt = tk.Button(frame_cal, text='Dark', bg='black', fg='white',
                                     command=lambda: self.acq_cam(self.cam_specs.file_type['dark']))
         self.dark_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        self.clear_butt = ttk.Button(frame_cal, text='Clear',
+        self.clear_butt = tk.Button(frame_cal, text='Clear', bg='blue', fg='white',
                                      command=lambda: self.acq_cam(self.cam_specs.file_type['clear']))
         self.clear_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
-        self.fltr_a_butt = ttk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
+        self.fltr_a_butt = tk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
         self.fltr_a_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        self.fltr_b_butt = ttk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
+        self.fltr_b_butt = tk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
         self.fltr_b_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         self.fltr_b_butt.configure(state=tk.DISABLED)
         row += 1
 
+        # New calibration
+        new_cal_butt = tk.Button(frame_cal, text='New Calibration', command=self.new_cal, bg='green', fg='white')
+        new_cal_butt.grid(row=row, column=0, columnspan=2, stick='nsew', padx=2, pady=2)
+        row += 1
+
         # Spectrometer acquisition
         self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3)
-        self.frame_spec.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        self.frame_spec.grid(row=0, column=1, sticky='new', padx=5, pady=5)
+
+        # Integration time
+        row = 0
+        ttk.Label(self.frame_spec, text='Integration time [ms]:').grid(row=row, column=0, padx=2, pady=2)
+        ttk.Entry(self.frame_spec, width=7, textvariable=self._ss_spec).grid(row=row, column=1, padx=2, pady=2)
+        row += 1
+
+        butt_frame = ttk.Frame(self.frame_spec)
+        butt_frame.grid(row=row, column=0, columnspan=2, sticky='nsew')
+        butt_frame.grid_columnconfigure(0, weight=1)
+        butt_frame.grid_columnconfigure(1, weight=1)
+        test_butt = tk.Button(butt_frame, text='Test', width=10,
+                              command=lambda: self.acq_spec(self.spec_specs.file_type['test']))
+        test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        if self.in_spec_seq:
+            text = 'Stop sequence'
+        else:
+            text = 'Sequence'
+        self.spec_seq_butt = tk.Button(butt_frame, text=text, width=10,
+                             command=lambda: self.acq_spec(self.spec_specs.file_type['meas']))
+        self.spec_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
     @property
     def ss_A(self):
@@ -773,26 +815,37 @@ class BasicAcqHandler:
         """Send camera communications
         :param acq_type:    str   Type of acquisition - forms the final section of the filename of the resulting image
         """
+        # Setup empty command dictionary
+        cmd_dict = dict()
+
         # Setup directories depending on the acquisition type
         if acq_type == self.cam_specs.file_type['test']:
             self.img_dir.set_test_dir()
-        elif acq_type == self.cam_specs.file_type['meas']:
-            self.img_dir.set_seq_dir()
 
-        # Setup empty command dictionary
-        cmd_dict = dict()
+        elif acq_type == self.cam_specs.file_type['meas']:
+            if self.in_img_seq:
+                self.cam_seq_butt.configure(text='Sequence')
+                cmd_dict['SPC'] = 1
+                self.in_img_seq = False
+            elif not self.in_img_seq:
+                self.cam_seq_butt.configure(text='Stop sequence')
+                self.img_dir.set_seq_dir()
+                cmd_dict['STC'] = 1         # Start continuous capture
+                self.in_img_seq = True
 
         # Get shutter speeds
         cmd_dict['SSA'] = self.ss_A
         cmd_dict['SSB'] = self.ss_B
 
-        if band == 'both':
-            cmd_dict['TPA'] = acq_type
-            cmd_dict['TPB'] = acq_type
-        elif band.lower() in ['on', 'a']:
-            cmd_dict['TPA'] = acq_type
-        elif band.lower() in ['off', 'b']:
-            cmd_dict['TPB'] = acq_type
+        # If not acquiring a sequence then we need to set the image type which instigates capture
+        if acq_type != self.cam_specs.file_type['meas']:
+            if band == 'both':
+                cmd_dict['TPA'] = acq_type
+                cmd_dict['TPB'] = acq_type
+            elif band.lower() in ['on', 'a']:
+                cmd_dict['TPA'] = acq_type
+            elif band.lower() in ['off', 'b']:
+                cmd_dict['TPB'] = acq_type
 
         # Add dictionary command to queue to be sent
         cfg.send_comms.q.put(cmd_dict)
@@ -804,10 +857,25 @@ class BasicAcqHandler:
         # Setup empty command dictionary
         cmd_dict = dict()
 
+        # Setup directories depending on the acquisition type
+        if acq_type == self.spec_specs.file_type['test']:
+            self.spec_dir.set_test_dir()
+        elif acq_type == self.spec_specs.file_type['meas']:
+            if self.in_spec_seq:
+                self.spec_seq_butt.configure(text='Sequence')
+                cmd_dict['SPS'] = 1
+                self.in_spec_seq = False
+            else:
+                self.spec_seq_butt.configure(text='Stop sequence')
+                self.spec_dir.set_seq_dir()
+                cmd_dict['STS'] = 1         # Start continuous capture
+                self.in_spec_seq = True
+
         # Get shutter speeds
         cmd_dict['SSS'] = self.ss_spec
 
-        cmd_dict['TPS'] = acq_type
+        if acq_type != self.spec_specs.file_type['meas']:
+            cmd_dict['TPS'] = acq_type
 
         # Add dictionary command to queue to be sent
         cfg.send_comms.q.put(cmd_dict)
@@ -820,6 +888,7 @@ class BasicAcqHandler:
         if mess:
             # Send commands to stop continuous capture of spectrometer and camera
             cfg.send_comms.q.put({'SPC': 1, 'SPS': 1})
+            self.pyplis_worker.stop_watching()
             return 1
         else:
             return 0
@@ -850,6 +919,7 @@ class BasicAcqHandler:
         # Return the directory handling to auto mode (we only want it to be manual for manual acquisitions)
         self.img_dir.auto_mode = True
         self.spec_dir.auto_mode = True
+        self.pyplis_worker.stop_watching()
 
         self.in_frame = False
         self.frame.destroy()

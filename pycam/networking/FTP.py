@@ -298,6 +298,9 @@ class FTPClient:
                 print(e)
                 continue
 
+            # Sort file list so oldest times come first (so they will be transferred first)
+            file_list.sort()
+
             # Loop through files and decide what to do with them
             for file in file_list:
                 # Always check if a quit has been requested - this ensures we don't get stuck here if transferring a lot

@@ -8,6 +8,7 @@ object's frame has been build in the menu
 
 from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame, \
     CellCalibFrame, CrossCorrelationSettings, OptiFlowSettings, LightDilutionSettings
+from pycam.cfg import pyplis_worker
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec
 from pycam.gui.acquisition import BasicAcqHandler
@@ -40,4 +41,4 @@ opti_flow = OptiFlowSettings(fig_setts=gui_setts)
 light_dilution = LightDilutionSettings(fig_setts=gui_setts)
 
 # Communications handler
-basic_acq_handler = BasicAcqHandler(img_dir=current_dir_img, spec_dir=current_dir_spec)
+basic_acq_handler = BasicAcqHandler(pyplis_worker, img_dir=current_dir_img, spec_dir=current_dir_spec)

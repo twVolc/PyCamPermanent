@@ -8,6 +8,7 @@ from __future__ import (absolute_import, division)
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
 from pycam.io import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
+from pycam.directory_watcher import create_dir_watcher
 
 import pyplis
 from pyplis import LineOnImage
@@ -253,6 +254,11 @@ class PyplisWorker:
 
         self.process_thread = None  # Placeholder for threading object
         self.in_processing = False
+        self.watching = False       # Bool defining if the object is currently watching a directory
+        self.watching_dir = None    # Directory that is currently being watched
+        self.watcher = None         # Directory watcher object
+        self.watched_imgs = dict()  # Dictionary containing new files added to directory - keys are times of images
+        self.STOP_FLAG = 'end'      # Flag for stopping processing queue
 
     @property
     def location(self):
@@ -2723,6 +2729,9 @@ class PyplisWorker:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
 
+            if img_path_A == self.STOP_FLAG:
+                return
+
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
             # So we finalise processing and then continue (TODO check this is ok)
             if self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
@@ -2752,6 +2761,57 @@ class PyplisWorker:
 
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
+
+    def start_watching(self, directory):
+        """
+        Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
+        Also starts a processing thread, so that the images which arrive can be processed
+        """
+        if self.watching:
+            print('Already watching: {}'.format(self.watching_dir))
+            print('Please stop watcher before attempting to start new watch. '
+                  'This isssue may be caused by having manual acquisitions running alongside continuous watching')
+            return
+        self.watcher = create_dir_watcher(directory, True, self.directory_watch_handler)
+        self.watcher.start()
+        self.watching_dir = directory
+        self.watching = True
+        print('Watching {} for new images'.format(self.watching_dir[-30:]))
+
+        # Start processing thread from here
+        self.start_processing()
+
+    def stop_watching(self):
+        """Stop directory watcher and end processing thread"""
+        self.watcher.stop()
+        self.watching = False
+
+        # Stop processing thread when we stop watching the directory
+        self.q.put([self.STOP_FLAG, None])
+
+    def directory_watch_handler(self, pathname, t):
+        """Controls the watching of a directory"""
+        # Separate the filename and pathname
+        directory, filename = os.path.split(pathname)
+
+        # Extract file information
+        file_info = filename.split('_')
+        time_key = file_info[self.cam_specs.file_date_loc]
+        fltr = file_info[self.cam_specs.file_fltr_loc]
+
+        # If file time doesn't exist yet we create a new key
+        if time_key not in self.watched_imgs.keys():
+            self.watched_imgs[time_key] = {fltr: pathname}
+
+        # If the time key already exists, this must be the contemporaneous image from the other filter. So we gather the
+        # image pair and pass them to the processing queue
+        else:
+            self.watched_imgs[time_key][fltr] = pathname
+            img_list = [self.watched_imgs[time_key]['fltrA'], self.watched_imgs[time_key]['fltrB']]
+            self.q.put(img_list)
+
+            # We can now delete that key from the dictionary - so we don't slowly use up memory
+            del self.watched_imgs[time_key]
 
 
 class ImageRegistration:
