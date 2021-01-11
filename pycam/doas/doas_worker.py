@@ -4,6 +4,7 @@
 
 from pycam.setupclasses import SpecSpecs
 from pycam.io import load_spectrum, save_spectrum
+from pycam.directory_watcher import create_dir_watcher
 import pyplis
 from pydoas.analysis import DoasResults
 
@@ -136,6 +137,9 @@ class DOASWorker:
         self.processing_in_thread = False   # Flags whether the object is processing in a thread or in the main thread - therefore deciding whether plots should be updated herein or through pyplisworker
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
+        self.watcher = None
+        self.watching_dir = None
+        self.watching = False
 
         self._dark_dir = None
         self.dark_dir = dark_dir        # Directory where dark images are stored
@@ -856,7 +860,6 @@ class DOASWorker:
         # Begin processing
         self._process_loop()
 
-
     def start_processing_thread(self):
         """Public access thread starter for _processing"""
         # Reset self
@@ -909,8 +912,6 @@ class DOASWorker:
                                   'dark': self.dark_spec,
                                   'clear': self.clear_spec_raw}
 
-
-
             # Process plume spectrum
             else:
                 self.plume_spec_raw = spectrum
@@ -950,6 +951,39 @@ class DOASWorker:
             if first_spec:
                 # Now that we have processed first_spec, set flag to False
                 first_spec = False
+
+    def start_watching(self, directory):
+        """
+        Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
+        Also starts a processing thread, so that the images which arrive can be processed
+        """
+        if self.watching:
+            print('Already watching for spectra: {}'.format(self.watching_dir))
+            print('Please stop watcher before attempting to start new watch. '
+                  'This isssue may be caused by having manual acquisitions running alongside continuous watching')
+            return
+        self.watcher = create_dir_watcher(directory, True, self.directory_watch_handler)
+        self.watcher.start()
+        self.watching_dir = directory
+        self.watching = True
+        print('Watching {} for new spectra'.format(self.watching_dir[-30:]))
+
+        # Start the processing thread
+        self.start_processing_thread()
+
+    def stop_watching(self):
+        """Stop directory watcher and end processing thread"""
+        self.watcher.stop()
+        self.watching = False
+
+        # Stop the processing thread
+        self.q_spec.put('exit')
+
+    def directory_watch_handler(self, pathname, t):
+        """Handles new spectra passed from watcher"""
+        # Pass path to queue
+        self.q_spec.put(pathname)
+
 
 class SpectraError(Exception):
     """
