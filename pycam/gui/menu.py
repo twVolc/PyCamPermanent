@@ -6,12 +6,10 @@ from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
-    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler
+    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, calibration_wind, instrument_cfg
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
-from pycam.gui.figures_doas import CalibrationWindow
-from pycam.gui.cfg_menu_frames import calibration_wind
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
@@ -78,6 +76,10 @@ class PyMenu:
         tab = 'Instrument'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        # Configure instrument
+        self.menus[tab].add_command(label='Configure', command=instrument_cfg.generate_frame)
+        self.menus[tab].add_separator()
 
         # General networking commands
         self.menus[tab].add_command(label='Connect', command=cfg.indicator.connect_sock)

@@ -28,6 +28,8 @@ class FileLocator:
     CONFIG_WINDOWS = CONF_DIR_WINDOWS + 'config.txt'            # Main configuration file on Windows machine
     CONFIG_CAM = CONF_DIR + 'cam_specs.txt'                     # Camera configuration file
     CONFIG_SPEC = CONF_DIR + 'spec_specs.txt'                   # Spectrometer configuration file
+    SCHEDULE_FILE = CONF_DIR_WINDOWS + 'witty_schedule.wpi'     # Schedule script for local storage
+    SCHEDULE_FILE_PI = '/home/pi/wittypi/schedule.wpi'          # Schedule script on pi
 
     NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
     NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data

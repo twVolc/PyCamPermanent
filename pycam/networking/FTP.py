@@ -152,6 +152,8 @@ class FTPClient:
     """
 
     def __init__(self, img_dir, spec_dir, network_info=None):
+        # TODO Need a way of changing the IP address this connects to - this should be linked to sock ip somehow
+
         self.refresh_time = 1   # Length of time directory watcher sleeps before listing server images again
         self.cam_specs = CameraSpecs()
         self.spec_specs = SpecSpecs()
@@ -213,6 +215,18 @@ class FTPClient:
     def close_connection(self):
         """Closes FTP connection"""
         self.connection.close()
+
+    def move_file_to_instrument(self, local_file, remote_file):
+        """Move specific file from local_file location to remote_file location"""
+        if not os.path.exists(local_file):
+            print('File does not exist, cannot perform FTP transfer: {}'.format(local_file))
+            return
+
+        # Move file to location
+        with open(local_file, 'rb') as f:
+            self.connection.storbinary('STOR ' + remote_file, f)
+
+        print('FTP moved file from {} to {}'.format(local_file, remote_file))
 
     def get_file(self, img, rm=True):
         """Downloads image

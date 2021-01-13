@@ -10,8 +10,9 @@ from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackg
     CellCalibFrame, CrossCorrelationSettings, OptiFlowSettings, LightDilutionSettings
 from pycam.cfg import pyplis_worker
 from pycam.gui.figures_doas import CalibrationWindow
-from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec
+from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec, sock, ftp_client
 from pycam.gui.acquisition import BasicAcqHandler
+from pycam.gui.network import InstrumentConfiguration
 
 # Geometry settings
 geom_settings = GeomSettings()
@@ -42,3 +43,6 @@ light_dilution = LightDilutionSettings(fig_setts=gui_setts)
 
 # Communications handler
 basic_acq_handler = BasicAcqHandler(pyplis_worker, img_dir=current_dir_img, spec_dir=current_dir_spec)
+
+# Instrument configuration
+instrument_cfg = InstrumentConfiguration(ftp_client)

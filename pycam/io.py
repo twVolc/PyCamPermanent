@@ -12,6 +12,7 @@ import numpy as np
 import scipy.io
 import cv2
 import os
+import datetime
 
 
 def save_img(img, filename, ext='.png'):
@@ -307,3 +308,64 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                     # Save object
                     emis_rates.to_pandas_dataframe().to_csv(pathname)
 
+
+def write_witty_schedule_file(filename, time_on, time_off):
+    """
+    Writes a file for controlling the Witty Pi on/off scheduling
+    :param filename:    str         Full path to file for writing
+    :param time_on:     datetime    Time to turn pi on each day
+    :param time_ff:     datetime    Time to turn pi off each day
+    """
+    time_fmt = '%H:%M:%S'
+    time_on_str = time_on.strftime(time_fmt)
+
+    if time_off - time_on > datetime.timedelta(0):
+        time_delt_on = time_off - time_on
+        num_hours_on, rem = divmod(time_delt_on.total_seconds(), 60*60)
+        num_mins_on = rem / 60
+
+        time_delt_off = datetime.timedelta(hours=24) - time_delt_on
+        num_hours_off, rem = divmod(time_delt_off.total_seconds(), 60 * 60)
+        num_mins_off = rem / 60
+
+    elif time_off - time_on < datetime.timedelta(0):
+        time_delt_off = time_on - time_off
+        num_hours_off, rem = divmod(time_delt_off.total_seconds(), 60 * 60)
+        num_mins_off = rem / 60
+
+        time_delt_on = datetime.timedelta(hours=24) - time_delt_off
+        num_hours_on, rem = divmod(time_delt_on.total_seconds(), 60 * 60)
+        num_mins_on = rem / 60
+
+    else:
+        # TODO time_off and time on are the same - we don't ever turn the pi off. Work out how to cancel script use
+        # TODO on witty pi
+        pass
+
+    with open(filename, 'w') as f:
+        f.write('# Raspberry Pi start-up/shut-down schedule script\n')
+
+        # Add lines for quicker/easier access when reading file
+        f.write('# on_time={}\n'.format(time_on.strftime('%H:%M')))
+        f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
+
+        f.write('BEGIN 2020-01-01 {}\n'.format(time_on_str))
+        f.write('END 2050-01-01 12:00:00\n')
+        f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on, num_mins_on))
+        f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off, num_mins_off))
+
+
+def read_witty_schedule_file(filename):
+    """Read witty schedule file"""
+    with open(filename, 'r') as f:
+        for line in f:
+            if 'on_time=' in line:
+                on_time = line.split('=')[1].split('\n')[0]
+                on_hour, on_min = [int(x) for x in on_time.split(':')]
+            elif 'off_time=' in line:
+                off_time = line.split('=')[1].split('\n')[0]
+                off_hour, off_min = [int(x) for x in off_time.split(':')]
+    try:
+        return (on_hour, on_min), (off_hour, off_min)
+    except AttributeError:
+        print('File not in expected format to retrieve start-up/shut-down information for instrument')

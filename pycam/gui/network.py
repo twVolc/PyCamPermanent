@@ -5,6 +5,7 @@
 import pycam.gui.cfg as cfg
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
 from pycam.setupclasses import FileLocator
+from pycam.io import write_witty_schedule_file, read_witty_schedule_file
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -12,6 +13,7 @@ from tkinter import messagebox
 import subprocess
 import platform
 import time
+import datetime
 
 
 def run_pycam(ip):
@@ -148,6 +150,205 @@ class ConnectionGUI:
             self.connection_label.configure(text='No connection found at this address')
 
 
+class InstrumentConfiguration:
+    """
+    Class creating a widget for configuring the instrument, e.g. adjusting its off/on time through Witty Pi
+    """
+    def __init__(self, ftp):
+        self.ftp = ftp
+        self.time_fmt = '{}:{}'
+        self.frame = None
+        self.in_frame = False
 
+    def initiate_variable(self):
+        """Initiate tkinter variables"""
+        self._on_hour = tk.IntVar()  # Hour to turn on pi
+        self._on_min = tk.IntVar()
 
+        self._off_hour = tk.IntVar()        # Hour to shutdown pi
+        self._off_min = tk.IntVar()
 
+        self._capt_start_hour = tk.IntVar()     # Hour to start capture
+        self._capt_start_min = tk.IntVar()
+
+        self._capt_stop_hour = tk.IntVar()      # Hour to stop capture
+        self._capt_stop_min = tk.IntVar()
+
+        on_time, off_time = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
+        self.on_hour, self.on_min = on_time
+        self.off_hour, self.on_min = off_time
+
+    def generate_frame(self):
+        """Generates frame containing GUI widgets"""
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+
+        self.frame = tk.Toplevel()
+        self.frame.title('Instrument configuration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+        self.in_frame = True
+
+        frame_on = tk.LabelFrame(self.frame, text='Start-up/Shut-down times', relief=tk.RAISED, borderwidth=2)
+        frame_on.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        ttk.Label(frame_on, text='Start-up (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_on, text='Shut-down (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+
+        hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2,
+                                 format="%02.0f")
+        hour_start.set("{:02d}".format(self.on_hour))
+        hour_start.grid(row=0, column=1, padx=2, pady=2)
+        ttk.Label(frame_on, text=':').grid(row=0, column=2, padx=2, pady=2)
+        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2)
+        min_start.set("{:02d}".format(self.on_min))
+        min_start.grid(row=0, column=3, padx=2, pady=2)
+
+        hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2,
+                                 format="%02.0f")
+        hour_stop.set("{:02d}".format(self.off_hour))
+        hour_stop.grid(row=1, column=1, padx=2, pady=2)
+        ttk.Label(frame_on, text=':').grid(row=1, column=2, padx=2, pady=2)
+        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2)
+        min_stop.set("{:02d}".format(self.off_min))
+        min_stop.grid(row=1, column=3, padx=2, pady=2)
+
+        # Update button
+        butt = ttk.Button(frame_on, text='Update', command=self.update_on_off)
+        butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+
+        # Start/stop control of acquisition times
+        frame_acq = tk.LabelFrame(self.frame, text='Start/stop acquisition', relief=tk.RAISED, borderwidth=2)
+        frame_acq.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+
+        ttk.Label(frame_acq, text='Start (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_acq, text='Stop (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+
+        hour_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2,
+                                 format="%02.0f")
+        hour_start.set("{:02d}".format(self.capt_start_hour))
+        hour_start.grid(row=0, column=1, padx=2, pady=2)
+        ttk.Label(frame_acq, text=':').grid(row=0, column=2, padx=2, pady=2)
+        min_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2)
+        min_start.set("{:02d}".format(self.capt_start_min))
+        min_start.grid(row=0, column=3, padx=2, pady=2)
+
+        hour_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2,
+                                format="%02.0f")
+        hour_stop.set("{:02d}".format(self.capt_stop_hour))
+        hour_stop.grid(row=1, column=1, padx=2, pady=2)
+        ttk.Label(frame_acq, text=':').grid(row=1, column=2, padx=2, pady=2)
+        min_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2)
+        min_stop.set("{:02d}".format(self.capt_stop_min))
+        min_stop.grid(row=1, column=3, padx=2, pady=2)
+
+        # Update button
+        butt = ttk.Button(frame_acq, text='Update', command=self.update_acq_time)
+        butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+
+        # TODO Have option for defining time for dark acquisitions
+
+    def update_on_off(self):
+        """Controls updating start/stop time of pi"""
+        # Write wittypi schedule file locally
+        write_witty_schedule_file(FileLocator.SCHEDULE_FILE, self.on_time, self.off_time)
+
+        # Transfer file to instrument
+        self.ftp.move_file_to_instrument(FileLocator.SCHEDULE_FILE, FileLocator.SCHEDULE_FILE_PI)
+        tk.messagebox.showinfo('Instrument update',
+                               'Updated instrument start-up/shut-down schedule\n'
+                               'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
+                                                                              self.off_time.strftime('%H:%M')))
+
+    def update_acq_time(self):
+        """Updates acquisition period of instrument"""
+        pass
+
+    def close_frame(self):
+        self.in_frame = False
+        self.frame.destroy()
+
+    @property
+    def on_time(self):
+        """Return datetime object of time to turn pi on. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.on_hour, minute=self.on_min)
+
+    @property
+    def off_time(self):
+        """Return datetime object of time to turn pi off. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.off_hour, minute=self.off_min)
+
+    @property
+    def start_capt_time(self):
+        """Return datetime object of time to turn start acq. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.capt_start_hour, minute=self.capt_start_min)
+
+    @property
+    def stop_capt_time(self):
+        """Return datetime object of time to turn stop acq. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.capt_stop_hour, minute=self.capt_stop_min)
+
+    @property
+    def on_hour(self):
+        return self._on_hour.get()
+
+    @on_hour.setter
+    def on_hour(self, value):
+        self._on_hour.set(value)
+
+    @property
+    def on_min(self):
+        return self._on_min.get()
+
+    @on_min.setter
+    def on_min(self, value):
+        self._on_min.set(value)
+
+    @property
+    def off_hour(self):
+        return self._off_hour.get()
+
+    @off_hour.setter
+    def off_hour(self, value):
+        self._off_hour.set(value)
+
+    @property
+    def off_min(self):
+        return self._off_min.get()
+
+    @off_min.setter
+    def off_min(self, value):
+        self._off_min.set(value)
+
+    @property
+    def capt_start_hour(self):
+        return self._capt_start_hour.get()
+
+    @capt_start_hour.setter
+    def capt_start_hour(self, value):
+        self._capt_start_hour.set(value)
+
+    @property
+    def capt_start_min(self):
+        return self._capt_start_min.get()
+
+    @capt_start_min.setter
+    def capt_start_min(self, value):
+        self._capt_start_min.set(value)
+
+    @property
+    def capt_stop_hour(self):
+        return self._capt_stop_hour.get()
+
+    @capt_stop_hour.setter
+    def capt_stop_hour(self, value):
+        self._capt_stop_hour.set(value)
+
+    @property
+    def capt_stop_min(self):
+        return self._capt_stop_min.get()
+
+    @capt_stop_min.setter
+    def capt_stop_min(self, value):
+        self._capt_stop_min.set(value)

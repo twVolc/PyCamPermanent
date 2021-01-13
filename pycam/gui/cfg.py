@@ -36,6 +36,7 @@ current_dir_spec = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_
 
 # FTP client
 ftp_client = FTPClient(img_dir=current_dir_img, spec_dir=current_dir_spec, network_info=config)
+
 # ======================================================================================================================
 
 # ==============================
