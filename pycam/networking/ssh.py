@@ -49,7 +49,10 @@ def ssh_cmd(client, cmd, background=True):
         cmd += ' &'
 
     # Run command
+    print('Sending SSH command: {}'.format(cmd))
     stdin, stdout, stderr = client.exec_command(cmd)
+
+    return stdin, stdout, stderr
 
 
 def file_upload(client, remote_path, local_path):

@@ -342,7 +342,7 @@ def write_witty_schedule_file(filename, time_on, time_off):
         # TODO on witty pi
         pass
 
-    with open(filename, 'w') as f:
+    with open(filename, 'w', newline='\n') as f:
         f.write('# Raspberry Pi start-up/shut-down schedule script\n')
 
         # Add lines for quicker/easier access when reading file
@@ -350,14 +350,14 @@ def write_witty_schedule_file(filename, time_on, time_off):
         f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
 
         f.write('BEGIN 2020-01-01 {}\n'.format(time_on_str))
-        f.write('END 2050-01-01 12:00:00\n')
+        f.write('END 2038-01-01 12:00:00\n')
         f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on, num_mins_on))
         f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off, num_mins_off))
 
 
 def read_witty_schedule_file(filename):
     """Read witty schedule file"""
-    with open(filename, 'r') as f:
+    with open(filename, 'r', newline='\n') as f:
         for line in f:
             if 'on_time=' in line:
                 on_time = line.split('=')[1].split('\n')[0]

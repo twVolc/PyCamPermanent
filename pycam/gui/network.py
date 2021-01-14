@@ -176,7 +176,7 @@ class InstrumentConfiguration:
 
         on_time, off_time = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
         self.on_hour, self.on_min = on_time
-        self.off_hour, self.on_min = off_time
+        self.off_hour, self.off_min = off_time
 
     def generate_frame(self):
         """Generates frame containing GUI widgets"""
@@ -201,16 +201,18 @@ class InstrumentConfiguration:
         hour_start.set("{:02d}".format(self.on_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2)
+        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2,
+                                format="%02.0f")
         min_start.set("{:02d}".format(self.on_min))
         min_start.grid(row=0, column=3, padx=2, pady=2)
 
         hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2,
-                                 format="%02.0f")
+                                format="%02.0f")
         hour_stop.set("{:02d}".format(self.off_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2)
+        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2,
+                               format="%02.0f")
         min_stop.set("{:02d}".format(self.off_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
@@ -230,7 +232,8 @@ class InstrumentConfiguration:
         hour_start.set("{:02d}".format(self.capt_start_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_acq, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2)
+        min_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2,
+                                format="%02.0f")
         min_start.set("{:02d}".format(self.capt_start_min))
         min_start.grid(row=0, column=3, padx=2, pady=2)
 
@@ -239,7 +242,8 @@ class InstrumentConfiguration:
         hour_stop.set("{:02d}".format(self.capt_stop_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_acq, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2)
+        min_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2,
+                               format="%02.0f")
         min_stop.set("{:02d}".format(self.capt_stop_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
@@ -256,10 +260,22 @@ class InstrumentConfiguration:
 
         # Transfer file to instrument
         self.ftp.move_file_to_instrument(FileLocator.SCHEDULE_FILE, FileLocator.SCHEDULE_FILE_PI)
-        tk.messagebox.showinfo('Instrument update',
-                               'Updated instrument start-up/shut-down schedule\n'
-                               'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
-                                                                              self.off_time.strftime('%H:%M')))
+
+        # Open ssh and run wittypi update script
+        ssh_cli = open_ssh(self.ftp.host_ip)
+
+        std_in, std_out, std_err = ssh_cmd(ssh_cli, '(cd /home/pi/wittypi; sudo ./runScript.sh)', background=False)
+        # std_in, std_out, std_err = ssh_cmd(ssh_cli, 'sudo python3 /home/pi/pycam/scripts/update_witty.py')
+        print(std_out.readlines())
+        print(std_err.readlines())
+
+        a = tk.messagebox.showinfo('Instrument update',
+                                   'Updated instrument start-up/shut-down schedule\n'
+                                   'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
+                                                                                  self.off_time.strftime('%H:%M')))
+
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
 
     def update_acq_time(self):
         """Updates acquisition period of instrument"""
