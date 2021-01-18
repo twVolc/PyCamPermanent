@@ -4,8 +4,8 @@
 
 import pycam.gui.cfg as cfg
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
-from pycam.setupclasses import FileLocator
-from pycam.io import write_witty_schedule_file, read_witty_schedule_file
+from pycam.setupclasses import FileLocator, ConfigInfo
+from pycam.io import write_witty_schedule_file, read_witty_schedule_file, write_script_crontab, read_script_crontab
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -154,11 +154,14 @@ class InstrumentConfiguration:
     """
     Class creating a widget for configuring the instrument, e.g. adjusting its off/on time through Witty Pi
     """
-    def __init__(self, ftp):
+    def __init__(self, ftp, cfg):
         self.ftp = ftp
         self.time_fmt = '{}:{}'
         self.frame = None
         self.in_frame = False
+        self.start_script = cfg[ConfigInfo.start_script]
+        self.stop_script = cfg[ConfigInfo.stop_script]
+        self.temp_script = cfg[ConfigInfo.temp_log]
 
     def initiate_variable(self):
         """Initiate tkinter variables"""
@@ -174,9 +177,19 @@ class InstrumentConfiguration:
         self._capt_stop_hour = tk.IntVar()      # Hour to stop capture
         self._capt_stop_min = tk.IntVar()
 
+        self._temp_logging = tk.IntVar()        # Temperature logging frequency (minutes)
+
         on_time, off_time = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
         self.on_hour, self.on_min = on_time
         self.off_hour, self.off_min = off_time
+
+        results = read_script_crontab(FileLocator.SCRIPT_SCHEDULE,
+                                      [self.start_script, self.stop_script, self.temp_script])
+
+        self.capt_start_hour, self.capt_start_min = results[self.start_script]
+        self.capt_stop_hour, self.capt_stop_min = results[self.stop_script]
+
+        self.temp_logging = results[self.temp_script][1]     # Only interested in minutes for temperature logging
 
     def generate_frame(self):
         """Generates frame containing GUI widgets"""
@@ -221,35 +234,41 @@ class InstrumentConfiguration:
         butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
         # Start/stop control of acquisition times
-        frame_acq = tk.LabelFrame(self.frame, text='Start/stop acquisition', relief=tk.RAISED, borderwidth=2)
-        frame_acq.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        frame_cron = tk.LabelFrame(self.frame, text='Scheduled scripts', relief=tk.RAISED, borderwidth=2)
+        frame_cron.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
-        ttk.Label(frame_acq, text='Start (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_acq, text='Stop (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Start pycam (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Stop pycam (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
 
-        hour_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2,
+        hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2,
                                  format="%02.0f")
         hour_start.set("{:02d}".format(self.capt_start_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
-        ttk.Label(frame_acq, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_acq, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2,
+        ttk.Label(frame_cron, text=':').grid(row=0, column=2, padx=2, pady=2)
+        min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2,
                                 format="%02.0f")
         min_start.set("{:02d}".format(self.capt_start_min))
-        min_start.grid(row=0, column=3, padx=2, pady=2)
+        min_start.grid(row=0, column=3, padx=2, pady=2, sticky='w')
 
-        hour_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2,
+        hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2,
                                 format="%02.0f")
         hour_stop.set("{:02d}".format(self.capt_stop_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
-        ttk.Label(frame_acq, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_acq, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2,
+        ttk.Label(frame_cron, text=':').grid(row=1, column=2, padx=2, pady=2)
+        min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2,
                                format="%02.0f")
         min_stop.set("{:02d}".format(self.capt_stop_min))
-        min_stop.grid(row=1, column=3, padx=2, pady=2)
+        min_stop.grid(row=1, column=3, padx=2, pady=2, sticky='w')
+
+        # Temperature logging
+        ttk.Label(frame_cron, text='Temperature log [minutes]:').grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        temp_log = ttk.Spinbox(frame_cron, textvariable=self._temp_logging, from_=0, to=60, increment=1, width=3)
+        temp_log.grid(row=2, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log').grid(row=2, column=3, sticky='w', padx=2, pady=2)
 
         # Update button
-        butt = ttk.Button(frame_acq, text='Update', command=self.update_acq_time)
-        butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+        butt = ttk.Button(frame_cron, text='Update', command=self.update_acq_time)
+        butt.grid(row=3, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
         # TODO Have option for defining time for dark acquisitions
 
@@ -279,7 +298,21 @@ class InstrumentConfiguration:
 
     def update_acq_time(self):
         """Updates acquisition period of instrument"""
-        pass
+        # Some initial organising for the temperature logging
+        if self.temp_logging == 0:
+            temp_log_str = '#* * * * *'     # Temp logging is turned off
+        elif self.temp_logging == 60:
+            temp_log_str = '0 * * * *'      # Temp logging is every hour
+        else:
+            temp_log_str = '*/{} * * * *'.format(self.temp_logging)     # Temp logging is every {} minutes
+
+        # Create and write crontab file
+        times = [self.start_capt_time, self.stop_capt_time, temp_log_str]
+        cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script), self.temp_script]
+        write_script_crontab(FileLocator.SCRIPT_SCHEDULE, cmds, times)
+
+        # Transfer file to instrument
+        self.ftp.move_file_to_instrument(FileLocator.SCRIPT_SCHEDULE, FileLocator.SCRIPT_SCHEDULE_PI)
 
     def close_frame(self):
         self.in_frame = False
@@ -368,3 +401,11 @@ class InstrumentConfiguration:
     @capt_stop_min.setter
     def capt_stop_min(self, value):
         self._capt_stop_min.set(value)
+
+    @property
+    def temp_logging(self):
+        return self._temp_logging.get()
+
+    @temp_logging.setter
+    def temp_logging(self, value):
+        self._temp_logging.set(value)

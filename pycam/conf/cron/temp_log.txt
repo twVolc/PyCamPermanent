@@ -1,0 +1,3 @@
+# Pycam cron file for logging temperature
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+30 * * * * root /home/pi/pycam/scripts/log_temperature.sh

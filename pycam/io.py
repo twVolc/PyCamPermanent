@@ -369,3 +369,67 @@ def read_witty_schedule_file(filename):
         return (on_hour, on_min), (off_hour, off_min)
     except AttributeError:
         print('File not in expected format to retrieve start-up/shut-down information for instrument')
+
+
+def write_script_crontab(filename, cmd, time_on):
+    """
+    Writes crontab script to filename
+    :param  filename:   str     File to write to
+    :param  time_on:    list    List of times to start script
+    :param  cmd:        list    List of commands relating to times
+    """
+    if len(cmd) != len(time_on):
+        print('Lengths of lists of crontab commands and times must be equal')
+        return
+
+    with open(filename, 'w', newline='\n') as f:
+        f.write('# Crontab schedule file written by pycam\n')
+
+        # Setup path for shell
+        f.write('PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin\n')
+
+        # Loops through commands and add them to crontab
+        for i in range(len(cmd)):
+            # Organise time object
+            time_obj = time_on[i]
+            if isinstance(time_obj, datetime.datetime):
+                time_str = '{} * * * '.format(time_obj.strftime('%M %H'))
+            # If time obj isn't datetime object we assume it is in the correct timing format for crontab
+            else:
+                time_str = time_obj
+
+            command = cmd[i]
+            line = time_str + command
+
+            f.write('{}\n'.format(line))
+
+
+def read_script_crontab(filename, cmds):
+    """Reads file containing start/stop pycam script times"""
+    times = {}
+
+    with open(filename, 'r') as f:
+        for line in f:
+            # Loop through commands to check if any are in the current file line
+            for cmd in cmds:
+                if cmd in line:
+                    minute, hour = line.split()[0:2]
+                    # If hour is * then we are running defined by minutes only
+                    if hour == '*':
+                        hour = 0
+                        # We then need to catch this case, where 0 means hourly, so we set minute to 60
+                        if minute == '0':
+                            minute = 60
+                    else:
+                        # We now need to catch other cases where running defined by minutes only '*/{}' fmt
+                        minute = minute.split('/')[-1]
+                    # If the line is commented out, we set everything to 0 (e.g. used for temperature logging)
+                    if line[0] == '#':
+                        minute = 0
+                        hour = 0
+
+                    times[cmd] = (int(hour), int(minute))
+    return times
+
+
+

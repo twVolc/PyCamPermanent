@@ -19,9 +19,13 @@ port_transfer=12346                 # Image/spectra transfer port
 port_ext=12347                      # External communication port (laptop etc)
 
 # SCRIPTS TO BE RUN
+start_script=/home/pi/pycam/scripts/start_instrument.py
+stop_script=/home/pi/pycam/scripts/stop_instrument.py
+master_script=/home/pi/pycam/scripts/pycam_masterpi.py
 remote_scripts=python3 /home/pi/pycam/scripts/kill_process.py     # List of scripts to be run on remote pi, separated by commas
 local_scripts=python3 ./kill_process.py      #
 cam_script=python3 /home/pi/pycam/scripts/pycam_camera.py
 spec_script=/home/pi/pycam/scripts/pycam_spectrometer.py
+temp_log=/home/pi/pycam/scripts/log_temperature.sh
 
 cam_specs=.\\cam_specs.txt          # Location of camera specs file on master Pi

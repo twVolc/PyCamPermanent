@@ -30,6 +30,13 @@ class FileLocator:
     CONFIG_SPEC = CONF_DIR + 'spec_specs.txt'                   # Spectrometer configuration file
     SCHEDULE_FILE = CONF_DIR_WINDOWS + 'witty_schedule.wpi'     # Schedule script for local storage
     SCHEDULE_FILE_PI = '/home/pi/wittypi/schedule.wpi'          # Schedule script on pi
+    SCRIPT_SCHEDULE_FILE = 'script_schedule.txt'                # Filename for start/stop pycam script schedule
+    CRON_PYCAM = CONF_DIR_WINDOWS + 'cron/'
+    CRON_PYCAM_PI = CONF_DIR + 'cron/'
+    SCRIPT_SCHEDULE = CRON_PYCAM + SCRIPT_SCHEDULE_FILE         # Script schedule for starting/stopping software
+    SCRIPT_SCHEDULE_PI = CRON_PYCAM_PI + SCRIPT_SCHEDULE_FILE
+    CRON_DIR = '/etc/cron.d/'
+    CRON_FILE = CRON_DIR + 'script_schedule'                    # Location for start/stop pycam in crontab
 
     NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
     NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data
@@ -40,6 +47,7 @@ class FileLocator:
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
 
     LOG_PATH = PYCAM_ROOT_PI + '/logs/'
+    ERROR_LOG = LOG_PATH + 'error.log'
 
     # GUI
     GUI_SETTINGS = './gui_settings.txt'
@@ -66,11 +74,15 @@ class ConfigInfo:
     port_comm = 'port_comm'
     port_ext = 'port_ext'
 
+    start_script = 'start_script'
+    stop_script = 'stop_script'
+    master_script = 'master_script'
     remote_scripts = 'remote_scripts'
     local_scripts = 'local_scripts'
     cam_script = 'cam_script'       # Tag for defining camera script to be run on pi
     spec_script = 'spec_script'
     cam_specs = 'cam_specs'
+    temp_log = 'temp_log'
 
     local_data_dir = 'local_data_dir'
 
