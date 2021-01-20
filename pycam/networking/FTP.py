@@ -216,11 +216,24 @@ class FTPClient:
         """Closes FTP connection"""
         self.connection.close()
 
+    def test_connection(self):
+        """Tests connection is still active, and if not it attempts to reconnect. If not possible, it returns False"""
+        try:
+            self.connection.voidcmd('NOOP')
+        except ftplib.all_errors:
+            conn = self.open_connection(self.host_ip, username=self.user, password=self.pwd)
+            return conn
+        return True
+
     def move_file_to_instrument(self, local_file, remote_file):
         """Move specific file from local_file location to remote_file location"""
         if not os.path.exists(local_file):
             print('File does not exist, cannot perform FTP transfer: {}'.format(local_file))
             return
+
+        # Test FTP connection
+        if not self.test_connection():
+            print('Cannot establish FTP connection. File cannot be transferred')
 
         # Move file to location
         with open(local_file, 'rb') as f:
@@ -235,6 +248,10 @@ class FTPClient:
                                     If False, transfer will keep running indefinitely as the transfer does not directly
                                     identify files it has already transferred previously
         """
+        # Test FTP connection
+        if not self.test_connection():
+            print('Cannot establish FTP connection. File cannot be transferred')
+
         # Filename organisation for local machine
         # File always goes into dated directory (date is extracted from filename)
         file = os.path.split(img)[-1]
@@ -273,13 +290,9 @@ class FTPClient:
 
     def watch_dir(self):
         """Public access thread starter for _watch_dir"""
-        try:
-            self.connection.voidcmd('NOOP')
-        except ftplib.all_errors:
-            conn = self.open_connection(self.host_ip, username=self.user, password=self.pwd)
-            if not conn:
-                'Could not watch directory for FTP transfer as connection failed'
-                return
+        if not self.test_connection():
+            print('FTP connection could not be established, directory watching is not possible')
+            return
 
         self.watch_thread = threading.Thread(target=self._watch_dir, args=())
         self.watch_thread.daemon = True

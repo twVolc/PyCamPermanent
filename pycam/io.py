@@ -396,7 +396,7 @@ def write_script_crontab(filename, cmd, time_on):
                 time_str = '{} * * * '.format(time_obj.strftime('%M %H'))
             # If time obj isn't datetime object we assume it is in the correct timing format for crontab
             else:
-                time_str = time_obj
+                time_str = time_obj + ' '
 
             command = cmd[i]
             line = time_str + command
@@ -420,9 +420,9 @@ def read_script_crontab(filename, cmds):
                         # We then need to catch this case, where 0 means hourly, so we set minute to 60
                         if minute == '0':
                             minute = 60
-                    else:
-                        # We now need to catch other cases where running defined by minutes only '*/{}' fmt
-                        minute = minute.split('/')[-1]
+                        else:
+                            # We now need to catch other cases where running defined by minutes only '*/{}' fmt
+                            minute = minute.split('/')[-1]
                     # If the line is commented out, we set everything to 0 (e.g. used for temperature logging)
                     if line[0] == '#':
                         minute = 0

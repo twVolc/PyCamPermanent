@@ -284,12 +284,12 @@ class InstrumentConfiguration:
         ssh_cli = open_ssh(self.ftp.host_ip)
 
         std_in, std_out, std_err = ssh_cmd(ssh_cli, '(cd /home/pi/wittypi; sudo ./runScript.sh)', background=False)
-        # std_in, std_out, std_err = ssh_cmd(ssh_cli, 'sudo python3 /home/pi/pycam/scripts/update_witty.py')
-        print(std_out.readlines())
-        print(std_err.readlines())
+        # print(std_out.readlines())
+        # print(std_err.readlines())
+        close_ssh(ssh_cli)
 
         a = tk.messagebox.showinfo('Instrument update',
-                                   'Updated instrument start-up/shut-down schedule\n'
+                                   'Updated instrument start-up/shut-down schedule:\n\n'
                                    'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
                                                                                   self.off_time.strftime('%H:%M')))
 
@@ -313,6 +313,23 @@ class InstrumentConfiguration:
 
         # Transfer file to instrument
         self.ftp.move_file_to_instrument(FileLocator.SCRIPT_SCHEDULE, FileLocator.SCRIPT_SCHEDULE_PI)
+
+        # Setup crontab
+        ssh_cli = open_ssh(self.ftp.host_ip)
+
+        std_in, std_out, std_err = ssh_cmd(ssh_cli, 'crontab ' + FileLocator.SCRIPT_SCHEDULE_PI, background=False)
+        close_ssh(ssh_cli)
+
+        a = tk.messagebox.showinfo('Instrument update',
+                                   'Updated instrument software schedules:\n\n'
+                                   'Start capture script: {} UTC\n'
+                                   'Shut-down capture script: {} UTC\n'
+                                   'Log temperature: {} minutes'.format(self.start_capt_time.strftime('%H:%M'),
+                                                                        self.stop_capt_time.strftime('%H:%M'),
+                                                                        self.temp_logging))
+
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
 
     def close_frame(self):
         self.in_frame = False
