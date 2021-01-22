@@ -13,6 +13,7 @@ from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec, ftp_client, config
 from pycam.gui.acquisition import BasicAcqHandler
 from pycam.gui.network import InstrumentConfiguration
+from pycam.gui.logs import LogTemperature
 
 # Geometry settings
 geom_settings = GeomSettings()
@@ -46,3 +47,6 @@ basic_acq_handler = BasicAcqHandler(pyplis_worker, img_dir=current_dir_img, spec
 
 # Instrument configuration
 instrument_cfg = InstrumentConfiguration(ftp_client, config)
+
+# Temperature log
+temp_log = LogTemperature(ftp_client, gui_setts)

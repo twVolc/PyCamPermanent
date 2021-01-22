@@ -41,9 +41,9 @@ ref_check_mode=1
 # DOAS calibration and DOAS-AA calibration
 ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'
 maxrad_doas=20.0
-remove_doas_mins=10
+remove_doas_mins=3
 doas_recal=1
-doas_fov_recal_mins=10
+doas_fov_recal_mins=3
 doas_fov_recal=0
 fix_fov=0
 

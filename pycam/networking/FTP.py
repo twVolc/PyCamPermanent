@@ -241,7 +241,37 @@ class FTPClient:
 
         print('FTP moved file from {} to {}'.format(local_file, remote_file))
 
-    def get_file(self, img, rm=True):
+    def get_file(self, remote, local, rm=True):
+        """
+        Gets file from remote location and places it in local location
+        :param remote:  str     Path to remote file
+        :param local:   str     Path to local location
+        :param rm:      bool    If true the file is deleted from the remote computer
+        :return:
+        """
+        # Test FTP connection
+        if not self.test_connection():
+            print('Cannot establish FTP connection. File cannot be transferred')
+            return
+
+        filename = os.path.split(remote)[-1]
+
+        # Download file
+        with open(local, 'wb') as f:
+            start_time = time.time()
+            self.connection.retrbinary('RETR ' + remote, f.write)
+            elapsed_time = time.time() - start_time
+            print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local,
+                                                                                             elapsed_time))
+        # Delete file after it has been transferred
+        if rm:
+            try:
+                self.connection.delete(remote)
+                print('Deleted file {} from instrument'.format(filename))
+            except ftplib.error_perm as e:
+                print(e)
+
+    def get_data(self, img, rm=True):
         """Downloads image
         :param img:         str     Filename of image on remote machine
         :param rm:          bool    If True, the file is deleted from the host once it has been transferred
@@ -251,6 +281,7 @@ class FTPClient:
         # Test FTP connection
         if not self.test_connection():
             print('Cannot establish FTP connection. File cannot be transferred')
+            return
 
         # Filename organisation for local machine
         # File always goes into dated directory (date is extracted from filename)
@@ -348,7 +379,7 @@ class FTPClient:
                 if lock_file in file_list:      # Don't download image if it is still locked
                     continue
                 else:
-                    self.get_file(os.path.join(self.dir_data_remote, file))
+                    self.get_data(os.path.join(self.dir_data_remote, file))
 
             # Sleep for designated time, so I'm not constantly polling the host
             time.sleep(self.refresh_time)

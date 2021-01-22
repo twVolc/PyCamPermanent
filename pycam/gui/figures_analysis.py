@@ -2457,7 +2457,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         if message:
             messagebox.showinfo('Settings updated',
-                                'FOV settings have been updated and will be used on the processing next run',
+                                'FOV settings have been updated and will be used on the next processing run',
                                 parent=self.frame)
             self.frame.attributes('-topmost', 1)
             self.frame.attributes('-topmost', 0)

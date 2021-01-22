@@ -6,7 +6,8 @@ from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
-    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, calibration_wind, instrument_cfg
+    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, calibration_wind, instrument_cfg, \
+    temp_log
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
@@ -102,6 +103,8 @@ class PyMenu:
         self.submenu_data.add_command(label='Start transfer', command=cfg.ftp_client.watch_dir)
         self.submenu_data.add_command(label='Stop transfer', command=cfg.ftp_client.stop_watch)
         self.submenu_data.add_command(label='Options')  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
+        self.submenu_data.add_separator()
+        self.submenu_data.add_command(label='Get temperature log', command=temp_log.generate_frame)
         self.menus[tab].add_separator()
 
         # Manual acquisition

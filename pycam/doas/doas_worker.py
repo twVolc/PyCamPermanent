@@ -799,7 +799,8 @@ class DOASWorker:
         :return:
         """
         indices = [x for x in self.results.index if x < time_obj]
-        fit_errs = list(compress(self.results.fit_errs, [not x for x in indices]))
+        fit_err_idxs = self.results.index >= time_obj
+        fit_errs = np.array(list(compress(self.results.fit_errs, fit_err_idxs)))
         if inplace:
             self.results.drop(indices, inplace=True)
             self.results.fit_errs = fit_errs

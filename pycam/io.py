@@ -432,4 +432,27 @@ def read_script_crontab(filename, cmds):
     return times
 
 
+def read_temp_log(filename):
+    """
+    Reads temperautre log file, returning datetime times and numpy temperature array
+    :param filename:
+    :return:
+    """
+    date_fmt = '%Y-%m-%d %H:%M:%S'
+    dates = []
+    temps = []
+    with open(filename, 'r', newline='\n') as f:
+        for line in f:
+            sep = line.split()
+            date_time = sep[0] + ' ' + sep[1]
+            temp = sep[2].split('°')[0].split('Â')[0]
+            date_obj = datetime.datetime.strptime(date_time, date_fmt)
+            dates.append(date_obj)
+            temps.append(float(temp))
+
+    dates = np.array(dates)
+    temps = np.array(temps)
+
+    return dates, temps
+
 

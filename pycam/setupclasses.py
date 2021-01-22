@@ -46,8 +46,16 @@ class FileLocator:
 
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
 
-    LOG_PATH = PYCAM_ROOT_PI + '/logs/'
-    ERROR_LOG = LOG_PATH + 'error.log'
+    LOG_DIR = '/logs/'
+    LOG_PATH_PI = PYCAM_ROOT_PI + LOG_DIR
+    LOG_PATH_WINDOWS = PYCAM_ROOT_WINDOWS + LOG_DIR
+    ERROR_LOG = 'error.log'
+    ERROR_LOG_PI = LOG_PATH_PI + ERROR_LOG
+    ERROR_LOG_WINDOWS = LOG_PATH_WINDOWS + ERROR_LOG
+    TEMP_LOG = 'temperature.log'
+    TEMP_LOG_PI = LOG_PATH_PI + TEMP_LOG
+    TEMP_LOG_WINDOWS = LOG_PATH_WINDOWS + TEMP_LOG
+
 
     # GUI
     GUI_SETTINGS = './gui_settings.txt'

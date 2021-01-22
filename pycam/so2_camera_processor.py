@@ -1653,6 +1653,8 @@ class PyplisWorker:
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
         self.update_meta(self.img_tau, self.img_A)
+        self.img_tau.img[np.isnan(self.img_tau.img)] = 0    # Remove NaNs
+        self.img_tau.img[np.isinf(self.img_tau.img)] = 0    # Remove infs
 
         # Adjust for changing FOV sensitivity if requested
         if self.use_sensitivity_mask:
@@ -1822,11 +1824,11 @@ class PyplisWorker:
             tau = tau_fov.mean()
 
             try:
-                # TODO this isn't working. Need to see what is happening with doas_worker.results as it seems to change
-                # TODO at some point fit_errs disappears - empty list.
+                # Get CD for current time
                 cd = self.doas_worker.results[img_time]
                 # Get index for cd_err
-                cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == img_time]
+                cd_err = self.doas_worker.results.fit_errs[
+                    np.where(self.doas_worker.results.index.array == img_time)[0][0]]
             except BaseException as e:
                 print(e)
                 # If there is no data for the specific time of the image we will have to interpolate
