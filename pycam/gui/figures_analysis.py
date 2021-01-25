@@ -2424,6 +2424,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                      'doas_recal': int,
                      'doas_fov_recal_mins': int,
                      'doas_fov_recal': int,
+                     'max_doas_cam_dif': int,
                      'fix_fov': int,
                      'maxrad_doas': float}          # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
@@ -2439,7 +2440,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self._doas_recal = tk.BooleanVar()          # If False, DOAS data is never removed (until next day). Otherwise data is removed based on remove_doas_mins
         self._doas_fov_recal_mins = tk.IntVar()     # Recalibration time [minutes] for FOV recalibration
         self._doas_fov_recal = tk.BooleanVar()      # Whether or not DOAS FOV should be recalibrated once it has been set (if False, a first calibration will still be run unless fix_fov is True)
-
+        self._max_doas_cam_dif = tk.IntVar()        # Difference (seconds) between camera and DOAS time - any difference larger than this and the data isn't added to the calibration
+        
         self._fov_rad = tk.DoubleVar()
         self._fix_fov = tk.BooleanVar()             # Fixes the FOV - no FOV re-calibration at all will occur
 
@@ -2454,6 +2456,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
         self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
         self.pyplis_worker.fix_fov = self.fix_fov
+        self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
 
         if message:
             messagebox.showinfo('Settings updated',
@@ -2503,6 +2506,14 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_opts, textvariable=self._maxrad_doas, from_=0.05, to=10.00, increment=0.05,
                            width=5)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        # Maximum accepted DOAS-cam time difference
+        lab = ttk.Label(self.frame_opts, text='Max. DOAS-image time diff. [s]:')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._max_doas_cam_dif, from_=0, to=60, increment=1,
+                           width=3)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
@@ -2727,6 +2738,14 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def fix_fov(self, value):
         self._fix_fov.set(value)
 
+    @property
+    def max_doas_cam_dif(self):
+        return self._max_doas_cam_dif.get()
+
+    @max_doas_cam_dif.setter
+    def max_doas_cam_dif(self, value):
+        self._max_doas_cam_dif.set(value)
+
     def update_vars(self):
         """Updates FOV variables based on pyplis worker"""
         try:
@@ -2783,6 +2802,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.doas_fov_recal_misn = self.pyplis_worker.doas_fov_recal_mins
         self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
         self.fix_fov = self.pyplis_worker.fix_fov
+        self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
 
         self.in_frame = False
         self.frame.destroy()

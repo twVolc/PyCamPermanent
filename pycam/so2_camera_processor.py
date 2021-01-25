@@ -77,8 +77,9 @@ class PyplisWorker:
         self.cd_times = [None] * self.doas_buff_size                            # Times of column densities data points
         self.idx_current_doas = 0                                               # Current index for doas spectra
 
+        # TODO Just test doas data -this can be removed once everything is complete
         test_doas_start = self.get_img_time('2018-03-26T144404')
-        self.test_doas_times = [test_doas_start + datetime.timedelta(seconds=x) for x in range(0, 600, 4)]
+        self.test_doas_times = [test_doas_start + datetime.timedelta(seconds=x) for x in range(0, 600, 6)]
         self.test_doas_cds = np.random.rand(len(self.test_doas_times)) * 1000
         self.test_doas_stds = np.random.rand(len(self.test_doas_times)) * 50
 
@@ -178,6 +179,7 @@ class PyplisWorker:
         self.doas_fov_recal = True              # If True DOAS FOV is recalibrated every doas_recal_num images
         self.doas_fov_recal_mins = 120
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
+        self.max_doas_cam_dif = 5               # Difference (seconds) between camera and DOAS time - any difference larger than this and the data isn't added to the calibration
         self.fix_fov = False                    # If True, FOV calibration is not performed and current FOV is used
         self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
         self.doas_last_save = datetime.datetime.now()
@@ -1830,11 +1832,18 @@ class PyplisWorker:
                 cd_err = self.doas_worker.results.fit_errs[
                     np.where(self.doas_worker.results.index.array == img_time)[0][0]]
             except BaseException as e:
-                print(e)
                 # If there is no data for the specific time of the image we will have to interpolate
-                # TODO sort out interpolation!
-
                 dts = self.doas_worker.results.index - img_time
+                # If the nearest DOAS data point isn't within the limit set by user (max_doas_cam_dif) then we do not
+                # use this image in the calibration - this should prevent having large uncertainties
+                closest = np.min(np.abs(dts.array))
+                dt = datetime.timedelta(seconds=closest / np.timedelta64(1, 's'))
+                if dt > datetime.timedelta(seconds=self.max_doas_cam_dif):
+                    print('No DOAS data point within {}s of image time: {}. '
+                          'Image is not added to DOAS calibration'.format(self.max_doas_cam_dif,
+                                                                          img_time.strftime('%H:%M:%S')))
+                    return
+
                 zero = datetime.timedelta(0)
                 seconds_plus = np.array([x for x in dts if x > zero])
                 seconds_minus = np.array([x for x in dts if x < zero])
@@ -1859,25 +1868,16 @@ class PyplisWorker:
                     print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
                                                                  time_val.strftime('%H:%M:%S')))
                 else:
-                    # Starting manual interpolation (may not be needed, if below works, see below)
-                    idx_1 = np.argmin(np.abs(seconds_minus))
-                    idx_2 = np.argmin(seconds_plus)
-                    times = [img_time + seconds_minus[idx_1],
-                             img_time + seconds_plus[idx_2]]
-                    cds = [self.doas_worker.results[time_val] for time_val in times]
-                    time_flt = None
-
-                    # This may work for interpolating TODO check. If so, the above part isn't needed
+                    # This may work for interpolating
                     cd = np.interp(pd.to_numeric(pd.Series(img_time)).values,
                               pd.to_numeric(self.doas_worker.results.index).values, self.doas_worker.results)
                     cd_err = np.interp(pd.to_numeric(pd.Series(img_time)).values,
                                        pd.to_numeric(self.doas_worker.results.index).values,
                                        self.doas_worker.results.fit_errs)
-                    print('Interpolated image time with DOAS times of {} and {}'.format(times[0].strftime('%H:%M%:S'),
-                                                                                        times[1].strftime('%H:%M%:S')))
+                    print('Interpolated DOAS data for image time {}'.format(img_time.strftime('%H:%M:%S')))
 
             # Update calibration object
-            cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_tau.meta['start_acq']}
+            cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
             self.add_doas_cal_data(cal_dict)
 
             # Update doas figure, but no need to change the correlation image as we haven't changed that
@@ -2748,6 +2748,10 @@ class PyplisWorker:
             # # Attempt to get DOAS calibration point to add to list
             # # TODO DOAS results should now all be handled in the doas_worker and can be accessed with
             # #  self.doas_worker.results, so I think I don't need to do this handling here now?
+
+            # TODO but I may need to add some kind of wait function, just in case the camera gets ahead of itself and
+            # TODO we are processing images with contemporaneous DOAS - this may mean we miss the window to add
+            # TODO the DOAS points to calibration plot?
             # try:
             #     doas_dict = self.q_doas.get()
             #     # If we have been passed a processed spectrum, we load it into the buffer
@@ -2940,6 +2944,11 @@ class ImageRegistration:
             # If we already have a cp transform we are happy with, we can warp the image straight away
             else:
                 warped_B = self.cp_warp_img(img_B)
+
+        # Remove NaNs by just setting these values to 0 (I don't think this is necessary - it doesn't stop the pyplis
+        # NaN warning printing, as the nans are generated in pyplis itself with 0/0 in the image array
+        # I could set nan to 1 and this should avoid the issue, but I'm not sure it's worth it
+        # warped_B[np.isnan(warped_B)] = 0
 
         return warped_B
 
