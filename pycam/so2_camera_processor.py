@@ -89,6 +89,7 @@ class PyplisWorker:
         self.meas = pyplis.setupclasses.MeasSetup()     # Pyplis MeasSetup object (instantiated empty)
         self.img_reg = ImageRegistration()              # Image registration object
         self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
+        self.bg_pycam = False       # BG pycam is a basic BG correction using a rectangle for I0,it is not part of the pyplis package of BG modes
         self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
         self.plume_bg.surface_fit_pyrlevel = 0
         self.plume_bg.mode = 4      # Plume background mode - default (4) is linear in x and y
@@ -100,6 +101,7 @@ class PyplisWorker:
                               4,    # Scaling + linear gradient correction in x & y direction
                               5,
                               6,    # Scaling + quadr. gradient correction in x & y direction
+                              7,    # Pycam basic rectangle background correction
                               99]
         self.auto_param_bg = True   # Whether the line parameters for BG modelling are generated automatically
         self.ref_check_lower = 0
@@ -155,6 +157,7 @@ class PyplisWorker:
         self.fig_bg_A = None            # Figure displaying modelled background of on-band
         self.fig_bg_B = None            # Figure displaying modelled background of off-band
         self.fig_bg_ref = None          # Figure displaying ?
+        self.fig_bg = None              # Object controlling plotting of background modelling figures
         self.fig_spec = None            # Figure displaying spectra
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
@@ -587,6 +590,7 @@ class PyplisWorker:
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
+            img.img[img.img <= 0] = np.finfo(float).eps
         else:
             warnings.warn('No dark image provided for background image.\n '
                           'Background image has not been corrected for dark current.')
@@ -649,6 +653,7 @@ class PyplisWorker:
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
+            img.img[img.img <= 0] = np.finfo(float).eps     # Set zeros and less to smallest value
         else:
             warnings.warn('No dark image found, image has been loaded without dark subtraction')
 
@@ -866,7 +871,7 @@ class PyplisWorker:
                 # Convert ppmm to molecules/cm-2 (pyplis likes this unit)
                 # Pyplis doesn't like 0 cell CD so if we are using the 0 cell we just make it have a very small value
                 if int(ppmm) == 0:
-                    ppmm = 0.001
+                    ppmm = np.finfo(float).eps
                 cd_val = float(ppmm) * self.ppmm_conv
 
                 for band in ['A', 'B']:
@@ -1088,9 +1093,9 @@ class PyplisWorker:
             with np.errstate(divide='ignore', invalid='ignore'):
                 self.cell_tau_dict[ppmm] = -np.log10(np.divide(np.divide(self.cell_dict_A[ppmm], img_clear_A),
                                                      np.divide(self.cell_dict_B[ppmm], img_clear_B)))
-            self.cell_tau_dict[ppmm][np.isneginf(self.cell_tau_dict[ppmm])] = 0
-            self.cell_tau_dict[ppmm][np.isinf(self.cell_tau_dict[ppmm])] = 0
-            self.cell_tau_dict[ppmm][np.isnan(self.cell_tau_dict[ppmm])] = 0
+            self.cell_tau_dict[ppmm][np.isneginf(self.cell_tau_dict[ppmm])] = np.finfo(float).eps
+            self.cell_tau_dict[ppmm][np.isinf(self.cell_tau_dict[ppmm])] = np.finfo(float).eps
+            self.cell_tau_dict[ppmm][np.isnan(self.cell_tau_dict[ppmm])] = np.finfo(float).eps
 
             # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
             # DOAS FOV for normalisation region
@@ -1323,8 +1328,7 @@ class PyplisWorker:
             print('Unrecognised definition of <band>, cannot perform light dilution correction')
             return
 
-        # Compute plume background in image (don't fully understand this line)
-        # TODO - Maybe work out what is goin on here???
+        # Compute plume background in image -> I = I0*e^-tau -> I*e^tau=I0
         plume_bg_vigncorr = img * np.exp(tau_uncorr.img)
 
         # Calculate plume pixel mask
@@ -1497,8 +1501,11 @@ class PyplisWorker:
             params = self.background_params
         self.plume_bg.update(**params)
 
-        if mode in self.BG_CORR_MODES:
+        if mode == 7:
+            self.bg_pycam = True
+        elif mode in self.BG_CORR_MODES:
             self.plume_bg.mode = mode
+            self.bg_pycam = False
 
         # Get PCS line if we have one
         if len(self.PCS_lines) < 1:
@@ -1506,77 +1513,119 @@ class PyplisWorker:
         else:
             pcs_line = self.PCS_lines[0]
 
-        # Get tau_A and tau_B
-        if self.plume_bg.mode == 0:
-            # mask for corr mode 0 (i.e. 2D polyfit)
-            mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
-            mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
-            mask_B = np.ones(vigncorr_B.img.shape, dtype=np.float32)
-            mask_B[vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
+        if self.bg_pycam:   # Basic pycam rectangle provides background intensity
+            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
+            # region of sky, rather than the same coordinates of the image
+            bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
+            bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
-            # First method: retrieve tau image using poly surface fit
-            tau_A = self.plume_bg.get_tau_image(vigncorr_A,
-                                                mode=self.BG_CORR_MODES[0],
-                                                surface_fit_mask=mask_A,
-                                                surface_fit_polyorder=1)
-            tau_B = self.plume_bg.get_tau_image(vigncorr_B,
-                                                mode=self.BG_CORR_MODES[0],
-                                                surface_fit_mask=mask_B,
-                                                surface_fit_polyorder=1)
+            # Tau A
+            r = bg_a / vigncorr_A.img
+            r[r <= 0] = np.finfo(float).eps
+            r[np.isnan(r)] = np.finfo(float).eps
+            tau_A = pyplis.Img(np.log(r))
+
+            # Tau B
+            r = bg_b / vigncorr_B.img
+            r[r <= 0] = np.finfo(float).eps
+            r[np.isnan(r)] = np.finfo(float).eps
+            tau_B = pyplis.Img(np.log(r))
+
+            # Tau B warped
+            vigncorr_B_warped.img[0, 0] = np.finfo(float).eps
+            r = bg_b / vigncorr_B_warped.img
+            r[r <= 0] = np.finfo(float).eps
+            r[np.isnan(r)] = np.finfo(float).eps
+            tau_B_warped = pyplis.Img(np.log(r))
+
+            tau_A.meta["bit_depth"] = np.nan
+            tau_A.edit_log["is_tau"] = True
+            tau_B.meta["bit_depth"] = np.nan
+            tau_B.edit_log["is_tau"] = True
+            tau_B_warped.meta["bit_depth"] = np.nan
+            tau_B_warped.edit_log["is_tau"] = True
+
         else:
-            if img_A.edit_log['vigncorr']:
-                img_A.edit_log['vigncorr'] = False
-                img_B.edit_log['vigncorr'] = False
-            tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
-            tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
+            # Get tau_A and tau_B
+            if self.plume_bg.mode == 0:
+                # mask for corr mode 0 (i.e. 2D polyfit)
+                mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
+                mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
+                mask_B = np.ones(vigncorr_B.img.shape, dtype=np.float32)
+                mask_B[vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
+                mask_B_warped = np.ones(vigncorr_B.img.shape, dtype=np.float32)
+                mask_B_warped[vigncorr_B_warped.img < self.polyfit_2d_mask_thresh] = 0
 
-            # Generating warped B from warped images
-            bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
-            self.update_meta(bg_B_warped, self.bg_B)
-            img_B_warped.edit_log['vigncorr'] = False
-            tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
-            self.update_meta(tau_B_warped, img_B_warped)
+                # First method: retrieve tau image using poly surface fit
+                tau_A = self.plume_bg.get_tau_image(vigncorr_A,
+                                                    mode=self.BG_CORR_MODES[0],
+                                                    surface_fit_mask=mask_A,
+                                                    surface_fit_polyorder=1)
+                tau_B = self.plume_bg.get_tau_image(vigncorr_B,
+                                                    mode=self.BG_CORR_MODES[0],
+                                                    surface_fit_mask=mask_B,
+                                                    surface_fit_polyorder=1)
+                tau_B_warped = self.plume_bg.get_tau_image(vigncorr_B_warped,
+                                                    mode=self.BG_CORR_MODES[0],
+                                                    surface_fit_mask=mask_B_warped,
+                                                    surface_fit_polyorder=1)
+            else:
+                if img_A.edit_log['vigncorr']:
+                    img_A.edit_log['vigncorr'] = False
+                    img_B.edit_log['vigncorr'] = False
+                tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
+                tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
+
+                # Generating warped B from warped images -
+                # I think I have to do this here rather than registering tau_B, because the background plume params are
+                # based on tau_A image, so they won't match the B images unles we use registered versions
+                bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
+                self.update_meta(bg_B_warped, self.bg_B)
+                img_B_warped.edit_log['vigncorr'] = False
+                tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
+                self.update_meta(tau_B_warped, img_B_warped)
 
         # Update metadata of images
         self.update_meta(tau_A, img_A)
         self.update_meta(tau_B, img_B)
-
-        # # Register off-band image
-        # img = self.img_reg.register_image(tau_A.img, tau_B.img)
-        # tau_B_warped = pyplis.image.Img(img)
-        # self.update_meta(tau_B_warped, tau_B)
-        # tau_B_warped.edit_log['is_tau'] = True
-        # tau_B_warped.edit_log['is_aa'] = True
+        self.update_meta(tau_B_warped, img_B_warped)
+        tau_B_warped.img[np.isnan(tau_B_warped.img)] = np.finfo(float).eps
 
         # Plots
         if plot:
-            # Close old figures
-            try:
-                plt.close(self.fig_bg_A)
-                plt.close(self.fig_bg_B)
-                plt.close(self.fig_bg_ref)
-            except AttributeError:
-                pass
+            self.fig_bg.update_plots(tau_A, tau_B_warped)
 
-            if pcs_line is not None:
-                self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
-                self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
-            else:
-                self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A)
-                self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B)
-
-            self.fig_bg_A.canvas.set_window_title('Background model: Image A')
-            self.fig_bg_B.canvas.set_window_title('Background model: Image B')
-
-            self.fig_bg_A.show()
-            self.fig_bg_B.show()
-
-            # Reference areas
-            self.fig_bg_ref, axes = plt.subplots(1, 1, figsize=(16, 6))
-            pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, params, ax=axes)
-            axes.set_title("Automatically set parameters")
-            self.fig_bg_ref.canvas.set_window_title('Background model: Reference parameters')
-            self.fig_bg_ref.show()
+            # if self.bg_pycam:
+            #    # TODO need to do my own plotting if doing pycam background
+            #    pass
+            # else:
+            #     # Close old figures
+            #     try:
+            #         plt.close(self.fig_bg_A)
+            #         plt.close(self.fig_bg_B)
+            #         plt.close(self.fig_bg_ref)
+            #     except AttributeError:
+            #         pass
+            #
+            #     if pcs_line is not None:
+            #         self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
+            #         self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
+            #     else:
+            #         self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A)
+            #         self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B)
+            #
+            #     self.fig_bg_A.canvas.set_window_title('Background model: Image A')
+            #     self.fig_bg_B.canvas.set_window_title('Background model: Image B')
+            #
+            #     self.fig_bg_A.show()
+            #     self.fig_bg_B.show()
+            #
+            #     # Reference areas
+            #     self.fig_bg_ref, axes = plt.subplots(1, 1, figsize=(16, 6))
+            #     pyplis.plumebackground.plot_sky_reference_areas(vigncorr_A, params, ax=axes)
+            #     axes.set_title("Automatically set parameters")
+            #     self.fig_bg_ref.canvas.set_window_title('Background model: Reference parameters')
+            #     self.fig_bg_ref.show()
 
         return tau_A, tau_B, tau_B_warped
 
@@ -1649,22 +1698,17 @@ class PyplisWorker:
                 self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
         print('Light dilution correction time: {}'.format(time.time()-t))
 
+        # Adjust for changing FOV sensitivity if requested
+        if self.use_sensitivity_mask:
+            self.img_tau.img = self.img_tau.img / self.sensitivity_mask
 
         # Create apparent absorbance image from off and on-band tau images
         self.img_tau = pyplis.image.Img(self.tau_A.img - self.tau_B_warped.img)
         self.img_tau.edit_log["is_tau"] = True
         self.img_tau.edit_log["is_aa"] = True
         self.update_meta(self.img_tau, self.img_A)
-        self.img_tau.img[np.isnan(self.img_tau.img)] = 0    # Remove NaNs
-        self.img_tau.img[np.isinf(self.img_tau.img)] = 0    # Remove infs
-
-        # Adjust for changing FOV sensitivity if requested
-        if self.use_sensitivity_mask:
-            self.img_tau.img = self.img_tau.img / self.sensitivity_mask
-
-        # # Update image buffer, only if img_path_A is not None
-        # if img_path_A is not None:
-        #     self.update_img_buff(self.img_tau.img, img_path_A)
+        self.img_tau.img[np.isnan(self.img_tau.img)] = np.finfo(float).eps    # Remove NaNs
+        self.img_tau.img[np.isinf(self.img_tau.img)] = np.finfo(float).eps    # Remove infs
 
         # Extract tau time series for cross-correlation lines if velo_mode flow_glob is True
         if self.velo_modes['flow_glob']:
@@ -1789,8 +1833,11 @@ class PyplisWorker:
             oldest_time = img_time - datetime.timedelta(minutes=self.remove_doas_mins)
             self.doas_worker.rem_doas_results(oldest_time, inplace=True)
 
-            # Update calibration data
-            self.rem_doas_cal_data(oldest_time, recal=False)
+            # Update calibration data - on startup there is not calib data, so if have none we just catch the exception
+            try:
+                self.rem_doas_cal_data(oldest_time, recal=True)
+            except ValueError:
+                pass
 
         # Update FOV calibration if requested and if the allotted time since the last calibration has occured
         # We also need to run this if we don't have a calibration yet
@@ -2948,7 +2995,9 @@ class ImageRegistration:
         # Remove NaNs by just setting these values to 0 (I don't think this is necessary - it doesn't stop the pyplis
         # NaN warning printing, as the nans are generated in pyplis itself with 0/0 in the image array
         # I could set nan to 1 and this should avoid the issue, but I'm not sure it's worth it
-        # warped_B[np.isnan(warped_B)] = 0
+        warped_B = warped_B.astype(np.float64)
+        warped_B[np.isnan(warped_B)] = np.finfo(float).eps
+        warped_B[warped_B <= 0] = np.finfo(float).eps
 
         return warped_B
 

@@ -20,3 +20,4 @@ fig_cell_abs=6.0,6.0
 fig_sens_mask=6.0,6.0
 fig_dil=6.0,4.0
 fig_cross_corr=14.0,6.0
+fig_bg=7.0,6.0

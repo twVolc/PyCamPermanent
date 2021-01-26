@@ -56,6 +56,7 @@ class GUISettings:
         self.fig_sens_mask = tuple()
         self.fig_dil = tuple()
         self.fig_cross_corr = tuple()
+        self.fig_bg = tuple()
 
         # Load settings if given a file on instantiation
         if self.config_file is not None:
@@ -206,6 +207,8 @@ class SettingsFrame:
         self._dil_y = tk.DoubleVar()
         self._cross_corr_x = tk.DoubleVar()
         self._cross_corr_y = tk.DoubleVar()
+        self._bg_x = tk.DoubleVar()
+        self._bg_y = tk.DoubleVar()
 
         # Gather settings currently being used in Settings object
         self.collect_settings()
@@ -300,7 +303,11 @@ class SettingsFrame:
                                              self._sens_mask_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        light_dil_setts = FigureSizeSettings(self.fig_frame, 'Cross-correlation:', self._cross_corr_x,
+        bg_setts = FigureSizeSettings(self.fig_frame, 'Background model:', self._bg_x,
+                                      self._bg_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        x_corr_setts = FigureSizeSettings(self.fig_frame, 'Cross-correlation:', self._cross_corr_x,
                                              self._cross_corr_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
@@ -480,6 +487,15 @@ class SettingsFrame:
     def fig_dil(self, value):
         self._dil_x.set(value[0])
         self._dil_y.set(value[1])
+
+    @property
+    def fig_bg(self):
+        return (self._bg_x.get(), self._bg_y.get())
+
+    @fig_bg.setter
+    def fig_bg(self, value):
+        self._bg_x.set(value[0])
+        self._bg_y.set(value[1])
 
     def collect_settings(self):
         """Sets tk variables to those of the settings object"""

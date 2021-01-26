@@ -14,7 +14,7 @@ from pycam.utils import make_circular_mask_line
 from pycam.io import save_pcs_line, load_pcs_line
 
 from pyplis import LineOnImage, Img
-from pyplis.helpers import make_circular_mask
+from pyplis.helpers import make_circular_mask, shifted_color_map
 from geonum import GeoPoint
 
 import tkinter as tk
@@ -26,6 +26,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import matplotlib.cm as cm
+from matplotlib.transforms import Bbox
+from matplotlib.cm import RdBu
 import matplotlib.widgets as widgets
 import matplotlib.patches as patches
 import matplotlib.lines as mpllines
@@ -1732,14 +1734,28 @@ class PlumeBackground(LoadSaveProcessingSettings):
     """
     Generates plume background image figure and settings to adjust parameters
     """
-    def __init__(self, generate_frame=False):
+    def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, gui_setts=gui_setts):
         super().__init__()
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_bg = self
         self.frame = None
         self.in_frame = False
+        self.fig_size_tau = gui_setts.fig_bg
+        self.dpi = gui_setts.dpi
+        self.q = queue.Queue()
+        self.canvases = [None] * 3
 
         if generate_frame:
             self.initiate_variables()
             self.generate_frame()
+
+    def start_draw(self, parent):
+        """
+        Starts canvas drawing in the main thread (so that when generate frame is run the canvas is already drawing).
+        This means that if update_plot/generate_frame is run from a thread there won't be any thread-drawing issues
+        """
+        self.parent = parent
+        self.__draw_canv__()
 
     def initiate_variables(self):
         """Prepares all tk variables"""
@@ -1774,7 +1790,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Options widget
         self.opt_frame = ttk.LabelFrame(self.frame, text='Settings')
-        self.opt_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.opt_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nw')
 
         # Mode option menu
         row = 0
@@ -1798,9 +1814,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Reference are check
         row += 1
-        ref_check_frame = ttk.LabelFrame(self.frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
-        # ref_check_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
-        ref_check_frame.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, expand=True, padx=5, pady=5)
+        ref_check_frame = ttk.LabelFrame(self.opt_frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
+        ref_check_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        # ref_check_frame.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         check = ttk.Checkbutton(ref_check_frame, text='Use thresholds to omit images', variable=self._ref_check_mode)
         check.grid(row=0, column=0, columnspan=3, sticky='w')
@@ -1827,8 +1843,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Buttons
         row += 1
-        butt_frame = ttk.Frame(self.frame)
-        butt_frame.pack(side=tk.TOP, padx=5, pady=5, fill=tk.BOTH, expand=True)
+        butt_frame = ttk.Frame(self.opt_frame)
+        butt_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
         butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
@@ -1839,12 +1855,49 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
+        # Build figures
+        self._build_figures()
+
         # Run current background model to load up figures
         self.run_process(reload_seq=False)
 
         # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
         # But a call to mainloop here prevents the crash
         tk.mainloop()
+
+    def _build_figures(self):
+        """Build figures of backgrounds"""
+
+        self.frame_tau_A = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_tau_A.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
+        self.frame_tau_B = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_tau_B.grid(row=1, column=1, columnspan=2, sticky='nsew', padx=5, pady=5)
+
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_tau_A'):
+            self.fig_tau_A = plt.Figure(figsize=self.fig_size_tau, dpi=self.dpi)
+            self.fig_tau_B = plt.Figure(figsize=self.fig_size_tau, dpi=self.dpi)
+
+        self.fig_canvas_A = FigureCanvasTkAgg(self.fig_tau_A, master=self.frame_tau_A)
+        self.fig_canvas_A.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_A.draw()
+        # Add toolbar so figures can be saved
+        self.toolbar_A = NavigationToolbar2Tk(self.fig_canvas_A, self.frame_tau_A)
+        self.toolbar_A.update()
+        # self.fig_canvas_A._tkcanvas.pack(side=tk.TOP)
+        self.toolbar_A.pack(side=tk.TOP)
+
+        self.fig_canvas_B = FigureCanvasTkAgg(self.fig_tau_B, master=self.frame_tau_B)
+        self.fig_canvas_B.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_B.draw()
+        # Add toolbar so figures can be saved
+        self.toolbar_B = NavigationToolbar2Tk(self.fig_canvas_B, self.frame_tau_B)
+        self.toolbar_B.update()
+        # self.fig_canvas_B._tkcanvas.pack(side=tk.TOP)
+        self.toolbar_B.pack(side=tk.TOP)
+
+        self.canvases[0] = self.fig_canvas_A
+        self.canvases[1] = self.fig_canvas_B
 
     @property
     def bg_mode(self):
@@ -1895,7 +1948,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._ref_check_mode.set(value)
 
     def gather_vars(self):
-        pyplis_worker.plume_bg.mode = self.bg_mode
+        # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg.mode
+        # It is instead assigned to the bg_pycam flag, which overpowers plume_bg.mode
+        if self.bg_mode == 7:
+            pyplis_worker.bg_pycam = True
+        else:
+            pyplis_worker.plume_bg.mode = self.bg_mode
+            pyplis_worker.bg_pycam = False
         pyplis_worker.auto_param_bg = self.auto_param
         pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_thresh
         pyplis_worker.ref_check_lower = self.ref_check_lower
@@ -1911,9 +1970,59 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if reload_seq:
             pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
+    def generate_tau_fig(self, img):
+        """Generates figure from tau img - only used when BG mode is 7 - not a pyplis mode"""
+        if isinstance(img, Img):
+            img = img.img
+        fig = None
+        return fig
+
+    def update_plots(self, tau_A, tau_B):
+        """Updates plots"""
+        # if self.bg_mode == 7:
+        #     fig_A = self.generate_tau_fig(tau_A)
+        #     fig_B = self.generate_tau_fig(tau_B)
+        # else:
+        fig_A = pyplis_worker.plume_bg.plot_tau_result(tau_A)
+        fig_B = pyplis_worker.plume_bg.plot_tau_result(tau_B)
+
+        figs = {'A': fig_A, 'B': fig_B}
+
+        for i, band in enumerate(['A', 'B']):
+            fig = figs[band]
+            setattr(self, 'fig_tau_{}'.format(band), fig)
+            # Adjust figure size
+            fig.set_size_inches(self.fig_size_tau[0], self.fig_size_tau[1], forward=True)
+            ax_img = fig.axes[0]
+
+            # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
+            # the updated plot will be built
+            if self.in_frame:
+                fig_canvas = getattr(self, 'fig_canvas_{}'.format(band))
+                fig_canvas.get_tk_widget().destroy()
+
+                fig_canvas = FigureCanvasTkAgg(fig, master=getattr(self, 'frame_tau_{}'.format(band)))
+                setattr(self, 'fig_canvas_{}'.format(band), fig_canvas)
+                fig_canvas.get_tk_widget().pack(side=tk.TOP)
+
+                # Add toolbar so figures can be saved
+                getattr(self, 'toolbar_{}'.format(band)).pack_forget()
+                toolbar = NavigationToolbar2Tk(fig_canvas, getattr(self, 'frame_tau_{}'.format(band)))
+                toolbar.update()
+                # fig_canvas._tkcanvas.pack(side=tk.TOP)
+                toolbar.pack(side=tk.TOP)
+                setattr(self, 'toolbar_{}'.format(band), toolbar)
+                ax_img.set_aspect('auto', anchor='C')
+
+        if self.in_frame:
+            self.q.put(1)
+
     def close_window(self):
         """Restore current settings"""
-        self.bg_mode = pyplis_worker.plume_bg.mode
+        if pyplis_worker.bg_pycam:
+            self.bg_mode = 7
+        else:
+            self.bg_mode = pyplis_worker.plume_bg.mode
         self.auto_param = pyplis_worker.auto_param_bg
         self.polyfit_2d_thresh = pyplis_worker.polyfit_2d_mask_thresh
         self.ref_check_lower = pyplis_worker.ref_check_lower
@@ -1921,6 +2030,24 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.ref_check_mode = pyplis_worker.ref_check_mode
         self.frame.destroy()
         self.in_frame = False
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            if self.in_frame:
+                update = self.q.get(block=False)
+                if update == 1:
+                    if self.in_frame:
+                        for canvas in self.canvases:
+                            try:
+                                canvas.draw()
+                            except AttributeError:
+                                pass
+                else:
+                    pass
+        except queue.Empty:
+            pass
+        self.parent.after(refresh_rate, self.__draw_canv__)
 
 
 class ProcessSettings(LoadSaveProcessingSettings):
@@ -2782,6 +2909,9 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 pass
             try:
                 self.ax_img.cla()
+                # Remove nans from corr_img
+                self.pyplis_worker.calib_pears.fov.corr_img.img[np.isnan(
+                    self.pyplis_worker.calib_pears.fov.corr_img.img)] = 0
                 self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
             except AttributeError:
                 return

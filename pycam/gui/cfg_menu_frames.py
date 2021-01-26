@@ -25,7 +25,7 @@ calibration_wind = CalibrationWindow(fig_setts=gui_setts)
 process_settings = ProcessSettings()
 
 # Plume background settings
-plume_bg = PlumeBackground()
+plume_bg = PlumeBackground(pyplis_work=pyplis_worker, gui_setts=gui_setts)
 
 # DOAS FOV search frame
 doas_fov = DOASFOVSearchFrame(fig_setts=gui_setts)

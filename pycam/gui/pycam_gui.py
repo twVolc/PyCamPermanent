@@ -82,6 +82,7 @@ class PyCam(ttk.Frame):
         geom_settings.initiate_variables()
         process_settings.initiate_variables()
         plume_bg.initiate_variables()
+        plume_bg.start_draw(self.root)
         doas_fov.start_draw(self.root)      # start drawing of frame
         doas_fov.initiate_variables()
         cross_correlation.start_draw(self.root)
