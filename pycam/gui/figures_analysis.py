@@ -1764,7 +1764,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
                      'polyfit_2d_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
-                     'ref_check_mode': int}
+                     'ref_check_mode': int,
+                     'auto_bg_cmap': int}
 
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
@@ -1772,6 +1773,11 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
         self._ref_check_mode = tk.IntVar()
+        self._auto_bg_cmap = tk.IntVar()
+        self._tau_max = tk.DoubleVar()
+        self.tau_max = 0.1
+        self._tau_min = tk.DoubleVar()
+        self.tau_min = -0.1
 
         self.load_defaults()
 
@@ -1788,8 +1794,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         self.in_frame = True
 
+        # Top frame
+        self.top_frame = ttk.Frame(self.frame)
+        self.top_frame.grid(row=0, column=0, sticky='nsew')
+
         # Options widget
-        self.opt_frame = ttk.LabelFrame(self.frame, text='Settings')
+        self.opt_frame = ttk.LabelFrame(self.top_frame, text='Settings')
         self.opt_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nw')
 
         # Mode option menu
@@ -1855,6 +1865,30 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
+        # ---------------
+        # Figure settings
+        # ---------------
+        self.fig_sett_frame = ttk.LabelFrame(self.top_frame, text='Figure settings')
+        self.fig_sett_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
+
+        row = 0
+        check = ttk.Checkbutton(self.fig_sett_frame, text='Auto limits', variable=self._auto_bg_cmap,
+                                command=self.set_cmap)
+        check.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        row += 1
+
+        ttk.Label(self.fig_sett_frame, text='\u03C4 maximum:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_max, width=4,
+                           command=self.set_cmap, from_=0, to=1, increment=0.01, format='%.2f')
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        ttk.Label(self.fig_sett_frame, text='\u03C4 minimum:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_min, width=4, command=self.set_cmap,
+                           from_=-1, to=0, increment=0.01, format='%.2f')
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
         # Build figures
         self._build_figures()
 
@@ -1867,11 +1901,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def _build_figures(self):
         """Build figures of backgrounds"""
-
-        self.frame_tau_A = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
-        self.frame_tau_A.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
-        self.frame_tau_B = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
-        self.frame_tau_B.grid(row=1, column=1, columnspan=2, sticky='nsew', padx=5, pady=5)
+        self.bottom_frame = ttk.Frame(self.frame)
+        self.bottom_frame.grid(row=1, column=0, sticky='nsew')
+        self.frame_tau_A = ttk.Frame(self.bottom_frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_tau_A.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        self.frame_tau_B = ttk.Frame(self.bottom_frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_tau_B.grid(row=0, column=1, columnspan=2, sticky='nsew', padx=5, pady=5)
 
         # Make empty figure if we don't have a figure to use
         if not hasattr(self, 'fig_tau_A'):
@@ -1898,6 +1933,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         self.canvases[0] = self.fig_canvas_A
         self.canvases[1] = self.fig_canvas_B
+
+        if hasattr(self, 'tau_A'):
+            self.update_plots(self.tau_A, self.tau_B)
 
     @property
     def bg_mode(self):
@@ -1947,6 +1985,30 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def ref_check_mode(self, value):
         self._ref_check_mode.set(value)
 
+    @property
+    def auto_bg_cmap(self):
+        return self._auto_bg_cmap.get()
+
+    @auto_bg_cmap.setter
+    def auto_bg_cmap(self, value):
+        self._auto_bg_cmap.set(value)
+
+    @property
+    def tau_max(self):
+        return self._tau_max.get()
+
+    @tau_max.setter
+    def tau_max(self, value):
+        self._tau_max.set(value)
+
+    @property
+    def tau_min(self):
+        return self._tau_min.get()
+
+    @tau_min.setter
+    def tau_min(self, value):
+        self._tau_min.set(value)
+
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg.mode
@@ -1970,19 +2032,54 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if reload_seq:
             pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
-    def generate_tau_fig(self, img):
-        """Generates figure from tau img - only used when BG mode is 7 - not a pyplis mode"""
-        if isinstance(img, Img):
-            img = img.img
-        fig = None
-        return fig
+    def set_cmap(self, draw=True):
+        """Sets colourmap of figures"""
+        # For each band we adjust the figure scales
+        for band in ['A', 'B']:
+            fig = getattr(self, 'fig_tau_{}'.format(band))
+            img = getattr(self, 'tau_{}'.format(band))
+            ax_img = fig.axes[0].get_images()[0]
+            ax_horz = fig.axes[2]
+            ax_vert = fig.axes[1]
+
+            if self.auto_bg_cmap:
+                line_h = ax_horz.lines[0].get_ydata()
+                line_v = ax_vert.lines[0].get_xdata()
+                vmin_h = np.nanmin(line_h) * 1.05
+                vmax_h = np.nanmax(line_h) * 1.05
+                vmin_v = np.nanmin(line_v) * 1.05
+                vmax_v = np.nanmax(line_v) * 1.05
+
+                vmin_i = np.nanmin(img.img) * 1.05
+                vmax_i = np.nanmax(img.img) * 1.05
+            else:
+                vmin_i = vmin_h = vmin_v = self.tau_min
+                vmax_i = vmax_h = vmax_v = self.tau_max
+
+            # Horizontal cross section axes formatting
+            ax_horz.set_ylim([vmin_h, vmax_h])
+            ax_horz.yaxis.set_major_locator(plt.MaxNLocator(3))
+            ticks = ['{:.2f}'.format(x) for x in ax_horz.get_yticks()]
+            ax_horz.set_yticklabels(ticks)
+
+            # Vertical cross-section axes formatting
+            ax_vert.set_xlim([vmin_v, vmax_v])
+            ax_vert.xaxis.set_major_locator(plt.MaxNLocator(3))
+            ticks = ['{:.2f}'.format(x) for x in ax_vert.get_xticks()]
+            ax_vert.set_xticklabels(ticks)
+
+            # Image colourmap setting
+            cmap = shifted_color_map(vmin_i, vmax_i)
+            ax_img.set_clim([vmin_i, vmax_i])
+            ax_img.set_cmap(cmap)
+
+        if draw:
+            self.q.put(1)
 
     def update_plots(self, tau_A, tau_B):
         """Updates plots"""
-        # if self.bg_mode == 7:
-        #     fig_A = self.generate_tau_fig(tau_A)
-        #     fig_B = self.generate_tau_fig(tau_B)
-        # else:
+        self.tau_A = tau_A
+        self.tau_B = tau_B
         fig_A = pyplis_worker.plume_bg.plot_tau_result(tau_A)
         fig_B = pyplis_worker.plume_bg.plot_tau_result(tau_B)
 
@@ -2004,6 +2101,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
                 fig_canvas = FigureCanvasTkAgg(fig, master=getattr(self, 'frame_tau_{}'.format(band)))
                 setattr(self, 'fig_canvas_{}'.format(band), fig_canvas)
                 fig_canvas.get_tk_widget().pack(side=tk.TOP)
+                self.canvases[i] = fig_canvas
 
                 # Add toolbar so figures can be saved
                 getattr(self, 'toolbar_{}'.format(band)).pack_forget()
@@ -2013,6 +2111,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
                 toolbar.pack(side=tk.TOP)
                 setattr(self, 'toolbar_{}'.format(band), toolbar)
                 ax_img.set_aspect('auto', anchor='C')
+
+        # Set colourmaps
+        self.set_cmap(draw=False)
 
         if self.in_frame:
             self.q.put(1)
