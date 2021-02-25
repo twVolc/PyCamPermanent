@@ -1,7 +1,7 @@
 # Raspberry Pi start-up/shut-down schedule script
-# on_time=18:00
-# off_time=17:59
-BEGIN 2020-01-01 18:00:00
+# on_time=14:34
+# off_time=14:33
+BEGIN 2020-01-01 14:34:00
 END 2038-01-01 12:00:00
 ON H23 M59
 OFF H0 M1

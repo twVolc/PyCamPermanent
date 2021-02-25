@@ -31,13 +31,13 @@ save_img_so2=0
 save_doas_cal=0
 
 # Plume background model
-bg_mode=6
+bg_mode=5
 auto_param=1
 polyfit_2d_thresh=100
 ref_check_lower=-9e+16
 ref_check_upper=5e+16
 ref_check_mode=1
-auto_bg_cmap=1
+auto_bg_cmap=0
 
 # DOAS calibration and DOAS-AA calibration
 ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'

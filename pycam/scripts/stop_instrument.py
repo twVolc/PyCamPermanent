@@ -17,6 +17,7 @@ import os
 
 def close_pycam():
     """Closes pycam by setting up a socket and telling the program to shutdown"""
+    # TODO need to setup a socket and connect to pycam then send it exit code
     pass
 
 

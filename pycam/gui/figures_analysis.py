@@ -27,7 +27,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import matplotlib.cm as cm
 from matplotlib.transforms import Bbox
-from matplotlib.cm import RdBu
 import matplotlib.widgets as widgets
 import matplotlib.patches as patches
 import matplotlib.lines as mpllines
@@ -1813,8 +1812,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         row += 1
         label = tk.Label(self.opt_frame, text='Pyplis background model:')
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
-        self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode,
-                                      pyplis_worker.plume_bg.mode, *pyplis_worker.BG_CORR_MODES)
+        self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode, self.bg_mode, *pyplis_worker.BG_CORR_MODES)
         self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         # Automatic reference areas
@@ -1859,7 +1857,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
+        butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
         butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
@@ -2090,6 +2088,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
             setattr(self, 'fig_tau_{}'.format(band), fig)
             # Adjust figure size
             fig.set_size_inches(self.fig_size_tau[0], self.fig_size_tau[1], forward=True)
+            fig.set_facecolor(fig_face_colour)
             ax_img = fig.axes[0]
 
             # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called

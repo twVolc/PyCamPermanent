@@ -1,10 +1,15 @@
 PyCamPermanent
 
+###Check that I don't add too many dependencies to utils and setupclasses - wittypi runs the remote_pi_on/off scripts as root, so root needs to be able to import all modules otherwise it will fail###
+
 Software for permanent installation PiCam
 
 To install:
 > ./doas/cfg.py needs to be modified for absolute pathnames on local machine
 > ./conf/processing_setting_defaults.txt needs to be modified to load clear sky images for specific location
+
+Hardware setup:
+> Connect GPIO 23 (physical pin 16) on masterpi to GPIO 3 (physical pin 5) on slave pi. This allows off/on functionality through wittypi start-up/shutdown scripts
 
 Bug report:
 1. Disconnecting the ext_comm more than once leads to and index error in close_connection (from masterpi)

@@ -2,7 +2,6 @@
 
 """Utilities for pycam"""
 import os
-import cv2
 import numpy as np
 import subprocess
 

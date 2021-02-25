@@ -211,22 +211,22 @@ class InstrumentConfiguration:
 
         hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2,
                                  format="%02.0f")
-        hour_start.set("{:02d}".format(self.on_hour))
+        # hour_start.set("{:02d}".format(self.on_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=0, column=2, padx=2, pady=2)
         min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2,
                                 format="%02.0f")
-        min_start.set("{:02d}".format(self.on_min))
+        # min_start.set("{:02d}".format(self.on_min))
         min_start.grid(row=0, column=3, padx=2, pady=2)
 
         hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2,
                                 format="%02.0f")
-        hour_stop.set("{:02d}".format(self.off_hour))
+        # hour_stop.set("{:02d}".format(self.off_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=1, column=2, padx=2, pady=2)
         min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2,
                                format="%02.0f")
-        min_stop.set("{:02d}".format(self.off_min))
+        # min_stop.set("{:02d}".format(self.off_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
         # Update button
@@ -242,22 +242,22 @@ class InstrumentConfiguration:
 
         hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2,
                                  format="%02.0f")
-        hour_start.set("{:02d}".format(self.capt_start_hour))
+        # hour_start.set("{:02d}".format(self.capt_start_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_cron, text=':').grid(row=0, column=2, padx=2, pady=2)
         min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2,
                                 format="%02.0f")
-        min_start.set("{:02d}".format(self.capt_start_min))
+        # min_start.set("{:02d}".format(self.capt_start_min))
         min_start.grid(row=0, column=3, padx=2, pady=2, sticky='w')
 
         hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2,
                                 format="%02.0f")
-        hour_stop.set("{:02d}".format(self.capt_stop_hour))
+        # hour_stop.set("{:02d}".format(self.capt_stop_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_cron, text=':').grid(row=1, column=2, padx=2, pady=2)
         min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2,
                                format="%02.0f")
-        min_stop.set("{:02d}".format(self.capt_stop_min))
+        # min_stop.set("{:02d}".format(self.capt_stop_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2, sticky='w')
 
         # Temperature logging
@@ -284,7 +284,7 @@ class InstrumentConfiguration:
         ssh_cli = open_ssh(self.ftp.host_ip)
 
         std_in, std_out, std_err = ssh_cmd(ssh_cli, '(cd /home/pi/wittypi; sudo ./runScript.sh)', background=False)
-        # print(std_out.readlines())
+        print(std_out.readlines())
         # print(std_err.readlines())
         close_ssh(ssh_cli)
 
