@@ -36,5 +36,6 @@ try:
     subprocess.Popen([start_script], shell=True)
     print('{} started on instrument'.format(start_script_name))
 except BaseException as e:
-    print(e)
+    with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
+        f.write('ERROR IN START SCRIPT: {}\n'.format(e))
 

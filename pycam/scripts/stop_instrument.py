@@ -11,18 +11,26 @@ sys.path.append('/home/pi/')
 
 from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
+from pycam.networking.sockets import SocketClient
 import subprocess
 import os
+import socket
 
 
-def close_pycam():
+def close_pycam(ip, port):
     """Closes pycam by setting up a socket and telling the program to shutdown"""
     # TODO need to setup a socket and connect to pycam then send it exit code
-    pass
+    sock_cli = SocketClient(host_ip=ip, port=port)
+    encoded_comm = sock_cli.encode_comms({'EXT': 1})
+    sock_cli.send_comms(encoded_comm)
+    response = sock_cli.recv_comms(sock_cli)
+    print('Got {} from pycam'.format(response))
 
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
+host_ip = config[ConfigInfo.host_ip]
+port = config[ConfigInfo.port_ext]
 
 # Start_script
 start_script = config[ConfigInfo.master_script]
@@ -34,17 +42,23 @@ try:
     stdout_value = proc.communicate()[0]
     stdout_str = stdout_value.decode("utf-8")
     stdout_lines = stdout_str.split('\n')
+
+    # Check ps axg output lines to see whether pycam is actually running
     for line in stdout_lines:
         if start_script_name in line:
-            close_pycam()
-            print('Pycam shutdown')
+            try:
+                close_pycam(host_ip, port)
+                print('Pycam shutdown')
+            except BaseException as e:
+                print('Got error while attempting pycam close: {}'.format(e))
+                print('This may mean that the program was closed successfully or there may be another error')
             sys.exit()
 
     # If we get to the end without finding the running script we write a warning to the log file
-    with open(FileLocator.ERROR_LOG, 'w', newline='\n') as f:
+    with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
         f.write('ERROR IN STOP SCRIPT: Warning, pycam script was not running when stop_instrument.py commenced\n')
 
 except BaseException as e:
-    with open(FileLocator.ERROR_LOG, 'w', newline='\n') as f:
+    with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
         f.write('ERROR IN STOP SCRIPT: {}\n'.format(e))
 
