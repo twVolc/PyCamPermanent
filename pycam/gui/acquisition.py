@@ -121,7 +121,6 @@ class TkVariables:
         Focal length is accepted in mm for ease, since it is more commonly defined in mm than m"""
         self._focal_length.set(value)
 
-
     @property
     def bit_depth(self):
         """Public access attribute to fetch bit_depth from GUI"""

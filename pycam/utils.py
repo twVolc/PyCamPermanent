@@ -129,10 +129,16 @@ def kill_process(process='pycam_camera'):
     process: str
         String for process to be killed, this may kill any process containing this as a substring, so use with caution
     """
-    cmd = ['ps axg | grep {}'.format(process)]
-    p = subprocess.check_output(cmd, shell=True)
-    print(p)
-    subprocess.call(['kill', p.split()[0]])
+    # Better version
+    proc = subprocess.Popen(['ps axg'], stdout=subprocess.PIPE, shell=True)
+    stdout_value = proc.communicate()[0]
+    stdout_str = stdout_value.decode("utf-8")
+    stdout_lines = stdout_str.split('\n')
+
+    # Check ps axg output lines to see whether pycam is actually running
+    for line in stdout_lines:
+        if process in line:
+            subprocess.call(['kill', line.split()[0]])
 
 
 def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):

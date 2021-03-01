@@ -167,7 +167,7 @@ class CameraSpecs:
                                        np.arange(50000, 100000, 10000),
                                        np.arange(100000, 500000, 50000),
                                        np.arange(500000, 1000000, 100000),
-                                       np.arange(1000000, 6000000, 500000), [6000]))
+                                       np.arange(1000000, 6000000, 500000), [6000000]))
 
         # Acquisition settings
         self.shutter_speed = 10000  # Camera shutter speeds (us)

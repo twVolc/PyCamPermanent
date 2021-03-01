@@ -90,8 +90,8 @@ class CommsFuncs(SendRecvSpecs):
         # All values are converted to ASCII before being sent over the network
         self.cmd_dict = {
             'IDN': (str, ['CM1', 'CM2', 'SPC', 'EXN']),     # Identity of message sender (EXT not used for external to avoid confusion with EXT exit command)
-            'SSA': (int, [1, 6001]),            # Shutter speed (ms) camera A [min, max]
-            'SSB': (int, [1, 6001]),            # Shutter speed (ms) camera B [min, max]
+            'SSA': (int, [1, 6000001]),            # Shutter speed (us) camera A [min, max]
+            'SSB': (int, [1, 6000001]),            # Shutter speed (us) camera B [min, max]
             'SSS': (int, [1, 6001]),            # Shutter speed (ms) spectrometer [min, max]
             'FRC': (float, [0.0, 1.0]),         # Framerate camera [min, max]
             'FRS': (float, [0.0, 10.0]),        # Framerate spectrometer [min, max]
@@ -687,7 +687,9 @@ class PiSocketCamComms(SocketClient):
         ----------
         value: int
             Value to set camera shutter speed to
+            IMPORTANT - ss is passed to socket in us - ms should never be used for camera
         """
+
         # Check band
         if self.camera.band == 'on':
             if not self.camera.auto_ss:

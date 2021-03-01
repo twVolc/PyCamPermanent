@@ -132,7 +132,11 @@ class Camera(CameraSpecs):
     def set_cam_framerate(self):
         """Determines appropriate framerate based on current shutter speed (framerate limits shutter speed so must be
         set appropriately)"""
-        framerate = 1 / (self.shutter_speed / 1000000.0)
+        # Denominator used to scale shutter speed. Ideally it would be 1000000 to convert ss 'us' to 's', but this makes
+        # the framerate too high as the camera doesn't work perfectly as expected. We therefore make the denominator a
+        # little lower so ss isn't perfectly scaled to seconds and gives a slightly larger number
+        denominator = 990000.0
+        framerate = 1 / (self.shutter_speed / denominator)
         if framerate > 20:
             framerate = 20
 
@@ -143,6 +147,8 @@ class Camera(CameraSpecs):
     def check_exposure_speed(self):
         """Checks that exposure speed is within reasonable limits of shutter speed"""
         while self.cam.exposure_speed < 0.95 * self.shutter_speed or self.cam.exposure_speed > self.shutter_speed:
+            self.cam.shutter_speed = self.shutter_speed
+            # print('Exposure speed: {}   Shutter speed: {}'.format(self.cam.exposure_speed, self.shutter_speed))
             time.sleep(0.01)  # Sleep until camera exposure speed is set close enough to requested ss
 
         # Return the camera's exact exposure speed
@@ -292,6 +298,10 @@ class Camera(CameraSpecs):
             if 'ss' in command:
                 # Set shutter speed
                 self.set_shutter_speed(command['ss'])
+            # If we aren't updating shutter speed we should check/adjust the current exposure speed in case it starts
+            # to drop on its own
+            else:
+                self.exposure_speed = self.check_exposure_speed()
 
             # Start a continous capture if requested
             if 'start_cont' in command:
@@ -378,6 +388,10 @@ class Camera(CameraSpecs):
                 if not self.auto_ss:
                     if 'ss' in mess:
                         self.set_shutter_speed(mess['ss'])
+                else:
+                    # If we aren't updating shutter speed we should check/adjust the current exposure speed in case it starts
+                    # to drop on its own
+                    self.exposure_speed = self.check_exposure_speed()
 
                 if 'framerate' in mess:
                     # We readjust to requested framerate regardless of if auto_ss is True or False
