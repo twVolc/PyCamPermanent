@@ -25,16 +25,18 @@ config = read_file(FileLocator.CONFIG_SPEC)
 
 try:
     # Setup camera object
-    spec = Spectrometer()
+    # TODO Only using ignore device True for debugging
+    spec = Spectrometer(ignore_device=True)
 except SpectrometerConnectionError:
     print('No spectrometer detected, please connect spectrometer and restart program')
     sys.exit()
 
-# Setup thread for controlling spectrometer capture
-spec.interactive_capture()
+if spec.spec is not None:
+    # Setup thread for controlling spectrometer capture
+    spec.interactive_capture()
 
-# Start up continuous capture straight away
-spec.capture_q.put({'start_cont': True})
+    # Start up continuous capture straight away
+    spec.capture_q.put({'start_cont': True})
 
 # ----------------------------------------------------------------
 # Setup image transfer socket

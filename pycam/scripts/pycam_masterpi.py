@@ -48,13 +48,16 @@ for ip in pi_ip:
 
     # Loop through scripts and send command to start them
     for script in remote_scripts:
-        ssh_cmd(ssh_clients[-1], script)
+        ssh_cmd(ssh_clients[-1], 'python3 ' + script)
 
     # Sleep so the kill_process.py has time to finish, as we don't want to kill the new camera script
     time.sleep(5)
 
     # Run core camera script
-    ssh_cmd(ssh_clients[-1], config[ConfigInfo.cam_script])
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script])
+
+    # Run core spectrometer script
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script])
 
     # Close session
     # If other changes are needed later this line can be removed and clients should still be accessible in list
@@ -66,15 +69,21 @@ local_scripts = config[ConfigInfo.local_scripts].split(',')
 for script in local_scripts:
     script = script.split()
     script.append('&')
-    subprocess.run(script, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    py_cmd = ['python3']
+    py_cmd.extend(script)
+    subprocess.run(py_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Sleep so the kill_process.py has time to finish, as we don't want to kill the new spectrometer script
 time.sleep(5)
 
-# Run spectrometer script on local machine in background
-subprocess.Popen(['python3', config[ConfigInfo.spec_script], '&'])
-# subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
-# os.system('python3 ./pycam_spectrometer &')
+# Run camera script on local machine in the background
+subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
+
+# # Spectrometer now run on slave machine
+# # Run spectrometer script on local machine in background
+# subprocess.Popen(['python3', config[ConfigInfo.spec_script], '&'])
+# # subprocess.Popen(['python3', './pycam_spectrometer.py', '&'])
+# # os.system('python3 ./pycam_spectrometer &')
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -99,21 +108,34 @@ for i in range(3):
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
 save_connections = dict()
-for i in range(2):
+# for i in range(2):
+for ip in pi_ip:
+    # Camera
     # Setup connection objects and start thread to run image transfer
-    save_connections[pi_ip[i]] = ImgRecvConnection(sock_serv_transfer, acc_conn=False)
+    save_connections[ip + '_CM2'] = ImgRecvConnection(sock_serv_transfer, acc_conn=False)
 
     # Set connection to be one of the camera IP connections
-    save_connections[pi_ip[i]].connection = sock_serv_transfer.get_connection(ip=pi_ip[i])
+    save_connections[ip + '_CM2'].connection = sock_serv_transfer.conn_dict[(ip, 'CM2')][0]
 
     # Start save thread
-    save_connections[pi_ip[i]].thread_func()
+    save_connections[ip + '_CM2'].thread_func()
 
+    # Spectrometer
+    # Setup connection objects and start thread to run image transfer
+    save_connections[ip + '_SPC'] = SpecRecvConnection(sock_serv_transfer, acc_conn=False)
+
+    # Set connection to be one of the camera IP connections
+    save_connections[ip + '_SPC'].connection = sock_serv_transfer.conn_dict[(ip, 'SPC')][0]
+
+    # Start save thread
+    save_connections[ip + '_SPC'].thread_func()
+
+# Camera for master pi
 # Do same for spectrum, which is on the local pi
-save_connections[host_ip] = SpecRecvConnection(sock_serv_transfer, acc_conn=False)
+save_connections[host_ip] = ImgRecvConnection(sock_serv_transfer, acc_conn=False)
 
 # Set connection to that of the host_ip spectrometer connection
-save_connections[host_ip].connection = sock_serv_transfer.get_connection(ip=host_ip)
+save_connections[host_ip].connection = sock_serv_transfer.conn_dict[(host_ip, 'CM1')][0]
 
 # Start save thread
 save_connections[host_ip].thread_func()
@@ -127,21 +149,21 @@ for i in range(3):
 
 # Dictionary holding the connection for internal communications (not external comms)
 comms_connections = dict()
-for i in range(2):
+for idn in ['CM2', 'SPC']:
     # Setup connection objects and start thread to run communcations
-    comms_connections[pi_ip[i]] = CommConnection(sock_serv_comm, acc_conn=False)
+    comms_connections[pi_ip[0] + '_{}'.format(idn)] = CommConnection(sock_serv_comm, acc_conn=False)
 
     # Set connection to be one of the camera IP connections
-    comms_connections[pi_ip[i]].connection = sock_serv_comm.get_connection(ip=pi_ip[i])
+    comms_connections[pi_ip[0] + '_{}'.format(idn)].connection = sock_serv_comm.conn_dict[(ip, idn)][0]
 
     # Start communications thread
-    comms_connections[pi_ip[i]].thread_func()
+    comms_connections[pi_ip[0] + '_{}'.format(idn)].thread_func()
 
 # Do same for spectrometer, which is on the local pi
 comms_connections[host_ip] = CommConnection(sock_serv_comm, acc_conn=False)
 
 # Set connection to that of the host_ip spectrometer connection
-comms_connections[host_ip].connection = sock_serv_comm.get_connection(ip=host_ip)
+comms_connections[host_ip].connection = sock_serv_comm.conn_dict[(host_ip, 'CM1')][0]
 
 # Start comms thread
 comms_connections[host_ip].thread_func()

@@ -4,15 +4,18 @@
 Contains some simple functions for saving data
 """
 
-from pyplis import LineOnImage
-from pyplis.fluxcalc import EmissionRates
 from .setupclasses import SpecSpecs, CameraSpecs
 from .utils import check_filename
 import numpy as np
-import scipy.io
 import cv2
 import os
 import datetime
+try:
+    from pyplis import LineOnImage
+    from pyplis.fluxcalc import EmissionRates
+    import scipy.io
+except ImportError:
+    print('Working on a machine without pyplis. Processing will not be possible')
 
 
 def save_img(img, filename, ext='.png'):

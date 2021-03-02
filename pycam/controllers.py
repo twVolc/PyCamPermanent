@@ -462,8 +462,10 @@ class Spectrometer(SpecSpecs):
     """Main class for spectrometer control
 
     subclass of :class: SpecSpecs
+
+    :param ignore_device:   bool    Mainly for debugging. If this is True, we don't try to find device connection
     """
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, ignore_device=False):
         super().__init__(filename)
 
         self.capture_q = queue.Queue()      # Queue for requesting spectra
@@ -473,13 +475,11 @@ class Spectrometer(SpecSpecs):
         # Discover spectrometer devices
         self.devices = None  # List of detected spectrometers
         self.spec = None  # Holds spectrometer for interfacing via seabreeze
-        self.find_device()
 
         # Set integration time (ALL IN MICROSECONDS)
         self._int_limit_lower = 1000  # Lower integration time limit
         self._int_limit_upper = 20000000  # Upper integration time limit
         self._int_time = None  # Integration time attribute
-        self.int_time = self.start_int_time
 
         self.min_coadd = 1
         self.max_coadd = 100
@@ -488,6 +488,15 @@ class Spectrometer(SpecSpecs):
 
         self.in_interactive_capture = False
         self.continuous_capture = False     # Bool set to true when camera is in continuous capture mode
+
+        # Attempt to find spectrometer, if we can't we either raise the error or ignore it depending on ignore_device
+        try:
+            self.find_device()
+        except SpectrometerConnectionError:
+            if ignore_device:
+                pass
+            else:
+                raise
 
     def find_device(self):
         """Function to search for devices"""
@@ -498,6 +507,9 @@ class Spectrometer(SpecSpecs):
 
             # If we have a spectrometer we then retrieve its wavelength calibration and store it as an attribute
             self.get_wavelengths()
+
+            # Set integration time of device
+            self.int_time = self.start_int_time
 
         except IndexError:
             self.devices = None

@@ -162,9 +162,14 @@ class MasterComms(CommsFuncs):
         self.ext_connections = ext_connections
 
     def recv_and_fwd_comms(self):
-        """Receives and forwards any comms currently available from any of the internal comm ports"""
+        """
+        Receives and forwards any comms currently available from any of the internal comm ports
+        This function performs one pass on all comms and then returns - it will not run on a permanent while loop
+        """
         # Receive final comms data from pis and simply forward them on to remote computers
+        # Perform one pass on each connection, getting all new comms, and then move to the next
         for key in self.comm_connections:
+            # Loop through all comms available until the q is empty, then we break and move to the next comm
             while True:
                 comm = self.comm_connections[key].q
 
@@ -484,6 +489,7 @@ class SocketClient(SocketMeths):
         self.port = port                                # Communication port
         self.server_addr = (self.host_ip, self.port)    # Tuple packaging for later use
         self.connect_stat = False                       # Bool for defining if object has a connection
+        self.id = {'IDN':  'EXN'}
 
         self.timeout = 5    # Timeout on attempting to connect socket
 
@@ -513,6 +519,10 @@ class SocketClient(SocketMeths):
                     if 'WinError 10038' in '{}'.format(e):
                         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     continue
+
+                # Perform handshake to send identity to server
+                self.send_handshake()
+
         except Exception as e:
             with open(FileLocator.LOG_PATH + 'client_socket_error.log', 'a') as f:
                 f.write('ERROR: ' + str(e) + '\n')
@@ -536,12 +546,16 @@ class SocketClient(SocketMeths):
             if not connection_thread.is_alive() and self.connect_stat:
                 return
 
-        # Close thread is we have not had a connection yet
+        # Close thread if we have not had a connection yet
         event.set()
 
         # If we get to allotted time and no connection has been made we raise a connection error
         raise ConnectionError
 
+    def send_handshake(self):
+        """Send client identity information to server"""
+        handshake_msg = self.encode_comms(self.id)
+        self.send_comms(self.sock, handshake_msg)
 
     def close_socket(self):
         """Closes socket by disconnecting from host"""
@@ -584,6 +598,11 @@ class PiSocketCam(SocketClient):
         super().__init__(host_ip, port)
 
         self.camera = camera        # Camera object for interface/control
+
+        if self.camera.band == 'on':
+            self.id = {'IDN': 'CM1'}
+        else:
+            self.id = {'IDN': 'CM2'}
 
     def send_img(self, filename=None, image=None):
         """Sends current image to server
@@ -634,6 +653,7 @@ class PiSocketSpec(SocketClient):
         super().__init__(host_ip, port)
 
         self.spectrometer = spectrometer        # Spectrometer object for interface/control
+        self.id = {'IDN': 'SPC'}
 
     def send_spectrum(self, filename=None, wavelengths=None, spectrum=None):
         """Sends spectrum to server. If not provided with arguments it takes current data from spectrometer object"""
@@ -679,6 +699,11 @@ class PiSocketCamComms(SocketClient):
         super().__init__(host_ip, port)
 
         self.camera = camera        # Camera object for interface/control
+
+        if self.camera.band == 'on':
+            self.id = {'IDN': 'CM1'}
+        else:
+            self.id = {'IDN': 'CM2'}
 
     def SSA(self, value):
         """Acts on SSA command
@@ -949,6 +974,7 @@ class PiSocketSpecComms(SocketClient):
         super().__init__(host_ip, port)
 
         self.spectrometer = spectrometer  # Spectrometer object for interface/control
+        self.id = {'IDN': 'SPC'}
 
     def SSS(self, value):
         """Acts on SSS command
@@ -1175,6 +1201,7 @@ class SocketServer(SocketMeths):
         self.port = port                    # Communication port
         self.server_addr = (host_ip, port)  # Server address
         self.connections = []               # List holding connections
+        self.conn_dict = {}
         self.num_conns = 0                  # Number of connections
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   # Socket object
         # self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Make socket reuseable quickly
@@ -1214,10 +1241,18 @@ class SocketServer(SocketMeths):
         try:
             connection = self.sock.accept()
             self.connections.append(connection)
-            print('Got connection from {}'.format(connection[1][0]))
+
+            # Receive the handshaek to get connection ID
+            conn_id = self.recv_comms(connection[0])
+            conn_id = self.decode_comms(conn_id)
+            print('Got connection from {} with ID: {}'.format(connection[1][0], conn_id['IDN']))
             self.num_conns += 1
-        except:
-            print('Error in accepting socket connection, it is likely that the socket was closed during accepting')
+
+            self.conn_dict[(connection[1][0], conn_id['IDN'])] = connection
+
+        except BaseException as e:
+            print('Error in accepting socket connection, it is likely that the socket was closed during accepting:')
+            print(e)
             connection = None
 
         return connection
@@ -1229,7 +1264,8 @@ class SocketServer(SocketMeths):
             Number in connection list
         ip: str
             IP address to find specific connection"""
-
+        # TODO need to adjust this to look at laddr/raddr as well as ip, since the same ip will be present for a camera
+        # TODO and the spectrometer
         # Search for ip address in connections list
         if isinstance(ip, str):
             for i in range(self.num_conns):
@@ -1616,6 +1652,7 @@ class CommConnection(Connection):
 
         # If event is set we need to exit thread and set receiving to False
         self.working = False
+
 
 class ImgRecvConnection(Connection):
     """Class for image receiving connection"""

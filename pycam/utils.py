@@ -129,7 +129,6 @@ def kill_process(process='pycam_camera'):
     process: str
         String for process to be killed, this may kill any process containing this as a substring, so use with caution
     """
-    # Better version
     proc = subprocess.Popen(['ps axg'], stdout=subprocess.PIPE, shell=True)
     stdout_value = proc.communicate()[0]
     stdout_str = stdout_value.decode("utf-8")
@@ -186,3 +185,63 @@ def calc_dt(img_prev, img_curr):
     t_delt = img_curr["start_acq"] - img_prev["start_acq"]
 
     return t_delt.total_seconds()
+
+
+class StorageMount:
+    """
+    Basic class to control the handling of mounting external memory and storing details of mounted drive
+    """
+    def __init__(self, mount_path='/mnt/pycam/', dev_path=None):
+        self.dev_path = dev_path
+        self.mount_path = mount_path
+
+        if self.dev_path is None:
+            self.find_dev()
+
+    @property
+    def is_mounted(self):
+        """Check whether device is already mounted"""
+        mnt_output = subprocess.check_output('mount')
+        mnt_stat = mnt_output.find(self.dev_path.encode())
+        if mnt_stat == -1:
+            return True
+        else:
+            return False
+
+    def find_dev(self):
+        """
+        Finds device location based on it being /dev/sda of some kind (not necessarily sda1) and sets self.dev_path
+        """
+        proc = subprocess.Popen(['fdisk -l /dev/sda'], stdout=subprocess.PIPE, shell=True)
+        stdout_value = proc.communicate()[0]
+        stdout_str = stdout_value.decode("utf-8")
+        stdout_lines = stdout_str.split('\n')
+
+        # Check output to find sda
+        for line in stdout_lines:
+            if 'sda' in line:
+                # TODO do some line splitting
+                sda_path = line.split()
+                self.dev_path = sda_path
+
+    def mount_dev(self):
+        """Mount device located at self.dev_path to self.mount_path destination"""
+        if not os.path.exists(self.mount_path):
+            os.mkdir(self.mount_path)
+
+        # For better compatibility, Should probably use fdisk -l /dev/sda to find all devices
+        # then search this string to determine what value X takes in /dev/sdaX. Then use this
+        # in the mounting process, rather than just assuming the device is at '/dev/sda1'. Should
+        # probably use this in the mntOutput.find() expression too, so I'm searching for the right device.
+        # SHould use try: or something that catches if the /dev/sda1 doesn't exist - i.e. no USB stick plugged in.
+        # THen print - please plug in device.
+        if self.is_mounted:
+            subprocess.call(['sudo', 'mount', '-o', 'uid=pi,gid=pi', self.dev_path, self.mount_path])
+
+    def unmount_dev(self):
+        """Unmount device located at self.dev_path"""
+        # Unmounting through /dev and not /mnt will ensure usb is unmounted
+        # even if it has been manually mounted to a different directory. However, this method does mean I may
+        # unmount the wrong device - so this needs to be thought about some more.
+        subprocess.call(['sudo', 'umount', self.dev_path])
+        self.is_mounted = False

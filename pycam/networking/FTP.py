@@ -220,7 +220,7 @@ class FTPClient:
         """Tests connection is still active, and if not it attempts to reconnect. If not possible, it returns False"""
         try:
             self.connection.voidcmd('NOOP')
-        except ftplib.all_errors:
+        except (ftplib.all_errors, AttributeError):
             conn = self.open_connection(self.host_ip, username=self.user, password=self.pwd)
             return conn
         return True
