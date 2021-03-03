@@ -4,6 +4,8 @@
 import os
 import numpy as np
 import subprocess
+import datetime
+import threading
 
 
 def check_filename(filename, ext):
@@ -187,6 +189,42 @@ def calc_dt(img_prev, img_curr):
     return t_delt.total_seconds()
 
 
+def get_img_time(filename, date_loc=0, date_fmt="%Y-%m-%dT%H%M%S"):
+    """
+    Gets time from filename and converts it to datetime object
+    :param filename:
+    :return img_time:
+    """
+    # Make sure filename only contains file and not larger pathname
+    filename = filename.split('\\')[-1].split('/')[-1]
+
+    # Extract time string from filename
+    time_str = filename.split('_')[date_loc]
+
+    # Turn time string into datetime object
+    img_time = datetime.datetime.strptime(time_str, date_fmt)
+
+    return img_time
+
+
+def get_spec_time(filename, date_loc=0, date_fmt="%Y-%m-%dT%H%M%S"):
+    """
+    Gets time from filename and converts it to datetime object
+    :param filename:
+    :return spec_time:
+    """
+    # Make sure filename only contains file and not larger pathname
+    filename = filename.split('\\')[-1].split('/')[-1]
+
+    # Extract time string from filename
+    time_str = filename.split('_')[date_loc]
+
+    # Turn time string into datetime object
+    spec_time = datetime.datetime.strptime(time_str, date_fmt)
+
+    return spec_time
+
+
 class StorageMount:
     """
     Basic class to control the handling of mounting external memory and storing details of mounted drive
@@ -194,6 +232,7 @@ class StorageMount:
     def __init__(self, mount_path='/mnt/pycam/', dev_path=None):
         self.dev_path = dev_path
         self.mount_path = mount_path
+        self.lock = threading.Lock()
 
         if self.dev_path is None:
             self.find_dev()
@@ -202,6 +241,8 @@ class StorageMount:
     def is_mounted(self):
         """Check whether device is already mounted"""
         mnt_output = subprocess.check_output('mount')
+        if self.dev_path is None:
+            return False
         mnt_stat = mnt_output.find(self.dev_path.encode())
         if mnt_stat == -1:
             return True
@@ -220,7 +261,7 @@ class StorageMount:
         # Check output to find sda
         for line in stdout_lines:
             if 'sda' in line:
-                # TODO do some line splitting
+                # TODO do some line splitting to get sda path
                 sda_path = line.split()
                 self.dev_path = sda_path
 

@@ -6,7 +6,7 @@ Socket setup and control for Raspberry Pi network and connection to the remote c
 
 from pycam.controllers import Camera, Spectrometer
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
-from pycam.utils import check_filename
+from pycam.utils import check_filename, StorageMount, get_img_time, get_spec_time
 from pycam.io import save_img, save_spectrum
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 
@@ -19,6 +19,7 @@ import threading
 import pickle
 import subprocess
 import sys
+import os
 
 
 def read_network_file(filename):
@@ -1656,8 +1657,13 @@ class CommConnection(Connection):
 
 class ImgRecvConnection(Connection):
     """Class for image receiving connection"""
-    def __init__(self, sock, acc_conn=False):
+    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(), backup=True):
         super().__init__(sock, acc_conn)
+
+        # StorageMount object for saving to backup location
+        self.backup = backup
+        self.mount = storage_mount
+        self.date_fmt = "%Y-%m-%d"
 
     def _thread_func(self):
         """Image receiving and saving function"""
@@ -1668,6 +1674,27 @@ class ImgRecvConnection(Connection):
 
                 # Save image
                 save_img(img, FileLocator.IMG_SPEC_PATH + filename)
+
+                # Save image to backup drive
+                if self.backup:
+                    # Take mount lock so we don't get freeze with other threads using mount
+                    with self.mount.lock:
+                        # Check we have a mounted device, if not we attempt to mount
+                        if not self.mount.is_mounted:
+                            self.mount.mount_dev()
+                            # if it still isn't mounted we don't backup
+                            if not self.mount.is_mounted:
+                                continue
+
+                    # Setup directory for file using the filename date
+                    date_obj = get_img_time(filename)
+                    date_dir = date_obj.strftime(self.date_fmt)
+                    backup_path = os.path.join(self.mount.mount_path, date_dir)
+                    if not os.path.exists(backup_path):
+                        os.mkdir(backup_path)
+
+                    # Save spectrum to backup location
+                    save_img(img, os.path.join(backup_path, filename))
 
             # Return if socket error is thrown (should signify that the connection has been closed)
             # Return if the header was not decodable, probably because of the socket being closed
@@ -1682,8 +1709,13 @@ class ImgRecvConnection(Connection):
 
 class SpecRecvConnection(Connection):
     """Class for spectrum receiving connection"""
-    def __init__(self, sock, acc_conn=False):
+    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(), backup=True):
         super().__init__(sock, acc_conn)
+
+        # StorageMount object for saving to backup location
+        self.backup = backup
+        self.mount = storage_mount
+        self.date_fmt = "%Y-%m-%d"
 
     def _thread_func(self):
         """Spectra receiving and saving function"""
@@ -1692,8 +1724,28 @@ class SpecRecvConnection(Connection):
                 # Receive image from pi client
                 wavelengths, spectrum, filename = self.sock.recv_spectrum(self.connection)
 
-                # Save image
+                # Save spectrum
                 save_spectrum(wavelengths, spectrum, FileLocator.IMG_SPEC_PATH + filename)
+
+                # Save spectrum to backup drive
+                if self.backup:
+                    # Take mount lock so we don't get freeze with other threads using mount
+                    with self.mount.lock:
+                        # Check we have a mounted device, if not we attempt to mount, and if it still isn't we don't backup
+                        if not self.mount.is_mounted:
+                            self.mount.mount_dev()
+                            if not self.mount.is_mounted:
+                                continue
+
+                    # Setup directory for file using the filename date
+                    date_obj = get_spec_time(filename)
+                    date_dir = date_obj.strftime(self.date_fmt)
+                    backup_path = os.path.join(self.mount.mount_path, date_dir)
+                    if not os.path.exists(backup_path):
+                        os.mkdir(backup_path)
+
+                    # Save spectrum to backup location
+                    save_spectrum(wavelengths, spectrum, os.path.join(backup_path, filename))
 
             # Return if socket error is thrown (should signify that the connection has been closed)
             # Return if the header was not decodable, probably because of the socket being closed

@@ -12,7 +12,7 @@ from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, r
     acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms, SocketNames
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.utils import read_file
+from pycam.utils import read_file, StorageMount
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
 
 import threading
@@ -24,6 +24,10 @@ import time
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
+
+# Setup mount object
+storage_mount = StorageMount()
+storage_mount.mount_dev()
 
 # ======================================================================================================================
 #  NETWORK SETUP
@@ -112,7 +116,8 @@ save_connections = dict()
 for ip in pi_ip:
     # Camera
     # Setup connection objects and start thread to run image transfer
-    save_connections[ip + '_CM2'] = ImgRecvConnection(sock_serv_transfer, acc_conn=False)
+    save_connections[ip + '_CM2'] = ImgRecvConnection(sock_serv_transfer, acc_conn=False,
+                                                      storage_mount=storage_mount, backup=True)
 
     # Set connection to be one of the camera IP connections
     save_connections[ip + '_CM2'].connection = sock_serv_transfer.conn_dict[(ip, 'CM2')][0]
@@ -122,7 +127,8 @@ for ip in pi_ip:
 
     # Spectrometer
     # Setup connection objects and start thread to run image transfer
-    save_connections[ip + '_SPC'] = SpecRecvConnection(sock_serv_transfer, acc_conn=False)
+    save_connections[ip + '_SPC'] = SpecRecvConnection(sock_serv_transfer, acc_conn=False,
+                                                       storage_mount=storage_mount, backup=True)
 
     # Set connection to be one of the camera IP connections
     save_connections[ip + '_SPC'].connection = sock_serv_transfer.conn_dict[(ip, 'SPC')][0]
@@ -132,7 +138,8 @@ for ip in pi_ip:
 
 # Camera for master pi
 # Do same for spectrum, which is on the local pi
-save_connections[host_ip] = ImgRecvConnection(sock_serv_transfer, acc_conn=False)
+save_connections[host_ip] = ImgRecvConnection(sock_serv_transfer, acc_conn=False,
+                                              storage_mount=storage_mount, backup=True)
 
 # Set connection to that of the host_ip spectrometer connection
 save_connections[host_ip].connection = sock_serv_transfer.conn_dict[(host_ip, 'CM1')][0]
