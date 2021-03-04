@@ -7,6 +7,7 @@ Software for permanent installation PiCam
 To install:
 > ./doas/cfg.py needs to be modified for absolute pathnames on local machine
 > ./conf/processing_setting_defaults.txt needs to be modified to load clear sky images for specific location
+> sudo apt install exfat-fuse exfat-utils for SSD compatibility on pi
 
 Hardware setup:
 > Connect GPIO 23 (physical pin 16) on masterpi to GPIO 3 (physical pin 5) on slave pi. This allows off/on functionality through wittypi start-up/shutdown scripts

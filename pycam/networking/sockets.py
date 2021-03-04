@@ -113,7 +113,9 @@ class CommsFuncs(SendRecvSpecs):
             'TPB': (str, []),           # Type of image (empty list shows it will accept any form) - for off band acq
             'TPS': (str, []),           # Type of spectrum
             'DKC': (bool, 1),           # Starts capture of dark sequence in camera (stops continuous capt if necessary)
+            'DFC': (bool, 1),           # Flags that dark capture sequence has finished on the camera
             'DKS': (bool, 1),           # Starts capture of dark sequence in spectrometer
+            'DFS': (bool, 1),           # Flags that dark capture sequence has finished on the spectrometer
             'SPC': (bool, 1),           # Stops continuous image acquisitions
             'SPS': (bool, 1),           # Stops continuous spectra acquisitions
             'STC': (bool, 1),           # Starts continuous image acquisitions
@@ -146,12 +148,13 @@ class MasterComms(CommsFuncs):
         Dictionary containing a number of critical configuration parameters
     sockets: dict
         Dictionary containing all SocketServer objects
-    comm_connections: CommConnection
+    comm_connections: dict
         Dictionary holding CommConnection objects
-    save_connections: SpecRecvConnection, ImgRecvConnection
-        Dictinoary containing these objects
+    save_connections: dict
+        Dictinoary containing these objects: SpecRecvConnection, ImgRecvConnection
     ext_connections: CommConnection:
-        List containing these objects"""
+        List containing these objects
+    """
 
     def __init__(self, config, sockets, comm_connections, save_connections, ext_connections):
         super().__init__()
@@ -218,8 +221,6 @@ class MasterComms(CommsFuncs):
         print('Comms connections finished')
 
         sys.exit(0)
-
-        print('Exited!!!!')
 
     def RST(self, value):
         """Acts on RST command, restarts entire system"""
@@ -894,6 +895,17 @@ class PiSocketCamComms(SocketClient):
 
                 # Organise comms
                 comm = self.encode_comms({'DKC': 1})
+                self.send_comms(self.sock, comm)
+
+                # Wait for camera to enter dark capture mode
+                while not self.camera.in_dark_capture:
+                    time.sleep(0.5)
+
+                # Wait for camera to finish dark capture mode then create comm to flag it has finished
+                while self.camera.in_dark_capture:
+                    time.sleep(0.5)
+                comm = self.encode_comms({'DFC': 1})
+
             else:
                 comm = self.encode_comms({'ERR': 'DKC'})
         except:
@@ -1110,6 +1122,16 @@ class PiSocketSpecComms(SocketClient):
 
                 # Encode return message
                 comm = self.encode_comms({'DKS': 1})
+                self.send_comms(self.sock, comm)
+
+                # Wait for spectrometer to enter dark capture mode
+                while not self.spectrometer.in_dark_capture:
+                    time.sleep(0.5)
+
+                # Wait for camera to finish dark capture mode then create comm to flag it has finished
+                while self.spectrometer.in_dark_capture:
+                    time.sleep(0.5)
+                comm = self.encode_comms({'DFS': 1})
             else:
                 comm = self.encode_comms({'ERR': 'DKS'})
         except:

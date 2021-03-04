@@ -53,6 +53,7 @@ class Camera(CameraSpecs):
         self.lock = False                   # A lock to make sure that the camera is not being accessed somewhere
         self.in_interactive_capture = False # Bool to flag when in interactive capture
         self.continuous_capture = False     # Bool to flag when in continuous capture mode
+        self.in_dark_capture = False        # Bool to flag when in dark capture mode
 
         # Get default specs from parent class and any other attributes
         super().__init__(filename)
@@ -438,6 +439,8 @@ class Camera(CameraSpecs):
 
     def capture_darks(self):
         """Capture dark images from all shutter speeds in <self.ss_list>"""
+        self.in_dark_capture = True
+
         # Initialise camera if not already done
         if not self.cam_init:
             self.initialise_camera()
@@ -456,6 +459,8 @@ class Camera(CameraSpecs):
 
             # Generate filename for image and save it
             self.save_current_image(self.generate_filename(time_str, self.file_type['dark']))
+
+        self.in_dark_capture = False
 
 
 class Spectrometer(SpecSpecs):
@@ -488,6 +493,7 @@ class Spectrometer(SpecSpecs):
 
         self.in_interactive_capture = False
         self.continuous_capture = False     # Bool set to true when camera is in continuous capture mode
+        self.in_dark_capture = False        # Bool to flag when in dark capture mode
 
         # Attempt to find spectrometer, if we can't we either raise the error or ignore it depending on ignore_device
         try:
@@ -832,6 +838,8 @@ class Spectrometer(SpecSpecs):
 
     def capture_darks(self):
         """Capture dark images from all shutter speeds in <self.ss_list>"""
+        self.in_dark_capture = True
+
         # Loop through shutter speeds in ss_list
         for int_time in self.int_list:
 
@@ -850,6 +858,8 @@ class Spectrometer(SpecSpecs):
             # Add data to queue
             self.spec_q.put(filename)
             self.spec_q.put(self.spectrum)
+
+        self.in_dark_capture = False
 
 
 class SpectrometerConnectionError(Exception):

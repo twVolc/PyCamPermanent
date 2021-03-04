@@ -161,7 +161,7 @@ for idn in ['CM2', 'SPC']:
     comms_connections[pi_ip[0] + '_{}'.format(idn)] = CommConnection(sock_serv_comm, acc_conn=False)
 
     # Set connection to be one of the camera IP connections
-    comms_connections[pi_ip[0] + '_{}'.format(idn)].connection = sock_serv_comm.conn_dict[(ip, idn)][0]
+    comms_connections[pi_ip[0] + '_{}'.format(idn)].connection = sock_serv_comm.conn_dict[(pi_ip[0], idn)][0]
 
     # Start communications thread
     comms_connections[pi_ip[0] + '_{}'.format(idn)].thread_func()

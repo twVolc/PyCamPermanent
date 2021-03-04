@@ -107,7 +107,7 @@ class AnalysisWind:
         col_1 = ttk.Frame(self.frame)
         col_1.pack(side=tk.LEFT, anchor='nw')
         col_2 = ttk.Frame(self.frame)
-        col_2.pack(side=tk.LEFT, anchor='nw')
+        col_2.pack(side=tk.LEFT, anchor='nw', expand=True, fill=tk.Y)
 
         # Sequence info
         self.seq_info = SequenceInfo(col_1)
@@ -119,4 +119,4 @@ class AnalysisWind:
 
         # SO2 time series
         self.time_series = TimeSeriesFigure(col_2)
-        self.time_series.frame.grid(row=0, column=1, padx=5, pady=5)
+        self.time_series.frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')

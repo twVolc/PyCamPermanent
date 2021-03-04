@@ -245,30 +245,30 @@ class StorageMount:
             return False
         mnt_stat = mnt_output.find(self.dev_path.encode())
         if mnt_stat == -1:
-            return True
-        else:
             return False
+        else:
+            return True
 
     def find_dev(self):
         """
         Finds device location based on it being /dev/sda of some kind (not necessarily sda1) and sets self.dev_path
         """
-        proc = subprocess.Popen(['fdisk -l /dev/sda'], stdout=subprocess.PIPE, shell=True)
+        proc = subprocess.Popen(['sudo fdisk -l /dev/sda'], stdout=subprocess.PIPE, shell=True)
         stdout_value = proc.communicate()[0]
         stdout_str = stdout_value.decode("utf-8")
         stdout_lines = stdout_str.split('\n')
 
         # Check output to find sda
         for line in stdout_lines:
-            if 'sda' in line:
+            if 'HPFS/NTFS' in line:
                 # TODO do some line splitting to get sda path
-                sda_path = line.split()
+                sda_path = line.split()[0]
                 self.dev_path = sda_path
 
     def mount_dev(self):
         """Mount device located at self.dev_path to self.mount_path destination"""
         if not os.path.exists(self.mount_path):
-            os.mkdir(self.mount_path)
+            subprocess.call(['sudo', 'mkdir', self.mount_path])
 
         # For better compatibility, Should probably use fdisk -l /dev/sda to find all devices
         # then search this string to determine what value X takes in /dev/sdaX. Then use this
@@ -276,7 +276,7 @@ class StorageMount:
         # probably use this in the mntOutput.find() expression too, so I'm searching for the right device.
         # SHould use try: or something that catches if the /dev/sda1 doesn't exist - i.e. no USB stick plugged in.
         # THen print - please plug in device.
-        if self.is_mounted:
+        if not self.is_mounted:
             subprocess.call(['sudo', 'mount', '-o', 'uid=pi,gid=pi', self.dev_path, self.mount_path])
 
     def unmount_dev(self):
@@ -284,5 +284,5 @@ class StorageMount:
         # Unmounting through /dev and not /mnt will ensure usb is unmounted
         # even if it has been manually mounted to a different directory. However, this method does mean I may
         # unmount the wrong device - so this needs to be thought about some more.
-        subprocess.call(['sudo', 'umount', self.dev_path])
-        self.is_mounted = False
+        if self.is_mounted:
+            subprocess.call(['sudo', 'umount', self.dev_path])
