@@ -94,6 +94,7 @@ class ConfigInfo:
     spec_script = 'spec_script'
     cam_specs = 'cam_specs'
     temp_log = 'temp_log'
+    disk_space_script = 'disk_space_script'
 
     local_data_dir = 'local_data_dir'
 

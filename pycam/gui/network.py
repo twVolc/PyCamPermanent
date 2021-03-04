@@ -153,6 +153,15 @@ class ConnectionGUI:
 class InstrumentConfiguration:
     """
     Class creating a widget for configuring the instrument, e.g. adjusting its off/on time through Witty Pi
+
+    To add a new script to be run in the crontab scheduler:
+    1. Add script to config.txt and add associated identifier to ConfigInfo
+    2. Initiate tk variables below and define script name
+    3. Add a hunt for the script name in read_script_crontab() below
+    4. Unpack values from "results" for associated script name
+    5. Create widgets for controlling new variables and create properties for quick access
+    6. Update the update_acq_time() script by adding to cmds and times lists
+    7. Add line to script_schedule.txt so that it can be read by this class on first startup
     """
     def __init__(self, ftp, cfg):
         self.ftp = ftp
@@ -162,6 +171,7 @@ class InstrumentConfiguration:
         self.start_script = cfg[ConfigInfo.start_script]
         self.stop_script = cfg[ConfigInfo.stop_script]
         self.temp_script = cfg[ConfigInfo.temp_log]
+        self.disk_space_script = cfg[ConfigInfo.disk_space_script]
 
     def initiate_variable(self):
         """Initiate tkinter variables"""
@@ -178,18 +188,21 @@ class InstrumentConfiguration:
         self._capt_stop_min = tk.IntVar()
 
         self._temp_logging = tk.IntVar()        # Temperature logging frequency (minutes)
+        self._check_disk_space = tk.IntVar()    # Check disk space frequency (minutes)
 
         on_time, off_time = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
         self.on_hour, self.on_min = on_time
         self.off_hour, self.off_min = off_time
 
+        # Read cronfile looking for defined scripts. ADD SCRIPT TO LIST HERE TO SEARCH FOR IT
         results = read_script_crontab(FileLocator.SCRIPT_SCHEDULE,
-                                      [self.start_script, self.stop_script, self.temp_script])
+                                      [self.start_script, self.stop_script, self.temp_script, self.disk_space_script])
 
         self.capt_start_hour, self.capt_start_min = results[self.start_script]
         self.capt_stop_hour, self.capt_stop_min = results[self.stop_script]
 
         self.temp_logging = results[self.temp_script][1]     # Only interested in minutes for temperature logging
+        self.check_disk_space = results[self.disk_space_script][1]     # Only interested in minutes for disk space check
 
     def generate_frame(self):
         """Generates frame containing GUI widgets"""
@@ -266,9 +279,15 @@ class InstrumentConfiguration:
         temp_log.grid(row=2, column=1, columnspan=2, sticky='w', padx=2, pady=2)
         ttk.Label(frame_cron, text='0=no log').grid(row=2, column=3, sticky='w', padx=2, pady=2)
 
+        # Temperature check disk space
+        ttk.Label(frame_cron, text='Check disk storage [minutes]:').grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        disk_stor = ttk.Spinbox(frame_cron, textvariable=self._check_disk_space, from_=0, to=60, increment=1, width=3)
+        disk_stor.grid(row=3, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log').grid(row=3, column=3, sticky='w', padx=2, pady=2)
+
         # Update button
         butt = ttk.Button(frame_cron, text='Update', command=self.update_acq_time)
-        butt.grid(row=3, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+        butt.grid(row=4, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
         # TODO Have option for defining time for dark acquisitions
 
@@ -298,17 +317,14 @@ class InstrumentConfiguration:
 
     def update_acq_time(self):
         """Updates acquisition period of instrument"""
-        # Some initial organising for the temperature logging
-        if self.temp_logging == 0:
-            temp_log_str = '#* * * * *'     # Temp logging is turned off
-        elif self.temp_logging == 60:
-            temp_log_str = '0 * * * *'      # Temp logging is every hour
-        else:
-            temp_log_str = '*/{} * * * *'.format(self.temp_logging)     # Temp logging is every {} minutes
+        # Create strings
+        temp_log_str = self.minute_cron_fmt(self.temp_logging)
+        disk_space_str = self.minute_cron_fmt(self.check_disk_space)
 
         # Create and write crontab file
-        times = [self.start_capt_time, self.stop_capt_time, temp_log_str]
-        cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script), self.temp_script]
+        times = [self.start_capt_time, self.stop_capt_time, temp_log_str, disk_space_str]
+        cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script), self.temp_script,
+                'python3 {}'.format(self.disk_space_script)]
         write_script_crontab(FileLocator.SCRIPT_SCHEDULE, cmds, times)
 
         # Transfer file to instrument
@@ -324,12 +340,25 @@ class InstrumentConfiguration:
                                    'Updated instrument software schedules:\n\n'
                                    'Start capture script: {} UTC\n'
                                    'Shut-down capture script: {} UTC\n'
-                                   'Log temperature: {} minutes'.format(self.start_capt_time.strftime('%H:%M'),
-                                                                        self.stop_capt_time.strftime('%H:%M'),
-                                                                        self.temp_logging))
+                                   'Log temperature: {} minutes\n'
+                                   'Check disk space: {} minutes'.format(self.start_capt_time.strftime('%H:%M'),
+                                                                         self.stop_capt_time.strftime('%H:%M'),
+                                                                         self.temp_logging,
+                                                                         self.check_disk_space))
 
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
+
+    def minute_cron_fmt(self, minutes):
+        """Creates the correct string for the crontab based on the minutes provided"""
+        # Some initial organising for the temperature logging
+        if minutes == 0:
+            log_str = '#* * * * *'     # Script is turned off
+        elif minutes == 60:
+            log_str = '0 * * * *'      # Script is every hour
+        else:
+            log_str = '*/{} * * * *'.format(minutes)     # Script is every {} minutes
+        return log_str
 
     def close_frame(self):
         self.in_frame = False
@@ -426,3 +455,11 @@ class InstrumentConfiguration:
     @temp_logging.setter
     def temp_logging(self, value):
         self._temp_logging.set(value)
+
+    @property
+    def check_disk_space(self):
+        return self._check_disk_space.get()
+
+    @check_disk_space.setter
+    def check_disk_space(self, value):
+        self._check_disk_space.set(value)
