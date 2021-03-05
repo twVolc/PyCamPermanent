@@ -26,6 +26,7 @@ remote_scripts=/home/pi/pycam/scripts/kill_process.py     # List of scripts to b
 local_scripts=./kill_process.py      #
 cam_script=/home/pi/pycam/scripts/pycam_camera.py
 spec_script=/home/pi/pycam/scripts/pycam_spectrometer.py
+dark_script=/home/pi/pycam/scripts/pycam_dark_capture.py
 temp_log=/home/pi/pycam/scripts/log_temperature.sh
 disk_space_script=/home/pi/pycam/scripts/check_disk_space.py
 

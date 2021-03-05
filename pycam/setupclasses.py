@@ -49,6 +49,9 @@ class FileLocator:
     LOG_DIR = '/logs/'
     LOG_PATH_PI = PYCAM_ROOT_PI + LOG_DIR
     LOG_PATH_WINDOWS = PYCAM_ROOT_WINDOWS + LOG_DIR
+    MAIN_LOG = 'main.log'
+    MAIN_LOG_PI = LOG_PATH_PI + MAIN_LOG
+    MAIN_LOG_WINDOWS = LOG_PATH_WINDOWS + MAIN_LOG
     ERROR_LOG = 'error.log'
     ERROR_LOG_PI = LOG_PATH_PI + ERROR_LOG
     ERROR_LOG_WINDOWS = LOG_PATH_WINDOWS + ERROR_LOG
@@ -93,6 +96,7 @@ class ConfigInfo:
     cam_script = 'cam_script'       # Tag for defining camera script to be run on pi
     spec_script = 'spec_script'
     cam_specs = 'cam_specs'
+    dark_script = 'dark_script'
     temp_log = 'temp_log'
     disk_space_script = 'disk_space_script'
 

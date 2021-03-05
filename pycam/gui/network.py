@@ -160,8 +160,9 @@ class InstrumentConfiguration:
     3. Add a hunt for the script name in read_script_crontab() below
     4. Unpack values from "results" for associated script name
     5. Create widgets for controlling new variables and create properties for quick access
-    6. Update the update_acq_time() script by adding to cmds and times lists
-    7. Add line to script_schedule.txt so that it can be read by this class on first startup
+    6. Update the update_acq_time() script by adding to cmds and times lists (if necessary add to the check time loop)
+    7. Update messagebox to display settings after they have been updated
+    8. Add line to script_schedule.txt so that it can be read by this class on first startup
     """
     def __init__(self, ftp, cfg):
         self.ftp = ftp
@@ -170,6 +171,7 @@ class InstrumentConfiguration:
         self.in_frame = False
         self.start_script = cfg[ConfigInfo.start_script]
         self.stop_script = cfg[ConfigInfo.stop_script]
+        self.dark_script = cfg[ConfigInfo.dark_script]
         self.temp_script = cfg[ConfigInfo.temp_log]
         self.disk_space_script = cfg[ConfigInfo.disk_space_script]
 
@@ -187,6 +189,9 @@ class InstrumentConfiguration:
         self._capt_stop_hour = tk.IntVar()      # Hour to stop capture
         self._capt_stop_min = tk.IntVar()
 
+        self._dark_capt_hour = tk.IntVar()
+        self._dark_capt_min = tk.IntVar()
+
         self._temp_logging = tk.IntVar()        # Temperature logging frequency (minutes)
         self._check_disk_space = tk.IntVar()    # Check disk space frequency (minutes)
 
@@ -196,10 +201,12 @@ class InstrumentConfiguration:
 
         # Read cronfile looking for defined scripts. ADD SCRIPT TO LIST HERE TO SEARCH FOR IT
         results = read_script_crontab(FileLocator.SCRIPT_SCHEDULE,
-                                      [self.start_script, self.stop_script, self.temp_script, self.disk_space_script])
+                                      [self.start_script, self.stop_script, self.dark_script,
+                                       self.temp_script, self.disk_space_script])
 
         self.capt_start_hour, self.capt_start_min = results[self.start_script]
         self.capt_stop_hour, self.capt_stop_min = results[self.stop_script]
+        self.dark_capt_hour, self.dark_capt_min = results[self.dark_script]
 
         self.temp_logging = results[self.temp_script][1]     # Only interested in minutes for temperature logging
         self.check_disk_space = results[self.disk_space_script][1]     # Only interested in minutes for disk space check
@@ -222,23 +229,19 @@ class InstrumentConfiguration:
         ttk.Label(frame_on, text='Start-up (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
         ttk.Label(frame_on, text='Shut-down (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
 
-        hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2,
-                                 format="%02.0f")
+        hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2)
         # hour_start.set("{:02d}".format(self.on_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2,
-                                format="%02.0f")
+        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2)
         # min_start.set("{:02d}".format(self.on_min))
         min_start.grid(row=0, column=3, padx=2, pady=2)
 
-        hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2,
-                                format="%02.0f")
+        hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2)
         # hour_stop.set("{:02d}".format(self.off_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_on, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2,
-                               format="%02.0f")
+        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2)
         # min_stop.set("{:02d}".format(self.off_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
@@ -246,50 +249,99 @@ class InstrumentConfiguration:
         butt = ttk.Button(frame_on, text='Update', command=self.update_on_off)
         butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
+        # ---------------------------------------
         # Start/stop control of acquisition times
+        # ---------------------------------------
         frame_cron = tk.LabelFrame(self.frame, text='Scheduled scripts', relief=tk.RAISED, borderwidth=2)
         frame_cron.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
-        ttk.Label(frame_cron, text='Start pycam (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='Stop pycam (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Start pycam (hr:min):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Stop pycam (hr:min):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
 
-        hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2,
-                                 format="%02.0f")
+        hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2)
         # hour_start.set("{:02d}".format(self.capt_start_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
         ttk.Label(frame_cron, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2,
-                                format="%02.0f")
+        min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2)
         # min_start.set("{:02d}".format(self.capt_start_min))
         min_start.grid(row=0, column=3, padx=2, pady=2, sticky='w')
 
-        hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2,
-                                format="%02.0f")
+        hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2)
         # hour_stop.set("{:02d}".format(self.capt_stop_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
         ttk.Label(frame_cron, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2,
-                               format="%02.0f")
+        min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2)
         # min_stop.set("{:02d}".format(self.capt_stop_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2, sticky='w')
 
+        # ------------------
+        # Start dark capture
+        # ------------------
+        row = 2
+        lab = ttk.Label(frame_cron, text='Start dark capture (hr:min):')
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        hour_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_hour, from_=00, to=23, increment=1, width=2)
+        hour_dark.grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(frame_cron, text=':').grid(row=row, column=2, padx=2, pady=2)
+        min_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_min, from_=00, to=59, increment=1, width=2)
+        min_dark.grid(row=row, column=3, padx=2, pady=2, sticky='w')
+
+        # -------------------
         # Temperature logging
-        ttk.Label(frame_cron, text='Temperature log [minutes]:').grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        # -------------------
+        row += 1
+        ttk.Label(frame_cron, text='Temperature log [minutes]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
         temp_log = ttk.Spinbox(frame_cron, textvariable=self._temp_logging, from_=0, to=60, increment=1, width=3)
-        temp_log.grid(row=2, column=1, columnspan=2, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='0=no log').grid(row=2, column=3, sticky='w', padx=2, pady=2)
+        temp_log.grid(row=row, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log').grid(row=row, column=3, sticky='w', padx=2, pady=2)
 
+        # ----------------------------
         # Temperature check disk space
-        ttk.Label(frame_cron, text='Check disk storage [minutes]:').grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        # ----------------------------
+        row += 1
+        ttk.Label(frame_cron, text='Check disk storage [minutes]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
         disk_stor = ttk.Spinbox(frame_cron, textvariable=self._check_disk_space, from_=0, to=60, increment=1, width=3)
-        disk_stor.grid(row=3, column=1, columnspan=2, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='0=no log').grid(row=3, column=3, sticky='w', padx=2, pady=2)
+        disk_stor.grid(row=row, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log').grid(row=row, column=3, sticky='w', padx=2, pady=2)
 
+        # -------------
         # Update button
+        # -------------
+        row += 1
         butt = ttk.Button(frame_cron, text='Update', command=self.update_acq_time)
-        butt.grid(row=4, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+        butt.grid(row=row, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
-        # TODO Have option for defining time for dark acquisitions
+    def check_script_time(self, script_time, script_name):
+        """
+        Checks the scheduled time of a script to be run and ensures that the Pi is turned on at this point. If it isn't
+        it raises a warning box indicating that the script probably won't be run. It only highlights this to the user,
+        it does not make any changes to times to enforce compatibility.
+        :param script_time:     datetime.datetime       Scheduled time of script to be run
+        :param script_name:     str                     Name of script - used for flagging it if an issue is found
+        :return:
+        """
+        if self.on_time < self.off_time:
+            if script_time > self.on_time and script_time <= self.off_time:
+                return
+
+        elif self.on_time > self.off_time:
+            if script_time > self.on_time or script_time < self.off_time:
+                return
+        else:
+            # The pi is not being turned off if the time is the same, so we're al good?
+            return
+
+        a = tk.messagebox.showwarning('Configuration incompatible',
+                                      'Script start time incompatible with instrument on/off time\n\n'
+                                      'Script name: {}\n'
+                                      'Script start time: {}\n'
+                                      'Instrument start time: {}\n'
+                                      'Instruments shutdown time: {}\n'.format(script_name,
+                                                                               script_time.strftime('%H:%M'),
+                                                                               self.on_time.strftime('%H:%M'),
+                                                                               self.off_time.strftime('%H:%M')))
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
 
     def update_on_off(self):
         """Controls updating start/stop time of pi"""
@@ -310,7 +362,8 @@ class InstrumentConfiguration:
         a = tk.messagebox.showinfo('Instrument update',
                                    'Updated instrument start-up/shut-down schedule:\n\n'
                                    'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
-                                                                                  self.off_time.strftime('%H:%M')))
+                                                                                  self.off_time.strftime('%H:%M')),
+                                   parent=self.frame)
 
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
@@ -321,10 +374,16 @@ class InstrumentConfiguration:
         temp_log_str = self.minute_cron_fmt(self.temp_logging)
         disk_space_str = self.minute_cron_fmt(self.check_disk_space)
 
-        # Create and write crontab file
-        times = [self.start_capt_time, self.stop_capt_time, temp_log_str, disk_space_str]
-        cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script), self.temp_script,
-                'python3 {}'.format(self.disk_space_script)]
+        # Preparation of lists for writing crontab file
+        times = [self.start_capt_time, self.stop_capt_time, self.start_dark_time, temp_log_str, disk_space_str]
+        cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script),
+                'python3 {}'.format(self.dark_script), self.temp_script, 'python3 {}'.format(self.disk_space_script)]
+
+        # Check time compatibility (only on scripts which have specific start times, not those run every x minutes)
+        for i, script_name in enumerate([self.start_script, self.stop_script, self.dark_script]):
+            self.check_script_time(times[i], script_name)
+
+        # Write crontab file
         write_script_crontab(FileLocator.SCRIPT_SCHEDULE, cmds, times)
 
         # Transfer file to instrument
@@ -340,9 +399,11 @@ class InstrumentConfiguration:
                                    'Updated instrument software schedules:\n\n'
                                    'Start capture script: {} UTC\n'
                                    'Shut-down capture script: {} UTC\n'
+                                   'Dark capture time: {} UTC\n'
                                    'Log temperature: {} minutes\n'
                                    'Check disk space: {} minutes'.format(self.start_capt_time.strftime('%H:%M'),
                                                                          self.stop_capt_time.strftime('%H:%M'),
+                                                                         self.start_dark_time.strftime('%H:%M'),
                                                                          self.temp_logging,
                                                                          self.check_disk_space))
 
@@ -383,6 +444,11 @@ class InstrumentConfiguration:
     def stop_capt_time(self):
         """Return datetime object of time to turn stop acq. Date is not important, only time, so use arbitrary date"""
         return datetime.datetime(year=2020, month=1, day=1, hour=self.capt_stop_hour, minute=self.capt_stop_min)
+
+    @property
+    def start_dark_time(self):
+        """Return datetime object of time to turn start acq. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.dark_capt_hour, minute=self.dark_capt_min)
 
     @property
     def on_hour(self):
@@ -447,6 +513,22 @@ class InstrumentConfiguration:
     @capt_stop_min.setter
     def capt_stop_min(self, value):
         self._capt_stop_min.set(value)
+
+    @property
+    def dark_capt_hour(self):
+        return self._dark_capt_hour.get()
+
+    @dark_capt_hour.setter
+    def dark_capt_hour(self, value):
+        self._dark_capt_hour.set(value)
+
+    @property
+    def dark_capt_min(self):
+        return self._dark_capt_min.get()
+
+    @dark_capt_min.setter
+    def dark_capt_min(self, value):
+        self._dark_capt_min.set(value)
 
     @property
     def temp_logging(self):

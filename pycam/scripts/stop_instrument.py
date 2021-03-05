@@ -15,6 +15,8 @@ from pycam.networking.sockets import SocketClient
 import subprocess
 import os
 import socket
+import datetime
+
 
 
 def close_pycam(ip, port):
@@ -36,6 +38,8 @@ port = config[ConfigInfo.port_ext]
 start_script = config[ConfigInfo.master_script]
 start_script_name = os.path.split(start_script)[-1]
 
+date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
 # If pycam is running we stop the script
 try:
     proc = subprocess.Popen(['ps axg'], stdout=subprocess.PIPE, shell=True)
@@ -48,17 +52,19 @@ try:
         if start_script_name in line:
             try:
                 close_pycam(host_ip, port)
-                print('Pycam shutdown')
+                with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                    f.write('{} Pycam shutdown\n'.format(date_str))
             except BaseException as e:
-                print('Got error while attempting pycam close: {}'.format(e))
-                print('This may mean that the program was closed successfully or there may be another error')
+                with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                    f.write('{} Got error while attempting pycam close (possibly fine): {}\n'.format(date_str, e))
             sys.exit()
 
     # If we get to the end without finding the running script we write a warning to the log file
     with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
-        f.write('ERROR IN STOP SCRIPT: Warning, pycam script was not running when stop_instrument.py commenced\n')
+        f.write('{} ERROR IN STOP SCRIPT: Warning, pycam script was not '
+                'running when stop_instrument.py commenced\n'.format(date_str))
 
 except BaseException as e:
     with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
-        f.write('ERROR IN STOP SCRIPT: {}\n'.format(e))
+        f.write('{} ERROR IN STOP SCRIPT: {}\n'.format(date_str, e))
 

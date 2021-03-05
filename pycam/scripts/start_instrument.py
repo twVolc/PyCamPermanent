@@ -14,6 +14,7 @@ from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
 import subprocess
 import os
+import datetime
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
@@ -22,6 +23,8 @@ config = read_file(FileLocator.CONFIG)
 start_script = config[ConfigInfo.master_script]
 start_script_name = os.path.split(start_script)[-1]
 
+date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
 try:
     proc = subprocess.Popen(['ps axg'], stdout=subprocess.PIPE, shell=True)
     stdout_value = proc.communicate()[0]
@@ -29,13 +32,15 @@ try:
     stdout_lines = stdout_str.split('\n')
     for line in stdout_lines:
         if start_script_name in line:
-            print('{} is already running as process {}'.format(start_script_name, line.split()[0]))
+            with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                f.write('{} {} is already running as process {}\n'.format(date_str, start_script_name, line.split()[0]))
             sys.exit()
 
     start_script = 'python3 ' + start_script + ' &'
     subprocess.Popen([start_script], shell=True)
-    print('{} started on instrument'.format(start_script_name))
+    with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+        f.write('{} {} started on instrument\n'.format(date_str, start_script_name))
 except BaseException as e:
     with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
-        f.write('ERROR IN START SCRIPT: {}\n'.format(e))
+        f.write('{} ERROR IN START SCRIPT: {}\n'.format(date_str, e))
 
