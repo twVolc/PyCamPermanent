@@ -108,8 +108,8 @@ class ImageFigure:
     @property
     def row(self):
         val = self._row.get()
-        if val > self.specs.pix_num_y:
-            self._row.set(self.specs.pix_num_y)
+        if val >= self.specs.pix_num_y:
+            self._row.set(self.specs.pix_num_y - 1)
         return self._row.get()
 
     @row.setter
@@ -119,8 +119,8 @@ class ImageFigure:
     @property
     def col(self):
         val = self._col.get()
-        if val > self.specs.pix_num_x:
-            self._col.set(self.specs.pix_num_x)
+        if val >= self.specs.pix_num_x:
+            self._col.set(self.specs.pix_num_x - 1)
         return self._col.get()
 
     @col.setter

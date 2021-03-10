@@ -183,6 +183,14 @@ class InstrumentConfiguration:
         self._off_hour = tk.IntVar()        # Hour to shutdown pi
         self._off_min = tk.IntVar()
 
+        self._on_hour_2 = tk.IntVar()       # Hour to turn on pi (second time)
+        self._on_min_2 = tk.IntVar()
+
+        self._off_hour_2 = tk.IntVar()        # Hour to shutdown pi (second time)
+        self._off_min_2 = tk.IntVar()
+
+        self._use_second_shutdown = tk.IntVar()     # If True, the second shutdown/startup sequence is used
+
         self._capt_start_hour = tk.IntVar()     # Hour to start capture
         self._capt_start_min = tk.IntVar()
 
@@ -245,9 +253,29 @@ class InstrumentConfiguration:
         # min_stop.set("{:02d}".format(self.off_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
+        # Second shutdown option
+        check_shut = ttk.Checkbutton(frame_on, text='Use start-up/shut-down sequence 2',
+                                     variable=self._use_second_shutdown, command=self.second_shutdown_config)
+        check_shut.grid(row=2, column=0, columnspan=4, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_on, text='Start-up 2 (hour:minutes):').grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_on, text='Shut-down 2 (hour:minutes):').grid(row=4, column=0, sticky='w', padx=2, pady=2)
+
+        self.hour_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_hour_2, from_=00, to=23, increment=1, width=2)
+        self.hour_start_2.grid(row=3, column=1, padx=2, pady=2)
+        ttk.Label(frame_on, text=':').grid(row=3, column=2, padx=2, pady=2)
+        self.min_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_min_2, from_=00, to=59, increment=1, width=2)
+        self.min_start_2.grid(row=3, column=3, padx=2, pady=2)
+
+        self.hour_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_hour_2, from_=00, to=23, increment=1, width=2)
+        self.hour_stop_2.grid(row=4, column=1, padx=2, pady=2)
+        ttk.Label(frame_on, text=':').grid(row=4, column=2, padx=2, pady=2)
+        self.min_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_min_2, from_=00, to=59, increment=1, width=2)
+        self.min_stop_2.grid(row=4, column=3, padx=2, pady=2)
+        self.second_shutdown_config()   # Set current state of widgets based on start-up variable values
+
         # Update button
         butt = ttk.Button(frame_on, text='Update', command=self.update_on_off)
-        butt.grid(row=2, column=0, columnspan=4, sticky='e', padx=2, pady=2)
+        butt.grid(row=5, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
         # ---------------------------------------
         # Start/stop control of acquisition times
@@ -311,6 +339,51 @@ class InstrumentConfiguration:
         butt = ttk.Button(frame_cron, text='Update', command=self.update_acq_time)
         butt.grid(row=row, column=0, columnspan=4, sticky='e', padx=2, pady=2)
 
+    def second_shutdown_config(self):
+        """Controls configuration of widgets for if a second shutdown is to be used or not"""
+        if self.use_second_shutdown:
+            state = tk.NORMAL
+        else:
+            state = tk.DISABLED
+
+        # Loop through widgets and disable/enable them
+        for widget in [self.hour_start_2, self.min_start_2, self.hour_stop_2, self.min_stop_2]:
+            widget.configure(state=state)
+
+    def check_second_shutdown(self):
+        """Checks whether second shutdown sequence is valid (if it is being used)"""
+        if not self.use_second_shutdown:
+            return
+
+        if self.on_time_2 == self.off_time_2:
+            self.use_second_shutdown = 0
+            print('Start-up/shut-down times are the same for second schedule. Second sequence will not be used')
+            return
+
+        # Check if on/off times fall within the first on/off schedule - we return if this is not the case, so return the
+        # function if all is well
+        if self.on_time < self.off_time:
+            if self.on_time_2 < self.off_time_2:
+                if self.off_time_2 < self.on_time or self.on_time_2 > self.off_time:
+                    return
+            elif self.on_time_2 > self.off_time_2:
+                if self.on_time_2 > self.off_time and self.off_time_2 < self.on_time:
+                    return
+
+        elif self.on_time > self.off_time:
+            if self.on_time_2 < self.off_time_2:
+                if self.on_time_2 > self.off_time and self.off_time_2 < self.on_time:
+                    return
+            # If on_time_2 > off_time_2 then both times pass through midnight so they can't be compatible
+
+        self.use_second_shutdown = 0
+        a = messagebox.showwarning('Incompatible second start-up/shut-down sequence',
+                                   'Second start-up/shut-down sequence is incompatible with the first\n'
+                                   'Second sequence will be removed.\n'
+                                   'This happens when a second start-up/shut-down is attempted at a time when\n'
+                                   'the first sequence already has the instrument turned on or if the on/off\n'
+                                   'times overlap at any point. Please check times.')
+
     def check_script_time(self, script_time, script_name):
         """
         Checks the scheduled time of a script to be run and ensures that the Pi is turned on at this point. If it isn't
@@ -328,18 +401,37 @@ class InstrumentConfiguration:
             if script_time > self.on_time or script_time < self.off_time:
                 return
         else:
-            # The pi is not being turned off if the time is the same, so we're al good?
+            # The pi is not being turned off if the time is the same, so we're all good?
             return
 
-        a = tk.messagebox.showwarning('Configuration incompatible',
-                                      'Script start time incompatible with instrument on/off time\n\n'
-                                      'Script name: {}\n'
-                                      'Script start time: {}\n'
-                                      'Instrument start time: {}\n'
-                                      'Instruments shutdown time: {}\n'.format(script_name,
-                                                                               script_time.strftime('%H:%M'),
-                                                                               self.on_time.strftime('%H:%M'),
-                                                                               self.off_time.strftime('%H:%M')))
+        # Check on second start-up/shut-down sequence
+        if self.use_second_shutdown:
+            if self.on_time_2 < self.off_time_2:
+                if script_time > self.on_time_2 and script_time <= self.off_time_2:
+                    return
+                elif self.on_time_2 > self.off_time_2:
+                    if script_time > self.on_time_2 or script_time < self.off_time_2:
+                        return
+                else:
+                    return
+
+        if self.use_second_shutdown:
+            mess = 'Script start time incompatible with instrument on/off time\n\n'\
+                   'Script name: {}\nScript start time: {}\n'\
+                   'Instrument start time: {}\nInstruments shutdown time: {}\nInstrument start time 2: {}\n' \
+                   'Instrument shutdown time 2: {}\n'.format(script_name, script_time.strftime('%H:%M'),
+                                                             self.on_time.strftime('%H:%M'),
+                                                             self.off_time.strftime('%H:%M'),
+                                                             self.on_time_2.strftime('%H:%M'),
+                                                             self.off_time_2.strftime('%H:%M'))
+        else:
+            mess = 'Script start time incompatible with instrument on/off time\n\n' \
+                   'Script name: {}\nScript start time: {}\nInstrument start time: {}\n' \
+                   'Instruments shutdown time: {}\n'.format(script_name, script_time.strftime('%H:%M'),
+                                                            self.on_time.strftime('%H:%M'),
+                                                            self.off_time.strftime('%H:%M'))
+
+        a = tk.messagebox.showwarning('Configuration incompatible', mess, parent=self.frame)
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
 
@@ -380,6 +472,7 @@ class InstrumentConfiguration:
                 'python3 {}'.format(self.dark_script), self.temp_script, 'python3 {}'.format(self.disk_space_script)]
 
         # Check time compatibility (only on scripts which have specific start times, not those run every x minutes)
+        self.check_second_shutdown()
         for i, script_name in enumerate([self.start_script, self.stop_script, self.dark_script]):
             self.check_script_time(times[i], script_name)
 
@@ -436,6 +529,16 @@ class InstrumentConfiguration:
         return datetime.datetime(year=2020, month=1, day=1, hour=self.off_hour, minute=self.off_min)
 
     @property
+    def on_time_2(self):
+        """Return datetime object of time to turn pi on. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.on_hour_2, minute=self.on_min_2)
+
+    @property
+    def off_time_2(self):
+        """Return datetime object of time to turn pi off. Date is not important, only time, so use arbitrary date"""
+        return datetime.datetime(year=2020, month=1, day=1, hour=self.off_hour_2, minute=self.off_min_2)
+
+    @property
     def start_capt_time(self):
         """Return datetime object of time to turn start acq. Date is not important, only time, so use arbitrary date"""
         return datetime.datetime(year=2020, month=1, day=1, hour=self.capt_start_hour, minute=self.capt_start_min)
@@ -481,6 +584,46 @@ class InstrumentConfiguration:
     @off_min.setter
     def off_min(self, value):
         self._off_min.set(value)
+
+    @property
+    def on_hour_2(self):
+        return self._on_hour_2.get()
+
+    @on_hour_2.setter
+    def on_hour_2(self, value):
+        self._on_hour_2.set(value)
+
+    @property
+    def on_min_2(self):
+        return self._on_min_2.get()
+
+    @on_min_2.setter
+    def on_min_2(self, value):
+        self._on_min_2.set(value)
+
+    @property
+    def off_hour_2(self):
+        return self._off_hour_2.get()
+
+    @off_hour_2.setter
+    def off_hour_2(self, value):
+        self._off_hour_2.set(value)
+
+    @property
+    def off_min_2(self):
+        return self._off_min_2.get()
+
+    @off_min_2.setter
+    def off_min_2(self, value):
+        self._off_min_2.set(value)
+
+    @property
+    def use_second_shutdown(self):
+        return self._use_second_shutdown.get()
+
+    @use_second_shutdown.setter
+    def use_second_shutdown(self, value):
+        self._use_second_shutdown.set(value)
 
     @property
     def capt_start_hour(self):
