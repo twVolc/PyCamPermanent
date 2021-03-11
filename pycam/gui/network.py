@@ -203,9 +203,15 @@ class InstrumentConfiguration:
         self._temp_logging = tk.IntVar()        # Temperature logging frequency (minutes)
         self._check_disk_space = tk.IntVar()    # Check disk space frequency (minutes)
 
-        on_time, off_time = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
+        on_time, off_time, on_time_2, off_time_2 = read_witty_schedule_file(FileLocator.SCHEDULE_FILE)
+        if None in on_time_2 or None in off_time_2:
+            self.use_second_shutdown = 0
+        else:
+            self.use_second_shutdown = 1
         self.on_hour, self.on_min = on_time
         self.off_hour, self.off_min = off_time
+        self.on_hour_2, self.on_min_2 = on_time_2
+        self.off_hour_2, self.off_min_2 = off_time_2
 
         # Read cronfile looking for defined scripts. ADD SCRIPT TO LIST HERE TO SEARCH FOR IT
         results = read_script_crontab(FileLocator.SCRIPT_SCHEDULE,
@@ -438,7 +444,11 @@ class InstrumentConfiguration:
     def update_on_off(self):
         """Controls updating start/stop time of pi"""
         # Write wittypi schedule file locally
-        write_witty_schedule_file(FileLocator.SCHEDULE_FILE, self.on_time, self.off_time)
+        if not self.use_second_shutdown:
+            write_witty_schedule_file(FileLocator.SCHEDULE_FILE, self.on_time, self.off_time)
+        else:
+            write_witty_schedule_file(FileLocator.SCHEDULE_FILE, self.on_time, self.off_time,
+                                      time_on_2=self.on_time_2, time_off_2=self.off_time_2)
 
         # Transfer file to instrument
         self.ftp.move_file_to_instrument(FileLocator.SCHEDULE_FILE, FileLocator.SCHEDULE_FILE_PI)
@@ -451,11 +461,20 @@ class InstrumentConfiguration:
         # print(std_err.readlines())
         close_ssh(ssh_cli)
 
-        a = tk.messagebox.showinfo('Instrument update',
-                                   'Updated instrument start-up/shut-down schedule:\n\n'
-                                   'Start-up: {} UTC\n''Shut-down: {} UTC'.format(self.on_time.strftime('%H:%M'),
-                                                                                  self.off_time.strftime('%H:%M')),
-                                   parent=self.frame)
+        if not self.use_second_shutdown:
+            a = tk.messagebox.showinfo('Instrument update',
+                                       'Updated instrument start-up/shut-down schedule:\n\n'
+                                       'Start-up:\t\t{} UTC\n''Shut-down:\t{} UTC'.format(self.on_time.strftime('%H:%M'),
+                                                                                      self.off_time.strftime('%H:%M')),
+                                       parent=self.frame)
+        else:
+            a = tk.messagebox.showinfo('Instrument update',
+                                       'Updated instrument start-up/shut-down schedule:\n\n'
+                                       'Start-up:\t\t{} UTC\n''Shut-down:\t{} UTC\n'
+                                       'Start-up 2:\t{} UTC\n''Shut-down 2:\t{} UTC\n'.format(
+                                           self.on_time.strftime('%H:%M'), self.off_time.strftime('%H:%M'),
+                                           self.on_time_2.strftime('%H:%M'), self.off_time_2.strftime('%H:%M')),
+                                       parent=self.frame)
 
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
@@ -591,6 +610,8 @@ class InstrumentConfiguration:
 
     @on_hour_2.setter
     def on_hour_2(self, value):
+        if value is None:
+            value = 0
         self._on_hour_2.set(value)
 
     @property
@@ -599,6 +620,8 @@ class InstrumentConfiguration:
 
     @on_min_2.setter
     def on_min_2(self, value):
+        if value is None:
+            value = 0
         self._on_min_2.set(value)
 
     @property
@@ -607,6 +630,8 @@ class InstrumentConfiguration:
 
     @off_hour_2.setter
     def off_hour_2(self, value):
+        if value is None:
+            value = 0
         self._off_hour_2.set(value)
 
     @property
@@ -615,6 +640,8 @@ class InstrumentConfiguration:
 
     @off_min_2.setter
     def off_min_2(self, value):
+        if value is None:
+            value = 0
         self._off_min_2.set(value)
 
     @property

@@ -346,7 +346,8 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
         else:
             # TODO time_off and time on are the same - we don't ever turn the pi off. Work out how to cancel script use
             # TODO on witty pi
-            pass
+            num_hours_on, num_mins_on = 24, 0
+            num_hours_off, num_mins_off = 0, 0
 
         with open(filename, 'w', newline='\n') as f:
             f.write('# Raspberry Pi start-up/shut-down schedule script\n')
@@ -363,16 +364,34 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
     else:
         # TODO create shcedule with 2 on and off times per day (we assume checks for validity of 2 schedules have already
         # TODO been confirmed
+        # Arrange time ons and time offs to be in consecutive order, starting with the earliest time on. The final time
+        # off might be later in the day or at the start of the next day (before the time on) so to account for this we
+        # need to find the time off that follows the first time on - this becomes time_stop_1 regardless of if it was
+        # initially time_off or time_off_2
         if time_on < time_on_2:
             time_start_1 = time_on
-            time_stop_1 = time_off
             time_start_2 = time_on_2
-            time_stop_2 = time_off_2
+            if time_off > time_on:
+                time_stop_1 = time_off
+                time_stop_2 = time_off_2
+            else:
+                time_stop_1 = time_off_2
+                time_stop_2 = time_off
         else:
             time_start_1 = time_on_2
-            time_stop_1 = time_off_2
             time_start_2 = time_on
-            time_stop_2 = time_off
+            if time_off_2 > time_on_2:
+                time_stop_1 = time_off_2
+                time_stop_2 = time_off
+            else:
+                time_stop_1 = time_off
+                time_stop_2 = time_off_2
+
+        # if time_start_1 < time_stop_1:
+        #     key_list = ['time_start_1', 'time_stop_1', 'time_start_2', 'time_stop_2']
+        #     str_list = ['ON', 'OFF', 'ON', 'OFF']
+        # elif time_start_1 > time_stop_1:
+        #     key_list =
 
         # Time_1 will always have to be time_on < time_off if valid, so easy to calculate first part
         time_delt_1 = time_stop_1 - time_start_1
@@ -405,13 +424,11 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
             f.write('# Raspberry Pi start-up/shut-down schedule script\n')
 
             # Add lines for quicker/easier access when reading file
-            f.write('# on_time={}\n'.format(time_start_1.strftime('%H:%M')))
-            f.write('# off_time={}\n'.format(time_stop_1.strftime('%H:%M')))
-            f.write('# on_time_2={}\n'.format(time_start_2.strftime('%H:%M')))
-            f.write('# off_time_2={}\n'.format(time_stop_2.strftime('%H:%M')))
+            f.write('# on_time={}\n'.format(time_on.strftime('%H:%M')))
+            f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
+            f.write('# on_time_2={}\n'.format(time_on_2.strftime('%H:%M')))
+            f.write('# off_time_2={}\n'.format(time_on_2.strftime('%H:%M')))
             f.write('BEGIN 2020-01-01 {}\n'.format(time_start_1.strftime(time_fmt)))
-            f.write('END 2038-01-01 12:00:00\n')
-            f.write('BEGIN 2020-01-01 {}\n'.format(time_on_str))
             f.write('END 2038-01-01 12:00:00\n')
             f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on_1, num_mins_on_1))
             f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off_1, num_mins_off_1))
@@ -421,6 +438,11 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
 
 def read_witty_schedule_file(filename):
     """Read witty schedule file"""
+    on_hour, on_min = None, None
+    off_hour, off_min = None, None
+    on_hour_2, on_min_2 = None, None
+    off_hour_2, off_min_2 = None, None
+
     with open(filename, 'r', newline='\n') as f:
         for line in f:
             if 'on_time=' in line:
@@ -429,8 +451,14 @@ def read_witty_schedule_file(filename):
             elif 'off_time=' in line:
                 off_time = line.split('=')[1].split('\n')[0]
                 off_hour, off_min = [int(x) for x in off_time.split(':')]
+            elif 'on_time_2=' in line:
+                on_time_2 = line.split('=')[1].split('\n')[0]
+                on_hour_2, on_min_2 = [int(x) for x in on_time_2.split(':')]
+            elif 'off_time_2=' in line:
+                off_time_2 = line.split('=')[1].split('\n')[0]
+                off_hour_2, off_min_2 = [int(x) for x in off_time_2.split(':')]
     try:
-        return (on_hour, on_min), (off_hour, off_min)
+        return (on_hour, on_min), (off_hour, off_min), (on_hour_2, on_min_2), (off_hour_2, off_min_2)
     except AttributeError:
         print('File not in expected format to retrieve start-up/shut-down information for instrument')
 

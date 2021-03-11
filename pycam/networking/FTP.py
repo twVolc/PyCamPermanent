@@ -207,7 +207,7 @@ class FTPClient:
             self.connection.cwd(self.dir_data_remote)
             print('Got FTP connection from {}. File transfer now available.'.format(ip))
             return True
-        except ftplib.all_errors as e:
+        except BaseException as e:
             print('FTP connection encountered error - file transfer is inactive')
             print(e)
             return False
@@ -220,7 +220,7 @@ class FTPClient:
         """Tests connection is still active, and if not it attempts to reconnect. If not possible, it returns False"""
         try:
             self.connection.voidcmd('NOOP')
-        except (ftplib.all_errors, AttributeError):
+        except BaseException as e:
             conn = self.open_connection(self.host_ip, username=self.user, password=self.pwd)
             return conn
         return True
