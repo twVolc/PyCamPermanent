@@ -53,3 +53,6 @@ Requirements for GUI:
 > scipy
 >
 > scikit-image
+> 
+> If using iFit for spectrometer analysis must clone iFit repo from https://github.com/benjaminesse/iFit. Clone to pycam/doas folder
+> tqdm (for ifit)

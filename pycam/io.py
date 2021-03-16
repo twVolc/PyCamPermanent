@@ -80,11 +80,14 @@ def spec_txt_2_npy(directory):
     txt_files = [f for f in os.listdir(directory) if '.txt' in f]
 
     for file in txt_files:
-        spec = np.loadtxt(directory + file)
-        wavelengths = spec[:, 0]
-        spectrum = spec[:, 1]
+        try:
+            spec = np.loadtxt(directory + file)
+            wavelengths = spec[:, 0]
+            spectrum = spec[:, 1]
 
-        save_spectrum(wavelengths, spectrum, directory + file.replace('txt', 'npy'))
+            save_spectrum(wavelengths, spectrum, directory + file.replace('txt', 'npy'))
+        except BaseException:
+            print('Error converting {} from .txt to .npy. It may not be in the expected format'.format(file))
 
 
 def save_pcs_line(line, filename):
