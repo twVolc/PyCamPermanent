@@ -9,7 +9,7 @@ from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg,
     opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, calibration_wind, instrument_cfg, \
     temp_log
 from pycam.gui.misc import About, LoadSaveProcessingSettings
-from pycam.io import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
+from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker

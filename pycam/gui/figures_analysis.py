@@ -11,7 +11,7 @@ from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line
-from pycam.io import save_pcs_line, load_pcs_line
+from pycam.io_py import save_pcs_line, load_pcs_line
 
 from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask, shifted_color_map

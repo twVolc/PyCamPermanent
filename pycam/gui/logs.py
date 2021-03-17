@@ -3,7 +3,7 @@
 """This file contains classes that display log data, e.g. temperature, in frames"""
 
 from pycam.setupclasses import FileLocator
-from pycam.io import read_temp_log
+from pycam.io_py import read_temp_log
 from pycam.gui.cfg import fig_face_colour, axes_colour
 
 import tkinter as tk

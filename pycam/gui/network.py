@@ -5,7 +5,7 @@
 import pycam.gui.cfg as cfg
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.io import write_witty_schedule_file, read_witty_schedule_file, write_script_crontab, read_script_crontab
+from pycam.io_py import write_witty_schedule_file, read_witty_schedule_file, write_script_crontab, read_script_crontab
 
 import tkinter as tk
 import tkinter.ttk as ttk

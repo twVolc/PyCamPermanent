@@ -11,6 +11,7 @@ import queue
 import datetime
 
 from pycam.doas.doas_worker import DOASWorker
+from pycam.doas.ifit_worker import IFitWorker
 from pycam.doas.cfg import doas_worker, species
 from pycam.gui.cfg import gui_setts
 # from acquisition_gui import AcquisitionFrame
@@ -270,7 +271,8 @@ class DOASPlot:
     """
     Generates a widget containing the DOAS fit plot
     """
-    def __init__(self, root, frame, figsize=(10, 3), species='SO2'):
+    def __init__(self, gui, root, frame, figsize=(10, 3), species='SO2'):
+        self.gui = gui
         self.root = root
 
         self.doas_worker = doas_worker
@@ -327,6 +329,12 @@ class DOASPlot:
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
 
+        # If we are working with ifit we don't have these options - it does it automatically
+        if isinstance(self.doas_worker, IFitWorker):
+            self.shift_box.configure(state=tk.DISABLED)
+            self.shift_tol_box.configure(state=tk.DISABLED)
+            self.stretch_box.configure(state=tk.DISABLED)
+
         # Save button
         self.save_butt = ttk.Button(self.frame2, text='Save spectra', command=self.save_spectra)
         self.save_butt.pack(side=tk.RIGHT, anchor='e')
@@ -335,7 +343,9 @@ class DOASPlot:
         # Tabbed figure setup for all species and residual
         # ----------------------------------------------------------------
         # Setup up tab wideget for each species
-        self.tabs = ttk.Notebook(self.frame)
+        style = self.gui.style
+        style.configure('One.TNotebook.Tab', **self.gui.layout_old[0][1])
+        self.tabs = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
         self.tabs.bind('<Button-1>', self.__update_tab__)
         self.species_tabs = dict()
         self.species_tabs['Total'] = ttk.Frame(self.tabs, borderwidth=2)
@@ -475,7 +485,13 @@ class DOASFigure:
         self.fig = plt.Figure(figsize=self.figsize, dpi=self.dpi)
 
         self.ax = self.fig.subplots(1, 1)
-        self.ax.set_ylabel('Absorbance')
+        if isinstance(self.doas_worker, DOASWorker):
+            self.ax.set_ylabel('Absorbance')
+        else:
+            if self.species == 'Total':
+                self.ax.set_ylabel('Intensity')
+            else:
+                self.ax.set_ylabel('Optical depth')
         self.ax.set_ylim([-0.2, 0.2])
         self.ax.set_xlim([self.doas_worker.start_fit_wave, self.doas_worker.end_fit_wave])
         self.ax.set_xlabel('Wavelength [nm]')
@@ -483,7 +499,11 @@ class DOASFigure:
         self.plt_colours = ['b', 'r']
         for i in range(2):
             self.ax.plot([250, 400], [0, 0], self.plt_colours[i], linewidth=1)
-        self.ax.legend(('Measured', 'Fitted reference'), loc=1, framealpha=1)
+        if isinstance(self.doas_worker, IFitWorker) and self.species == 'Total':
+            leg_loc = 2
+        else:
+            leg_loc = 1
+        self.ax.legend(('Measured', 'Fitted reference'), loc=leg_loc, framealpha=1)
         self.ax.set_title('SO2 Column density [ppm.m]: N/A          STD Error: N/A')
         self.fig.tight_layout()
 
@@ -502,18 +522,37 @@ class DOASFigure:
 
         # Set axis limits
         self.ax.set_xlim([self.doas_worker.wavelengths_cut[0], self.doas_worker.wavelengths_cut[-1]])
-        ylims = np.amax(np.absolute(self.doas_worker.abs_spec_species[self.species]))
-        ylims *= 1.15
-        if ylims == 0:
-            ylims = 0.05
-        self.ax.set_ylim([-ylims, ylims])
-        self.ax.set_title('SO2 Column density [ppm.m]: {}          STD Error: {}'.format(
-            self.doas_worker.column_density['SO2'], self.doas_worker.std_err))
+
+        # ylims depends on if we have filtered absorbance (DOAS) or ifit (shouldn't have OD < 0)
+        if isinstance(self.doas_worker, DOASWorker):
+            ylim = np.amax(np.absolute(self.doas_worker.abs_spec_species[self.species]))
+            ylim *= 1.15
+            if ylim == 0:
+                ylim = 0.05
+            ylims = [-ylim, ylim]
+        elif isinstance(self.doas_worker, IFitWorker):
+            if self.species != 'residual':
+                ylims = [np.amin(self.doas_worker.ref_spec_fit[self.species]) * 0.95,
+                         np.amax(self.doas_worker.ref_spec_fit[self.species]) * 1.05]
+            else:
+                ylims = [np.amin(self.doas_worker.abs_spec_species[self.species]) * 0.95,
+                         np.amax(self.doas_worker.abs_spec_species[self.species]) * 1.05]
+        self.ax.set_ylim(ylims)
+
+        if isinstance(self.doas_worker, DOASWorker):
+            self.ax.set_title('SO2 Column density [ppm.m]: {}          STD Error: {}'.format(
+                self.doas_worker.column_density['SO2'], self.doas_worker.std_err))
+        elif isinstance(self.doas_worker, IFitWorker):
+            if self.species != 'Total' and self.species != 'residual':
+                self.ax.set_title('{} Column density [cm-2]: {}          STD Error: {}'.format(self.species,
+                    self.doas_worker.column_density[self.species], self.doas_worker.fit_errs[self.species]))
+            else:
+                self.ax.set_title(self.species)
 
 
-class ScatterCDs:
+class CDSeries:
     """
-    Generates scatter plot of column density vs apparent absorbances
+    Generates time series of SO2 columns densities from spectrometer
     """
     def __init__(self):
         pass
@@ -529,7 +568,7 @@ class CalibrationWindow:
         self.ref_frame = dict()
         for spec in species:
             species_id = 'ref_spec_{}'.format(spec)
-            self.ref_frame[spec] = RefPlot(ref_spec_path=species[spec], species=spec, doas_work=doas_worker,
+            self.ref_frame[spec] = RefPlot(ref_spec_path=species[spec]['path'], species=spec, doas_work=doas_worker,
                                            fig_setts=fig_setts)
 
         self.ils_frame = ILSFrame(doas_work=doas_worker, fig_setts=fig_setts)
@@ -545,6 +584,7 @@ class CalibrationWindow:
         # Reference spectra
         self.ref_spec_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=4)
         self.ref_spec_frame.pack(side=tk.LEFT, anchor='nw')
+        # TODO turn this into a notepad rather than packing frame by frame
         for frame in self.ref_frame:
             self.ref_frame[frame].__setup_gui__(self.ref_spec_frame)
             self.ref_frame[frame].frame.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, padx=5, pady=5)
@@ -956,8 +996,7 @@ class ILSFrame:
         self.save_path = self.ILS_path.rsplit('\\', 1)[0].rsplit('/', 1)[0]
 
         # Extract data
-        data = np.loadtxt(self.ILS_path)
-        self.doas_worker.ILS_wavelengths, self.doas_worker.ILS = data.T
+        self.doas_worker.load_ils(self.ILS_path)
 
         # Only update frame if we have a frame setup
         if self.in_frame:
@@ -999,6 +1038,10 @@ class ILSFrame:
 
         # Extract wavelengths then set to start at 0 nm
         self.doas_worker.ILS_wavelengths = self.doas_worker.wavelengths[start_idx:end_idx] - self.doas_worker.wavelengths[start_idx]
+
+        # Need to update the ifit analyser if we are using this
+        if isinstance(self.doas_worker, IFitWorker):
+            self.doas_worker.update_ils()
 
         # Update ILS plot
         self.update_ILS_plot()

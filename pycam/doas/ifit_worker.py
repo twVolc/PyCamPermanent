@@ -14,19 +14,21 @@ import threading
 from itertools import compress
 from tkinter import filedialog
 from astropy.convolution import convolve
+from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import GridSpec
 import sys
 import os
 # Make it possible to import iFit by updating path
 dir_path = os.path.dirname(os.path.realpath(__file__))
+dir_path = os.path.split(dir_path)[0]
 sys.path.append(os.path.join(dir_path, 'ifit'))
 
 from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs
-from pycam.io import load_spectrum, spec_txt_2_npy
-from ifit.parameters import Parameters
-from ifit.spectral_analysis import Analyser
+from pycam.io_py import load_spectrum, spec_txt_2_npy
+from pycam.iFit.ifit.parameters import Parameters
+from pycam.iFit.ifit.spectral_analysis import Analyser
 from pydoas.analysis import DoasResults
 
 try:
@@ -46,13 +48,11 @@ class IFitWorker:
 
     :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
-    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), spec_dir='C:\\', dark_dir=None,
-                 q_doas=queue.Queue(), frs_path='./ifit/Ref/sao2010.txt', ref_paths={}):
+    def __init__(self, routine=2, species={'SO2': {'path': '', 'value': 0}}, spec_specs=SpecSpecs(), spec_dir='C:\\',
+                 dark_dir=None, q_doas=queue.Queue(), frs_path='./ifit/Ref/sao2010.txt'):
         self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
 
         self.spec_specs = spec_specs    # Spectrometer specifications
-
-
 
         # ======================================================================================================================
         # Initial Definitions
@@ -97,7 +97,7 @@ class IFitWorker:
         self.ref_spec_filter = dict()   # Filtered reference spectrum
         self.ref_spec_fit = dict()      # Ref spectrum scaled by ppmm (for plotting)
         self.ref_spec_types = ['SO2', 'O3', 'Ring'] # List of reference spectra types accepted/expected
-        self.ref_spec_used = species    # Reference spectra we actually want to use at this time (similar to ref_spec_types - perhaps one is obsolete (or should be!)
+        self.ref_spec_used = list(species.keys())   # Reference spectra we actually want to use at this time (similar to ref_spec_types - perhaps one is obsolete (or should be!)
         self.abs_spec = None
         self.abs_spec_cut = None
         self.abs_spec_filt = None
@@ -118,6 +118,7 @@ class IFitWorker:
         self.mse_vals = np.zeros(len(self.vals_ca))  # Array to hold mse values
 
         self.std_err = None
+        self.fit_errs = dict()
         self.column_density = dict()
 
         self.filetypes = dict(defaultextension='.png', filetypes=[('PNG', '*.png')])
@@ -163,18 +164,16 @@ class IFitWorker:
         # iFit setup
         # ==============================================================================================================
         self.frs_path = frs_path
-        self.ref_spec_types = list(ref_paths.keys())
+        self.ref_spec_used = list(species.keys())
 
 
         # Create parameter dictionary
         self.params = Parameters()
 
         # Add the gases
-        for species in ref_paths:
-            self.params.add(species, value=ref_paths[species]['value'], vary=True, xpath=ref_paths[species]['path'])
-
-            # Load reference spectrum
-            self.load_ref_spec(ref_paths[species]['path'], species)
+        for spec in species:
+            # Load reference spectrum (this adds to self.params too
+            self.load_ref_spec(species[spec]['path'], spec, value=species[spec]['value'], update=False)
 
 
         # Add background polynomial parameters
@@ -312,20 +311,6 @@ class IFitWorker:
         # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
         self.ref_convolved = False
 
-    def load_ils(self, path):
-        """Load ils from path"""
-        self.analyser = Analyser(params=self.params,
-                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
-                                 frs_path=self.frs_path,
-                                 stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
-                                 dark_flag=False,
-                                 ils_type='File',
-                                 ils_path=path)
-
-        self.ils_path = path
-
-        # Load ILS
-        self.ILS_wavelengths, self.ILS = np.loadtxt(ils_path, unpack=True)
     # -------------------------------------------
 
     def get_spec_time(self, filename):
@@ -373,9 +358,17 @@ class IFitWorker:
             self.plume_spec_corr[self.plume_spec_corr < 0] = 0
             self.stray_corrected_plume = True
 
-    def load_ref_spec(self, pathname, species):
-        """Load raw reference spectrum"""
+    def load_ref_spec(self, pathname, species, value=0, update=True):
+        """
+        Load raw reference spectrum
+        :param update:  bool    If False the analyser isn't updated (just use False when initiating object)
+        """
         self.ref_spec[species] = np.loadtxt(pathname)
+
+        # Add spectrum to params for ifit
+        self.params.add(species, value=value, vary=True, xpath=pathname)
+        if update:
+            self.update_analyser()
 
         # Remove un-needed data above 400 nm, which may slow down processing
         idxs = np.where(self.ref_spec[species][:, 0] > 400)
@@ -601,30 +594,6 @@ class IFitWorker:
                    header='Raw in-plume spectrum\n'
                           '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
-    def gen_abs_specs(self):
-        """
-        Generate absorbance spectra for individual species and match to measured absorbance
-        :return:
-        """
-        # Iterate through reference spectra
-        for spec in self.ref_spec_used:
-
-            # Retrieve all ref spectra other than that held in spec
-            other_species = [f for f in self.ref_spec_used if f is not spec]
-
-            # Subtract contributions of these other spectra to absorption
-            self.abs_spec_species[spec] = self.abs_spec_cut
-            for i in other_species:
-                self.abs_spec_species[spec] = self.abs_spec_species[spec] - self.ref_spec_fit[i]
-
-        # Setup total absorbance spectrum as 'Total' key
-        self.abs_spec_species['Total'] = self.abs_spec_cut
-
-        # Calculate final residual by subtracting all absorbing species
-        self.abs_spec_species['residual'] = self.abs_spec_cut
-        for spec in self.ref_spec_used:
-            self.abs_spec_species['residual'] = self.abs_spec_species['residual'] - self.ref_spec_fit[spec]
-
     def process_doas(self):
         """Handles the order of DOAS processing"""
         # Check we have all of the correct spectra to perform processing
@@ -639,11 +608,6 @@ class IFitWorker:
             self.start_stray_wave = self.start_stray_wave
             self.end_stray_wave = self.end_stray_wave
 
-        # Same for fit window
-        if self._start_fit_pix is None or self._end_fit_pix is None:
-            self.start_fit_wave = self.start_fit_wave
-            self.end_fit_wave = self.end_fit_wave
-
         if not self.dark_corrected_plume:
             if self.dark_spec is None:
                 print('Warning! No dark spectrum present, processing without dark subtraction')
@@ -657,23 +621,22 @@ class IFitWorker:
         if not self.stray_corrected_plume:
             self.stray_corr_spectra()
 
-        # Convolve reference spectrum with the instrument lineshape
-        # TODO COnfirm this still works - prior to the shift_tol incorporation these lines came AFTER self.set_fit_windows()
-        # TODO I think it won't make a difference as they aren't directly related. But I should confirm this
-        # if not self.ref_convolved:
-        #     self.conv_ref_spec()
-
         # Run processing
-        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_types)
+        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used)
 
         # Unpack results
-        for species in self.ref_spec_types:
+        for species in self.ref_spec_used:
             self.column_density[species] = fit.params[species].fit_val
             self.abs_spec_species[species] = fit.meas_od[species]
             self.ref_spec_fit[species] = fit.synth_od[species]
+            self.fit_errs[species] = fit.params[species].fit_err
         self.abs_spec_species['Total'] = fit.fit
+        self.ref_spec_fit['Total'] = fit.spec
         self.abs_spec_species['residual'] = fit.resid
         self.std_err = fit.params['SO2'].fit_err   # RMSE from residual
+
+        # Update wavelengths
+        self.wavelengths_cut = fit.grid
 
         # Set flag defining that data has been fully processed
         self.processed_data = True
@@ -719,16 +682,8 @@ class IFitWorker:
         Also controls removal of old doas points, if we wish to
         :param doas_dict:   dict       Containing at least keys 'column_density' and 'time'
         """
-        # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
-        # case). So then we need to convert to molecules/cm
-        # TODO looks like this function doesn't check if the std_err is present. The KeyError at the bottom I think
-        # TODO is wrong as the try clause doesn't have a key. Probably need to catch this in the if statements
-        if abs(doas_dict['column_density']) < 100000:
-            cd = doas_dict['column_density'] * self.ppmm_conv
-            cd_err = doas_dict['std_err'] * self.ppmm_conv
-        else:
-            cd = doas_dict['column_density']
-            cd_err = doas_dict['std_err']
+        cd = doas_dict['column_density']['SO2']
+        cd_err = doas_dict['std_err']
 
         # Faster append method - seems to work
         self.results.loc[doas_dict['time']] = cd
@@ -769,18 +724,17 @@ class IFitWorker:
         """
         # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
         # case). So then we need to convert to molecules/cm
-        if abs(np.mean(column_densities)) < 100000:
-            column_densities = column_densities * self.ppmm_conv
-            if stds is not None:
-                stds = stds * self.ppmm_conv
         doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 
-    def start_processing_threadless(self):
+    def start_processing_threadless(self, spec_dir=None):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop
         function can update the plots wihtout going through the main thread in PyplisWorker
         """
+        if spec_dir is not None:
+            self.spec_dir = spec_dir
+
         # Flag that we are running processing outside of thread
         self.processing_in_thread = False
 
@@ -799,9 +753,9 @@ class IFitWorker:
 
         # Loop through all files and add them to queue
         for file in clear_spec:
-            self.q_spec.put(self.spec_dir + file)
+            self.q_spec.put(os.path.join(self.spec_dir, file))
         for file in plume_spec:
-            self.q_spec.put(self.spec_dir + file)
+            self.q_spec.put(os.path.join(self.spec_dir, file))
 
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
         self.q_spec.put('exit')
@@ -827,8 +781,6 @@ class IFitWorker:
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
         ss_str = self.spec_specs.file_ss.replace('{}', '')
 
-        first_spec = True       # First spectrum is used as clear spectrum
-
         while True:
             # Blocking wait for new file
             pathname = self.q_spec.get(block=True)
@@ -838,7 +790,7 @@ class IFitWorker:
                 break
 
             # Extract filename and create datetime object of spectrum time
-            filename = pathname.split('\\')[-1].split('/')[-1]
+            filename = os.path.split(pathname)[-1]
             spec_time = self.get_spec_time(filename)
 
             # Extract shutter speed
@@ -875,18 +827,15 @@ class IFitWorker:
             # Or if we are not in a processing thread we update the plots directly here
             # else:
             # TODO check this works, but I think I can update whether processing_in_thread or not - always do it here?
-            self.fig_spec.update_dark()
-            if first_spec:
-                self.fig_spec.update_clear()
-            else:
+            if self.fig_spec is not None:
+                self.fig_spec.update_dark()
                 self.fig_spec.update_plume()
 
-                # Update doas plot
+            # Update doas plot
+            if self.fig_doas is not None:
                 self.fig_doas.update_plot()
 
-            if first_spec:
-                # Now that we have processed first_spec, set flag to False
-                first_spec = False
+            print('Processed file: {}'.format(filename))
 
     def start_watching(self, directory):
         """
@@ -942,9 +891,32 @@ class IFitWorker:
         else:
             self.analyser = Analyser(params=self.params,
                                      fit_window=[self.start_fit_wave, self.end_fit_wave],
-                                     frs_path=frs_path,
+                                     frs_path=self.frs_path,
                                      stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                      dark_flag=False)
+
+    def load_ils(self, ils_path):
+        """Load ils from path"""
+        self.analyser = Analyser(params=self.params,
+                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                 frs_path=self.frs_path,
+                                 stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                                 dark_flag=False,
+                                 ils_type='File',
+                                 ils_path=ils_path)
+
+        self.ils_path = ils_path
+
+        # Load ILS
+        self.ILS_wavelengths, self.ILS = np.loadtxt(ils_path, unpack=True)
+
+    def update_ils(self):
+        """Updates ILS in Analyser object for iFit (code taken from __init__ of Analyser, this should work..."""
+        grid_ils = np.arange(self.ILS_wavelengths[0], self.ILS_wavelengths[-1], self.analyser.model_spacing)
+        ils = griddata(self.ILS_wavelengths, self.ILS, grid_ils, 'cubic')
+        self.analyser.ils = ils / np.sum(ils)
+        self.analyser.generate_ils = False
+    # ==================================================================================================================
 
 
 class SpectraError(Exception):
@@ -958,17 +930,22 @@ if __name__ == '__main__':
     # Calibration paths
     ils_path = './calibration/2019-07-03_302nm_ILS.txt'
     # ils_path = './calibration/2019-07-03_313nm_ILS.txt'
-    frs_path = './ifit/Ref/sao2010.txt'
-    ref_paths = {'SO2': {'path': './ifit/Ref/SO2_293K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
-                 'O3': {'path': './ifit/Ref/O3_223K.txt', 'value': 1.0e19},
-                 'Ring': {'path': './ifit/Ref/Ring.txt', 'value': 0.1}
+    frs_path = '../ifit/Ref/sao2010.txt'
+    ref_paths = {'SO2': {'path': '../iFit/Ref/SO2_295K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
+                 'O3': {'path': '../iFit/Ref/O3_223K.txt', 'value': 1.0e19},
+                 'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
                  }
+
+    ref_paths = {'SO2': {'path': 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Vandaele (2009) x-section in wavelength.txt', 'value': 1.0e16},
+    'O3': {'path':     'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Serdyuchenko_O3_223K.txt', 'value': 1.0e19},
+    'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
+    }
 
     # Spectra path
     spec_path = 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Spectra\\test_data'
 
     # Create ifit object
-    ifit_worker = IFitWorker(frs_path=frs_path, ref_paths=ref_paths, dark_dir=spec_path)
+    ifit_worker = IFitWorker(frs_path=frs_path, species=ref_paths, dark_dir=spec_path)
     ifit_worker.load_ils(ils_path)  # Load ILS
 
     # Update fit wavelengths
@@ -977,6 +954,7 @@ if __name__ == '__main__':
 
     # Process directory
     ifit_worker.process_dir(spec_dir=spec_path)
+    # ifit_worker.start_processing_threadless(spec_dir=spec_path)
 
     # ------------
     # Plotting

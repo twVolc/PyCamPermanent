@@ -60,7 +60,8 @@ class CameraWind:
 
 class SpecWind:
     """Window for viewing spectrometer measurements and assciated DOAS retrievals"""
-    def __init__(self, root, parent, name='Spectrometer'):
+    def __init__(self, gui, root, parent, name='Spectrometer'):
+        self.gui = gui
         self.root = root
         self.parent = parent
         self.name = name
@@ -91,7 +92,7 @@ class SpecWind:
         self.plt_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
 
         # DOAS frame and spectrum frame
-        self.doas_frame = DOASPlot(self.root, self.plt_frame, species=doas_worker.ref_spec_used)
+        self.doas_frame = DOASPlot(self.gui, self.root, self.plt_frame, species=doas_worker.ref_spec_used)
         self.spec_frame = SpectraPlot(self.root, self.plt_frame, self.doas_frame)
         self.spec_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
         self.doas_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)

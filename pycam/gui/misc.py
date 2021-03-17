@@ -46,8 +46,8 @@ class Indicator:
         """Initates class - only to be done after tk is running, otherwise an error is thrown"""
         self.font = font.Font(family='Helvetica', size=10, weight='bold')
 
-        self.img_on = ImageTk.PhotoImage(Image.open('./icons/green-led.png').resize(self.size, Image.ANTIALIAS))
-        self.img_off = ImageTk.PhotoImage(Image.open('./icons/red-led.png').resize(self.size, Image.ANTIALIAS))
+        self.img_on = ImageTk.PhotoImage(Image.open(FileLocator.GREEN_LED).resize(self.size, Image.ANTIALIAS))
+        self.img_off = ImageTk.PhotoImage(Image.open(FileLocator.RED_LED).resize(self.size, Image.ANTIALIAS))
 
     def generate_indicator(self, frame):
         """Generates a new widget"""

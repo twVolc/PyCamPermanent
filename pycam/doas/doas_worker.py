@@ -3,7 +3,7 @@
 # Main Subroutine which processes images according to the DOAS retrieval method.
 
 from pycam.setupclasses import SpecSpecs
-from pycam.io import load_spectrum, save_spectrum
+from pycam.io_py import load_spectrum, save_spectrum
 from pycam.directory_watcher import create_dir_watcher
 import pyplis
 from pydoas.analysis import DoasResults
@@ -31,6 +31,7 @@ except BaseException:
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 
+
 class DOASWorker:
     """
     Class to control DOAS processing
@@ -42,11 +43,17 @@ class DOASWorker:
 
     :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
-    def __init__(self, routine=2, species=['SO2'], spec_specs=SpecSpecs(), spec_dir='C:\\', dark_dir=None,
+    def __init__(self, routine=2, species={'SO2': {'path': '', 'value': 0}}, spec_specs=SpecSpecs(), spec_dir='C:\\', dark_dir=None,
                  q_doas=queue.Queue()):
         self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
 
         self.spec_specs = spec_specs    # Spectrometer specifications
+
+        # Reformat species dictionary (new format based on changes made in IFitWorker)
+        spec_dict = {}
+        for spec in species:
+            spec_dict[spec] = species[spec]['path']
+        spec_types = list(spec_dict.keys())
 
         # ======================================================================================================================
         # Initial Definitions
@@ -91,13 +98,15 @@ class DOASWorker:
         self.ref_spec_filter = dict()   # Filtered reference spectrum
         self.ref_spec_fit = dict()      # Ref spectrum scaled by ppmm (for plotting)
         self.ref_spec_types = ['SO2', 'O3', 'ring'] # List of reference spectra types accepted/expected
-        self.ref_spec_used  = species    # Reference spectra we actually want to use at this time (similar to ref_spec_types - perhaps one is obsolete (or should be!)
+        self.ref_spec_used = spec_types    # Reference spectra we actually want to use at this time (similar to ref_spec_types - perhaps one is obsolete (or should be!)
+        self.ref_spec_dict = spec_dict
         self.abs_spec = None
         self.abs_spec_cut = None
         self.abs_spec_filt = None
         self.abs_spec_species = dict()  # Dictionary of absorbances isolated for individual species
         self.ILS_wavelengths = None     # Wavelengths for ILS
         self._ILS = None                 # Instrument line shape (will be a numpy array)
+        self.ILS_path = None
         self.processed_data = False     # Bool to define if object has processed DOAS yet - will become true once process_doas() is run
 
         self.poly_order = 2  # Order of polynomial used to fit residual
@@ -265,6 +274,12 @@ class DOASWorker:
 
         # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
         self.ref_convolved = False
+
+    def load_ils(self, ils_path):
+        """Loads ILS from txt file"""
+        data = np.loadtxt(ils_path)
+        self.ILS_path = ils_path
+        self.ILS_wavelengths, self.ILS = data.T
     # -------------------------------------------
 
     def get_spec_time(self, filename):
@@ -318,7 +333,7 @@ class DOASWorker:
 
         # Remove un-needed data above 400 nm, which may slow down processing
         idxs = np.where(self.ref_spec[species][:, 0] > 400)
-        if len(idxs) > 0:
+        if len(idxs[0]) > 0:
             self.ref_spec[species] = self.ref_spec[species][:np.min(idxs), :]
 
         # Assume we have loaded a new spectrum, so set this to False - ILS has not been convolved yet
@@ -774,14 +789,9 @@ class DOASWorker:
         Also controls removal of old doas points, if we wish to
         :param doas_dict:   dict       Containing at least keys 'column_density' and 'time'
         """
-        # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
-        # case). So then we need to convert to molecules/cm
-        if abs(doas_dict['column_density']) < 100000:
-            cd = doas_dict['column_density'] * self.ppmm_conv
-            cd_err = doas_dict['std_err'] * self.ppmm_conv
-        else:
-            cd = doas_dict['column_density']
-            cd_err = doas_dict['std_err']
+        # Results should always be in molecules/cm2
+        cd = doas_dict['column_density']['SO2']
+        cd_err = doas_dict['std_err']
 
         # Faster append method - seems to work
         self.results.loc[doas_dict['time']] = cd
@@ -820,12 +830,6 @@ class DOASWorker:
         :param stds:    arraylike           Standard errors in the column density values
         :param species: str                 Gas species
         """
-        # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
-        # case). So then we need to convert to molecules/cm
-        if abs(np.mean(column_densities)) < 100000:
-            column_densities = column_densities * self.ppmm_conv
-            if stds is not None:
-                stds = stds * self.ppmm_conv
         doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 

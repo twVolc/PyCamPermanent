@@ -62,10 +62,14 @@ class FileLocator:
     REMOVED_FILES_LOG_PI = LOG_PATH_PI + REMOVED_FILES_LOG
     REMOVED_FILES_LOG_WINDOWS = LOG_PATH_WINDOWS + REMOVED_FILES_LOG
 
+    # Images
+    GREEN_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/green-led.png'
+    RED_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/red-led.png'
+
 
     # GUI
-    GUI_SETTINGS = './gui_settings.txt'
-    GUI_SETTINGS_DEFAULT = './gui_settings_default.txt'
+    GUI_SETTINGS = './gui/gui_settings.txt'
+    GUI_SETTINGS_DEFAULT = './gui/gui_settings_default.txt'
 
     CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file

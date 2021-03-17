@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
-from pycam.io import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
+from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
 from pycam.directory_watcher import create_dir_watcher
 
 import pyplis
