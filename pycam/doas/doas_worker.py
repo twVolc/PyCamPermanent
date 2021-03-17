@@ -926,8 +926,8 @@ class DOASWorker:
                                   'dark': self.dark_spec,           # Dark spectrum used (raw)
                                   'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
                                   'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
-                                  'abs': self.abs_spec_cut,         # Absorption spectrum
-                                  'ref': self.abs_spec_species,     # Reference spectra (scaled)
+                                  'abs': self.abs_spec_species,         # Absorption spectrum
+                                  'ref': self.ref_spec_fit,     # Reference spectra (scaled)
                                   'std_err': self.std_err,          # Standard error of fit
                                   'column_density': self.column_density}    # Column density
 

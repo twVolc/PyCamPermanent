@@ -10,13 +10,12 @@ This work may also allow light dilution correction following Varnam 2021
 import queue
 import numpy as np
 import datetime
-import warnings
 import threading
-import copy
-import os
 from itertools import compress
 from tkinter import filedialog
 from astropy.convolution import convolve
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import GridSpec
 import sys
 import os
 # Make it possible to import iFit by updating path
@@ -105,6 +104,7 @@ class IFitWorker:
         self.abs_spec_species = dict()  # Dictionary of absorbances isolated for individual species
         self.ILS_wavelengths = None     # Wavelengths for ILS
         self._ILS = None                 # Instrument line shape (will be a numpy array)
+        self.ils_path = None
         self.processed_data = False     # Bool to define if object has processed DOAS yet - will become true once process_doas() is run
 
         self.poly_order = 2  # Order of polynomial used to fit residual
@@ -192,7 +192,7 @@ class IFitWorker:
 
         # Setup ifit analyser (we will stray correct ourselves
         self.analyser = Analyser(params=self.params,
-                                 fit_window=[self.start_fit_wave, self.end_stray_wave],
+                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
                                  frs_path=frs_path,
                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
@@ -233,6 +233,7 @@ class IFitWorker:
     @start_fit_wave.setter
     def start_fit_wave(self, value):
         self._start_fit_wave = value
+        self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
         if self.wavelengths is not None:
@@ -245,6 +246,7 @@ class IFitWorker:
     @end_fit_wave.setter
     def end_fit_wave(self, value):
         self._end_fit_wave = value
+        self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
         if self.wavelengths is not None:
@@ -313,12 +315,14 @@ class IFitWorker:
     def load_ils(self, path):
         """Load ils from path"""
         self.analyser = Analyser(params=self.params,
-                                 fit_window=[self.start_fit_wave, self.end_stray_wave],
+                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
                                  frs_path=self.frs_path,
                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                  dark_flag=False,
                                  ils_type='File',
                                  ils_path=path)
+
+        self.ils_path = path
 
         # Load ILS
         self.ILS_wavelengths, self.ILS = np.loadtxt(ils_path, unpack=True)
@@ -343,7 +347,7 @@ class IFitWorker:
 
     def dark_corr_spectra(self):
         """Subtract dark spectrum from spectra"""
-        if not self.dark_corrected_clear:
+        if not self.dark_corrected_clear and self.clear_spec_raw is not None:
             self.clear_spec_corr = self.clear_spec_raw - self.dark_spec
             self.clear_spec_corr[self.clear_spec_corr < 0] = 0
             self.dark_corrected_clear = True
@@ -357,6 +361,11 @@ class IFitWorker:
         """Correct spectra for stray light - spectra are assumed to be dark-corrected prior to running this function"""
         # Set the range of stray pixels
         stray_range = np.arange(self._start_stray_pix, self._end_stray_pix + 1)
+
+        if not self.stray_corrected_clear and self.clear_spec_corr is not None:
+            self.clear_spec_corr = self.clear_spec_corr - np.mean(self.clear_spec_corr[stray_range])
+            self.clear_spec_corr[self.clear_spec_corr < 0] = 0
+            self.dark_corrected_clear = True
 
         # Correct plume spectra (assumed to already be dark subtracted)
         if not self.stray_corrected_plume:
@@ -651,22 +660,24 @@ class IFitWorker:
         # Convolve reference spectrum with the instrument lineshape
         # TODO COnfirm this still works - prior to the shift_tol incorporation these lines came AFTER self.set_fit_windows()
         # TODO I think it won't make a difference as they aren't directly related. But I should confirm this
-        if not self.ref_convolved:
-            self.conv_ref_spec()
+        # if not self.ref_convolved:
+        #     self.conv_ref_spec()
 
         # Run processing
-        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr])
+        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_types)
 
         # Unpack results
         for species in self.ref_spec_types:
-            self.column_density[species] = fit.meas_od[species]
-            self.abs_spec_species[species] = fit.synth_od[species]
+            self.column_density[species] = fit.params[species].fit_val
+            self.abs_spec_species[species] = fit.meas_od[species]
+            self.ref_spec_fit[species] = fit.synth_od[species]
         self.abs_spec_species['Total'] = fit.fit
         self.abs_spec_species['residual'] = fit.resid
-        self.std_err = np.sqrt(np.mean(np.square(fit.resid)))   # RMSE from residual
+        self.std_err = fit.params['SO2'].fit_err   # RMSE from residual
 
         # Set flag defining that data has been fully processed
         self.processed_data = True
+        self.fit = fit     # Save fit in attribute
 
     def process_dir(self, spec_dir=None, plot=False):
         """
@@ -675,13 +686,15 @@ class IFitWorker:
         :return:
         """
         if spec_dir is not None:
-            self.load_dir(spec_dir=spec_dir, plot=False)
+            self.load_dir(spec_dir=spec_dir, plot=plot)
 
         cds = []
         times = []
 
         # Loop through directory plume images processing them
         for i in range(len(self.spec_dict['plume'])):
+            print('Processing spectrum {} of {}'.format(i+1, len(self.spec_dict['plume'])))
+
             self.wavelengths, self.plume_spec_raw = load_spectrum(os.path.join(self.spec_dir,
                                                                                self.spec_dict['plume'][i]))
 
@@ -697,8 +710,8 @@ class IFitWorker:
             times.append(self.get_spec_time(self.spec_dict['plume'][i]))
             cds.append(self.column_density['SO2'])
 
-        print(times)
-        print(cds)
+        for cd in cds:
+            print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
     def add_doas_results(self, doas_dict):
         """
@@ -847,8 +860,8 @@ class IFitWorker:
                               'dark': self.dark_spec,           # Dark spectrum used (raw)
                               'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
                               'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
-                              'abs': self.abs_spec_cut,         # Absorption spectrum
-                              'ref': self.abs_spec_species,     # Reference spectra (scaled)
+                              'abs': self.abs_spec_species,     # Absorption spectrum
+                              'ref': self.ref_spec_fit,         # Reference spectra (scaled)
                               'std_err': self.std_err,          # Standard error of fit
                               'column_density': self.column_density}    # Column density
 
@@ -915,8 +928,23 @@ class IFitWorker:
         Updates ifit analyser
         This should be called everytime the fit window is changed.
         Instrument is stray-light corrected prior to analyser to ignore this flag now
+        NOTE: I cannot just adjust the fit_window attribute as the model is generated
         """
-        self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
+        # TODO perhaps requst ben adds an update fit window func to update the analyser without creating a new object
+        if self.ils_path is not None:
+            self.analyser = Analyser(params=self.params,
+                                     fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                     frs_path=self.frs_path,
+                                     stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                                     dark_flag=False,
+                                     ils_type='File',
+                                     ils_path=self.ils_path)
+        else:
+            self.analyser = Analyser(params=self.params,
+                                     fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                     frs_path=frs_path,
+                                     stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                                     dark_flag=False)
 
 
 class SpectraError(Exception):
@@ -929,9 +957,10 @@ class SpectraError(Exception):
 if __name__ == '__main__':
     # Calibration paths
     ils_path = './calibration/2019-07-03_302nm_ILS.txt'
+    # ils_path = './calibration/2019-07-03_313nm_ILS.txt'
     frs_path = './ifit/Ref/sao2010.txt'
     ref_paths = {'SO2': {'path': './ifit/Ref/SO2_293K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
-                 'O3': {'path': './ifit/Ref/O3_243K.txt', 'value': 1.0e19},
+                 'O3': {'path': './ifit/Ref/O3_223K.txt', 'value': 1.0e19},
                  'Ring': {'path': './ifit/Ref/Ring.txt', 'value': 0.1}
                  }
 
@@ -942,5 +971,49 @@ if __name__ == '__main__':
     ifit_worker = IFitWorker(frs_path=frs_path, ref_paths=ref_paths, dark_dir=spec_path)
     ifit_worker.load_ils(ils_path)  # Load ILS
 
+    # Update fit wavelengths
+    ifit_worker.start_fit_wave = 312
+    ifit_worker.end_fit_wave = 322
+
     # Process directory
     ifit_worker.process_dir(spec_dir=spec_path)
+
+    # ------------
+    # Plotting
+    # ------------
+    # Make the figure and define the subplot grid
+    fig = plt.figure(figsize=[10, 6.4])
+    gs = GridSpec(2, 2)
+
+    # Define axes
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[1, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[1, 1])
+
+    # Define plot lines
+    l0, = ax0.plot([], [], 'C0x-')  # Measured spectrum
+    l1, = ax0.plot([], [], 'C1-')   # Model fit
+
+    l2, = ax1.plot([], [], 'C0x-')  # Residual
+
+    l3, = ax2.plot([], [], 'C0x-')  # Measured OD
+    l4, = ax2.plot([], [], 'C1-')   # Fit OD
+
+    l5, = ax3.plot([], [], '-')  # Spectrum
+
+    #
+    l0.set_data(ifit_worker.fit.grid, ifit_worker.fit.spec)
+    l1.set_data(ifit_worker.fit.grid, ifit_worker.fit.fit)
+    l2.set_data(ifit_worker.fit.grid, ifit_worker.fit.resid)
+    l3.set_data(ifit_worker.fit.grid, ifit_worker.fit.meas_od['SO2'])
+    l4.set_data(ifit_worker.fit.grid, ifit_worker.fit.synth_od['SO2'])
+    l5.set_data(ifit_worker.wavelengths, ifit_worker.plume_spec_corr)
+
+    for ax in [ax0, ax1, ax2, ax3]:
+        ax.relim()
+        ax.autoscale_view()
+
+    plt.pause(0.01)
+    plt.tight_layout()
+    plt.show()
