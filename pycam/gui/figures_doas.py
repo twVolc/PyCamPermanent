@@ -524,19 +524,19 @@ class DOASFigure:
         self.ax.set_xlim([self.doas_worker.wavelengths_cut[0], self.doas_worker.wavelengths_cut[-1]])
 
         # ylims depends on if we have filtered absorbance (DOAS) or ifit (shouldn't have OD < 0)
+        try:    # If we are residual we have no ref_spec_fit key
+            all_dat = [self.doas_worker.ref_spec_fit[self.species], self.doas_worker.abs_spec_species[self.species]]
+        except KeyError:
+            all_dat = self.doas_worker.abs_spec_species[self.species]
+
         if isinstance(self.doas_worker, DOASWorker):
-            ylim = np.amax(np.absolute(self.doas_worker.abs_spec_species[self.species]))
+            ylim = np.amax(np.absolute(all_dat))
             ylim *= 1.15
             if ylim == 0:
                 ylim = 0.05
             ylims = [-ylim, ylim]
         elif isinstance(self.doas_worker, IFitWorker):
-            if self.species != 'residual':
-                ylims = [np.amin(self.doas_worker.ref_spec_fit[self.species]) * 0.95,
-                         np.amax(self.doas_worker.ref_spec_fit[self.species]) * 1.05]
-            else:
-                ylims = [np.amin(self.doas_worker.abs_spec_species[self.species]) * 0.95,
-                         np.amax(self.doas_worker.abs_spec_species[self.species]) * 1.05]
+            ylims = [np.amin(all_dat) * 0.95, np.amax(all_dat) * 1.05]
         self.ax.set_ylim(ylims)
 
         if isinstance(self.doas_worker, DOASWorker):
@@ -544,7 +544,7 @@ class DOASFigure:
                 self.doas_worker.column_density['SO2'], self.doas_worker.std_err))
         elif isinstance(self.doas_worker, IFitWorker):
             if self.species != 'Total' and self.species != 'residual':
-                self.ax.set_title('{} Column density [cm-2]: {}          STD Error: {}'.format(self.species,
+                self.ax.set_title('{} Column density [cm-2]: {:.2e}          STD Error: {:.2e}'.format(self.species,
                     self.doas_worker.column_density[self.species], self.doas_worker.fit_errs[self.species]))
             else:
                 self.ax.set_title(self.species)

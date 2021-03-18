@@ -165,6 +165,7 @@ class IFitWorker:
         # ==============================================================================================================
         self.frs_path = frs_path
         self.ref_spec_used = list(species.keys())
+        self.species_info = species
 
 
         # Create parameter dictionary
@@ -232,6 +233,7 @@ class IFitWorker:
     @start_fit_wave.setter
     def start_fit_wave(self, value):
         self._start_fit_wave = value
+        # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
         self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
@@ -245,6 +247,7 @@ class IFitWorker:
     @end_fit_wave.setter
     def end_fit_wave(self, value):
         self._end_fit_wave = value
+        # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
         self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
@@ -358,12 +361,20 @@ class IFitWorker:
             self.plume_spec_corr[self.plume_spec_corr < 0] = 0
             self.stray_corrected_plume = True
 
-    def load_ref_spec(self, pathname, species, value=0, update=True):
+    def load_ref_spec(self, pathname, species, value=None, update=True):
         """
         Load raw reference spectrum
         :param update:  bool    If False the analyser isn't updated (just use False when initiating object)
         """
         self.ref_spec[species] = np.loadtxt(pathname)
+
+        # If no value is provided:
+        # If we already have info on that species' starting value then we use that. Otherwise we set it to 0
+        if value is None:
+            if species in self.species_info:
+                value = self.species_info[species]['value']
+            else:
+                value = 0
 
         # Add spectrum to params for ifit
         self.params.add(species, value=value, vary=True, xpath=pathname)
@@ -936,10 +947,10 @@ if __name__ == '__main__':
                  'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
                  }
 
-    ref_paths = {'SO2': {'path': 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Vandaele (2009) x-section in wavelength.txt', 'value': 1.0e16},
-    'O3': {'path':     'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Serdyuchenko_O3_223K.txt', 'value': 1.0e19},
-    'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
-    }
+    # ref_paths = {'SO2': {'path': 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Vandaele (2009) x-section in wavelength.txt', 'value': 1.0e16},
+    # 'O3': {'path':     'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Serdyuchenko_O3_223K.txt', 'value': 1.0e19},
+    # 'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
+    # }
 
     # Spectra path
     spec_path = 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Spectra\\test_data'
@@ -950,7 +961,7 @@ if __name__ == '__main__':
 
     # Update fit wavelengths
     ifit_worker.start_fit_wave = 312
-    ifit_worker.end_fit_wave = 322
+    ifit_worker.end_fit_wave = 320
 
     # Process directory
     ifit_worker.process_dir(spec_dir=spec_path)

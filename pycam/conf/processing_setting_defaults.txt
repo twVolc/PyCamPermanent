@@ -41,7 +41,7 @@ auto_bg_cmap=0
 
 # DOAS calibration and DOAS-AA calibration
 doas_method=ifit
-ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_313nm_ILS.txt'
+ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_302nm_ILS.txt'
 maxrad_doas=20.0
 remove_doas_mins=8
 doas_recal=1
