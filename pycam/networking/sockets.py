@@ -1679,7 +1679,7 @@ class CommConnection(Connection):
 
 class ImgRecvConnection(Connection):
     """Class for image receiving connection"""
-    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(), backup=True):
+    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(dev_path=''), backup=True):
         super().__init__(sock, acc_conn)
 
         # StorageMount object for saving to backup location
@@ -1731,7 +1731,7 @@ class ImgRecvConnection(Connection):
 
 class SpecRecvConnection(Connection):
     """Class for spectrum receiving connection"""
-    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(), backup=True):
+    def __init__(self, sock, acc_conn=False, storage_mount=StorageMount(dev_path=''), backup=True):
         super().__init__(sock, acc_conn)
 
         # StorageMount object for saving to backup location

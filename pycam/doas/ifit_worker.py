@@ -20,9 +20,9 @@ from matplotlib.pyplot import GridSpec
 import sys
 import os
 # Make it possible to import iFit by updating path
-dir_path = os.path.dirname(os.path.realpath(__file__))
-dir_path = os.path.split(dir_path)[0]
-sys.path.append(os.path.join(dir_path, 'ifit'))
+# dir_path = os.path.dirname(os.path.realpath(__file__))
+# dir_path = os.path.split(dir_path)[0]
+# sys.path.append(os.path.join(dir_path, 'ifit'))
 
 from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs
