@@ -536,7 +536,12 @@ class DOASFigure:
                 ylim = 0.05
             ylims = [-ylim, ylim]
         elif isinstance(self.doas_worker, IFitWorker):
-            ylims = [np.amin(all_dat) * 0.95, np.amax(all_dat) * 1.05]
+            min_val = np.amin(all_dat)
+            if min_val >= 0:
+                min_lim = min_val * 0.95
+            else:
+                min_lim = min_val * 1.05
+            ylims = [min_lim, np.amax(all_dat) * 1.05]
         self.ax.set_ylim(ylims)
 
         if isinstance(self.doas_worker, DOASWorker):

@@ -19,16 +19,21 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import GridSpec
 import sys
 import os
+import pandas as pd
+from shapely.geometry import Point, Polygon     # For Varnam light dilution
+from shapely.strtree  import STRtree
 # Make it possible to import iFit by updating path
 # dir_path = os.path.dirname(os.path.realpath(__file__))
 # dir_path = os.path.split(dir_path)[0]
 # sys.path.append(os.path.join(dir_path, 'ifit'))
 
 from pycam.directory_watcher import create_dir_watcher
-from pycam.setupclasses import SpecSpecs
+from pycam.setupclasses import SpecSpecs, FileLocator
 from pycam.io_py import load_spectrum, spec_txt_2_npy
 from pycam.iFit.ifit.parameters import Parameters
 from pycam.iFit.ifit.spectral_analysis import Analyser
+from pycam.ifit_ld.ifit_mod.synthetic_suite import Analyser_ld
+from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
 
 try:
@@ -75,8 +80,12 @@ class IFitWorker:
         self._end_stray_wave = 290
         self._start_fit_pix = None  # Pixel space fitting window definitions
         self._end_fit_pix = None
-        self._start_fit_wave = 305  # Wavelength space fitting window definitions
-        self._end_fit_wave = 320
+        self._start_fit_wave_init = 300  # Wavelength space fitting window definitions       Set big range to start Analyser
+        self._end_fit_wave_init = 340
+        self._start_fit_wave = 306       # Update fit window to more reasonable starting size (initial setting was to create a big grid
+        self._end_fit_wave = 316
+        self.start_fit_wave_2 = 312      # Second fit window (used in light dilution correction)
+        self.end_fit_wave_2 = 322
         self.fit_window = None      # Fitting window, determined by set_fit_window()
         self.fit_window_ref = None  # Placeholder for shifted fitting window for the reference spectrum
         self.wave_fit = True        # If True, wavelength parameters are used to define fitting window
@@ -167,7 +176,6 @@ class IFitWorker:
         self.ref_spec_used = list(species.keys())
         self.species_info = species
 
-
         # Create parameter dictionary
         self.params = Parameters()
 
@@ -175,7 +183,6 @@ class IFitWorker:
         for spec in species:
             # Load reference spectrum (this adds to self.params too
             self.load_ref_spec(species[spec]['path'], spec, value=species[spec]['value'], update=False)
-
 
         # Add background polynomial parameters
         self.params.add('bg_poly0', value=0.0, vary=True)
@@ -192,10 +199,19 @@ class IFitWorker:
 
         # Setup ifit analyser (we will stray correct ourselves
         self.analyser = Analyser(params=self.params,
-                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                 fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                  frs_path=frs_path,
                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
+
+        # LD attributes
+        self.ifit_so2_0, self.ifit_err_0 = None, None
+        self.ifit_so2_1, self.ifit_err_1 = None, None
+        self.so2_grid_ppmm = np.arange(0, 5000, 20)
+        self.so2_grid = np.multiply(self.so2_grid_ppmm, 2.652e+15)    # Convert SO2 in ppmm to molecules/cm2
+        self.ldf_grid = np.arange(0, 1.00, 0.005)
+        self.analyser0 = None
+        self.analyser1 = None
 
     def reset_self(self):
         """Some resetting of object, before processing occurs"""
@@ -234,7 +250,7 @@ class IFitWorker:
     def start_fit_wave(self, value):
         self._start_fit_wave = value
         # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
-        self.update_analyser()
+        # self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
         if self.wavelengths is not None:
@@ -248,7 +264,7 @@ class IFitWorker:
     def end_fit_wave(self, value):
         self._end_fit_wave = value
         # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
-        self.update_analyser()
+        # self.update_analyser()
 
         # Set pixel value too, if wavelengths attribute is present
         if self.wavelengths is not None:
@@ -633,7 +649,8 @@ class IFitWorker:
             self.stray_corr_spectra()
 
         # Run processing
-        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used)
+        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+                                         fit_window=[self.start_fit_wave, self.end_fit_wave])
 
         # Unpack results
         for species in self.ref_spec_used:
@@ -893,7 +910,7 @@ class IFitWorker:
         # TODO perhaps requst ben adds an update fit window func to update the analyser without creating a new object
         if self.ils_path is not None:
             self.analyser = Analyser(params=self.params,
-                                     fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                     fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                      frs_path=self.frs_path,
                                      stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                      dark_flag=False,
@@ -901,7 +918,7 @@ class IFitWorker:
                                      ils_path=self.ils_path)
         else:
             self.analyser = Analyser(params=self.params,
-                                     fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                     fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                      frs_path=self.frs_path,
                                      stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                      dark_flag=False)
@@ -909,7 +926,7 @@ class IFitWorker:
     def load_ils(self, ils_path):
         """Load ils from path"""
         self.analyser = Analyser(params=self.params,
-                                 fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                 fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                  frs_path=self.frs_path,
                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                  dark_flag=False,
@@ -927,7 +944,329 @@ class IFitWorker:
         ils = griddata(self.ILS_wavelengths, self.ILS, grid_ils, 'cubic')
         self.analyser.ils = ils / np.sum(ils)
         self.analyser.generate_ils = False
-    # ==================================================================================================================
+
+    def update_ld_analysers(self):
+        """
+        Updates the 2 fit window analysers based on current it window definitions. This could be invoked by a button to
+        prevent it being run every time the fit window is change, saving time - preventing lag in the GUI. Should only
+        need to update this every time the light dilution curve generator is run, so could do it then
+        :return:
+        """
+        # Only create new objects if the old ones aren't the as expected
+        if self.analyser0 is None or self.start_fit_wave != self.analyser0.fit_window[0] \
+                or self.end_fit_wave != self.analyser0.fit_window[1]:
+            self.analyser0 = Analyser(params=self.params, fit_window=[self.start_fit_wave, self.end_fit_wave],
+                                 frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
+                                 ils_path=self.ils_path)
+
+        if self.analyser0 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
+                or self.end_fit_wave_2 != self.analyser1.fit_window[1]:
+            self.analyser1 = Analyser(params=self.params, fit_window=[self.start_fit_wave_2, self.end_fit_wave_2],
+                                 frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
+                                 ils_path=self.ils_path)
+
+    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), max_ppmm=5000):
+        """
+        Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
+        Code in ld_curve_generator.py on light_dilution branch of ifit.
+        Lookup tables are saved to a file based on fit_window and spec_date. NOTE this will overwrite any file generated
+        from the same clear spectrum with the same fit window - it will not notify the user if it is overwriting a file
+        :param wavelengths:     np.array    Array of wavelengths
+        :param spec:            np.array    Clear spectrum intensity. Intensities should already be corrected for
+                                            stray-light and dark current
+        :param spec_date:       datetime    Clear spectrum acquisition time - used for saving lookup table
+        :param max_ppmm:        int         Maximum ppmm to be modelled in grid
+        """
+        self.update_ld_analysers()      # Update light dilution analysers if the fit windows have been changed
+
+        # Create generator that encompasses full fit window
+        pad = 1
+        analyser_prm = Analyser(params=self.params,
+                                fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+                                frs_path=self.frs_path,
+                                stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                                dark_flag=False,
+                                ils_type='File',
+                                ils_path=self.ils_path)
+        fit_prm = analyser_prm.fit_spectrum([wavelengths, spec], calc_od=['SO2', 'Ring', 'O3'])
+
+        # ==============================================================================================================
+        # Create suit of synthetic spectra
+        # ==============================================================================================================
+        analyser_ld = Analyser_ld(params=self.params,
+                                  fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+                                  frs_path=self.frs_path,
+                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                                  dark_flag=False,
+                                  ils_type='File',
+                                  ils_path=self.ils_path)
+        analyser_ld.params.update_values(fit_prm.params.popt_list())
+        analyser_ld.params.add('LDF', value=0.0, vary=True)
+        analyser_ld.interp_method = 'cubic'
+
+        # Use shape of grid and so2 value to produce a single array
+        shape = (len(self.so2_grid), len(fit_prm.spec), len(self.ldf_grid))
+        spectra_suite = np.zeros(shape)
+
+        # Create synthetic spectra by updating parameters
+        for i, so2 in enumerate(self.so2_grid):
+            for j, ldf in enumerate(self.ldf_grid):
+
+                # Update parameters of synthetic spectra to generate
+                analyser_ld.params['SO2'].set(value=so2)
+                analyser_ld.params['LDF'].set(value=ldf)
+
+                # Extract parameter list
+                fit_params = analyser_ld.params.fittedvalueslist()
+
+                # Create synthetic spectrum
+                spectra_suite[i, ..., j] = analyser_ld.fwd_model(fit_prm.grid, *fit_params)
+
+        # =============================================================================
+        # Analyse spectra in first waveband
+        # =============================================================================
+        print('Analyse synthetic spectra in waveband 1')
+
+        # Create arrays to store answers
+        ifit_so2_0 = np.zeros((shape[0], shape[2]))
+        ifit_err_0 = np.zeros((shape[0], shape[2]))
+
+        # Loop through each synthetic spectrum
+        for i, so2 in enumerate(self.so2_grid):
+            for j, ldf in enumerate(self.ldf_grid):
+
+                #Extract syntheteic spectrum for suite of spectra
+                spectrum = [fit_prm.grid, spectra_suite[i, ..., j]]
+
+                # Analyse spectrum
+                fit = self.analyser0.fit_spectrum(spectrum, calc_od=['SO2', 'Ring', 'O3'])
+
+                # Store SO2 fit parameters in array
+                ifit_so2_0[i, j] = fit.params['SO2'].fit_val
+                ifit_err_0[i, j] = fit.params['SO2'].fit_err
+
+        #Create new ifit_so2 with units in ppm.m
+        ifit_so2_ppmm0 = np.divide(ifit_so2_0, 2.652e15)
+        ifit_err_ppmm0 = np.divide(ifit_err_0, 2.652e15)
+
+        # =============================================================================
+        # Analyse spectra in second waveband
+        # =============================================================================
+        print('Analyse synthetic spectra in waveband 2')
+
+        # Create arrays to store answers
+        ifit_so2_1 = np.zeros((shape[0],shape[2]))
+        ifit_err_1 = np.zeros((shape[0],shape[2]))
+
+        # Loop through each synthetic spectrum
+        for i, so2 in enumerate(self.so2_grid):
+            for j, ldf in enumerate(self.ldf_grid):
+
+                #Extract syntheteic spectrum for suite of spectra
+                spectrum = [fit_prm.grid, spectra_suite[i, ..., j]]
+
+                fit = self.analyser1.fit_spectrum(spectrum, calc_od=['SO2', 'Ring', 'O3'])
+
+                # Store SO2 fit parameters in array
+                ifit_so2_1[i, j] = fit.params['SO2'].fit_val
+                ifit_err_1[i, j] = fit.params['SO2'].fit_err
+
+        #Create new ifit_so2 with units in ppm.m
+        ifit_so2_ppmm1 = np.divide(ifit_so2_1, 2.652e15)
+        ifit_err_ppmm1 = np.divide(ifit_err_1, 2.652e15)
+
+        # Store lookup tables as attributes
+        self.ifit_so2_0, self.ifit_err_0 = ifit_so2_0, ifit_err_0
+        self.ifit_so2_1, self.ifit_err_1 = ifit_so2_1, ifit_err_1
+
+        # --------------------
+        # Save lookup tables
+        # --------------------
+        # Define filenames
+        date_str = spec_date.strftime(self.spec_specs.file_datestr)
+        filename_0 = '{}_ld_lookup_{}-{}.npy'.format(date_str, self.start_fit_wave, self.end_fit_wave)
+        filename_1 = '{}_ld_lookup_{}-{}.npy'.format(date_str, self.start_fit_wave_2, self.end_fit_wave_2)
+        file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
+        file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
+
+        # Combine fit and error arrays
+        lookup_0 = np.array([ifit_so2_0, ifit_err_0])
+        lookup_1 = np.array([ifit_so2_1, ifit_err_1])
+
+        # Save files
+        np.save(file_path_0, lookup_0)
+        np.save(file_path_1, lookup_1)
+
+    def load_ld_lookup(self, file_path, fit_num=0):
+        """
+        Loads lookup table from file
+        :param file_path:   str     Path to lookup table file
+        :param fit_num:     int     Either 0 or 1, defines whether this should be set to the 0 or 1 window of the object
+        :return:
+        """
+        dat = np.load(file_path)
+        x, y = dat  # unpack data into cd and error grids
+        setattr(self, 'ifit_so2_{}'.format(fit_num), x)
+        setattr(self, 'ifit_err_{}'.format(fit_num), y)
+
+    def ld_lookup(self, so2_dat, so2_dat_err):
+        """
+        Performs lookup on currently loaded table, to find the best estimate of SO2 and light dilution factor
+        :param so2_dat:     array-like
+            SO2 data to lookup. If single data point the function will convert to array. NOTE: SO2 data should be an
+            iterable of tuples. Each tuple (x_1, x_2) represents one spectrum retrieval from the 2 separate fit windows.
+            i.e. each spectrum provides 2 SO2 column densities, and this is what should be provided here
+        :return:
+        """
+
+        try:
+            _ = [x for x in so2_dat[0]]
+        except TypeError:
+            so2_dat = np.array([so2_dat])
+            so2_dat_err = np.array([so2_dat_err])
+
+        # Make polygons out of curves
+        indices, polygons = lookup.create_polygons(self.ifit_so2_0, self.ifit_so2_1)
+
+        # Reshape polygon object to enable STRtrees
+        poly_shape = polygons.shape
+        shaped_polygons = polygons.reshape(poly_shape[0]*poly_shape[1]*2,3,2)
+        shaped_indices  = indices.reshape(poly_shape[0]*poly_shape[1]*2,3)
+
+        # Record dimensions of curve array
+        shape = np.shape(self.ifit_so2_0)
+
+        # List column names
+        col_names = ('Number', 'SO2_0', 'SO2_1', 'SO2', 'SO2_min', 'SO2_max', 'LDF', 'LDF_min', 'LDF_max')
+
+        n_spec = np.arange(len(so2_dat))
+
+        # Create dataframe
+        results_df = pd.DataFrame(index=n_spec, columns=col_names)
+
+        # Use shapely objects to improve speed
+        points_shapely = [Point(point) for point in so2_dat]
+
+        # Ignore IllegalArgumentException on this line
+        poly_shapely = [Polygon(poly) for poly in shaped_polygons]
+
+        # Create dictionary to index point list for faster querying
+        index_by_id = dict((id(poly), i) for i, poly in enumerate(poly_shapely))
+
+        # Create STRtree
+        tree = STRtree(poly_shapely)
+
+        for i, point in enumerate(so2_dat):
+            print('Evaluating light dilution: point {} of {}'.format(i+1, len(i)))
+
+            # Extract error and shapely point on current loop
+            point_shapely = points_shapely[i]
+            point_err = so2_dat_err[i]
+
+            # =========================================================================
+            # Calculate uncertainty
+            # =========================================================================
+            try:
+                point_args, x_idx, y_idx = lookup.calc_uncertainty(point, point_err, self.ifit_so2_0, self.ifit_so2_1)
+
+                so2_min, so2_max = self.so2_grid[x_idx]
+                ldf_min, ldf_max = self.ldf_grid[y_idx]
+
+            except:
+                so2_min, so2_max = np.nan, np.nan
+                ldf_min, ldf_max = np.nan, np.nan
+
+            # =========================================================================
+            # Calculate best guess
+            # =========================================================================
+            answers, bary_coords, answer_flag = lookup.calc_value(point_shapely, tree, polygons,
+                                                                  shaped_indices, index_by_id)
+
+            # Make sure that only a single answer was found.
+            if answer_flag == 'Single':
+                answer = answers[0]
+                bary_coord = bary_coords[0]
+
+                # Find vertices of triangle containing point
+                vertices_so2 = polygons[(answer[0], answer[1], answer[2])]
+                vertices_so2 = np.vstack((vertices_so2, vertices_so2[0]))
+
+                # Extract triangle index to find vertices
+                j, k = answer[0], answer[1]
+                if answer[2] == 0:
+                    # Create polygon corners for triangle type a
+                    vertices_model = np.array([[self.so2_grid[j], self.ldf_grid[k]],
+                                               [self.so2_grid[j+1], self.ldf_grid[k]],
+                                               [self.so2_grid[j], self.ldf_grid[k+1]]])
+                else:
+                    # Create polygon corners for triangle type b
+                    vertices_model = np.array([[self.so2_grid[j+1], self.ldf_grid[k]],
+                                               [self.so2_grid[j+1], self.ldf_grid[k+1]],
+                                               [self.so2_grid[j], self.ldf_grid[k+1]]])
+
+                # Create best guess using the barycentric coordinates
+                so2_best, ldf_best = np.sum(vertices_model.T * bary_coords[0], axis=1)
+
+                # Check that for both ldf and so2, min <= best <= max
+                if so2_max < so2_best:so2_max = so2_best
+                if so2_min > so2_best:so2_min = so2_best
+                if ldf_max < ldf_best:ldf_max = ldf_best
+                if ldf_min > ldf_best:ldf_min = ldf_best
+
+            # If no anaswer is found then the uncorrected SO2 SCDs lie outside graph
+            # Examine location of the point to determine best way forward
+            elif answer_flag == 'None':
+
+                # Check if point is below error zero on either uncorrected SO2 SCD
+                if (point[0] < -(np.mean(2*so2_dat_err[0])/2.652e15) or
+                        point[1] < -(np.mean(2*so2_dat_err[1])/2.652e15)):
+                    so2_best = np.nan
+                    ldf_best = np.nan
+
+                else:
+                    # Give undefined best estimate if error range is entire dataset
+                    if so2_min == np.nan or (so2_min == 0 and so2_max == self.so2_grid[-1]):
+                        so2_best = np.nan
+
+                    # Set SO2 to average of the maximum and minimum error value
+                    else:
+                        so2_best = np.mean((so2_min, so2_max))
+
+                    # If 306 is bigger than 312, then set best ldf guess to 0
+                    if point[0] > point[1]:
+                        ldf_best = 0.0
+
+                    # If 306 is smaller than 312 and no answer, LDF must be large or
+                    # outside modelled data range
+                    else:
+                        ldf_best = 1.0
+
+            # If data point is within error of zero, give an undefined SO2
+            if np.logical_or((point[0] - 2 * point_err[0] < 0), (point[1] - 2 * point_err[1] < 0)):
+                so2_best = np.nan
+                ldf_best = np.nan
+
+            # Combine answers into a single row, which will then go to an output .csv
+            row = [i, point[0], point[1], so2_best, so2_min, so2_max, ldf_best, ldf_min, ldf_max]
+            results_df.loc[i] = row
+
+            # =============================================================
+            # Refit using the best LDF (following refit.py)
+            # =============================================================
+            if np.isnan(ldf_best):
+                # Change analyser values
+                self.analyser0.params['LDF'].set(value=0)
+                self.analyser1.params['LDF'].set(value=0)
+            else:
+                # Change analyser values
+                self.analyser0.params['LDF'].set(value=ldf_best)
+                self.analyser1.params['LDF'].set(value=ldf_best)
+            print(self.analyser0.params['LDF'].value)
+            # TODO continue refit rewrite
+
+
+
+# ==================================================================================================================
 
 
 class SpectraError(Exception):

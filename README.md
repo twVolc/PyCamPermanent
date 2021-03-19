@@ -54,5 +54,7 @@ Requirements for GUI:
 >
 > scikit-image
 > 
-> If using iFit for spectrometer analysis must clone iFit repo from https://github.com/benjaminesse/iFit. Clone to pycam/doas folder
+> If using iFit for spectrometer analysis must clone iFit repo from https://github.com/benjaminesse/iFit. 
+> Clone to pycam/ folder. I also cloned the light_dilution branch to ifit_ld. If this remaisn saved in pycam then no installation is needed for new users 
 > tqdm (for ifit)
+> shapely (for light diluiton correction of ifit)
