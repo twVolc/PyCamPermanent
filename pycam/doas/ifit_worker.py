@@ -98,6 +98,7 @@ class IFitWorker:
         self._plume_spec_raw = None     # In-plume spectrum (main one which is used for calculation of SO2
         self.clear_spec_corr = None     # Clear (fraunhofer) spectrum - typically dark corrected and stray light corrected
         self.plume_spec_corr = None     # In-plume spectrum (main one which is used for calculation of SO2
+        self.spec_time = None           # Time of currently loaded plume_spec
         self.ref_spec = dict()          # Create empty dictionary for holding reference spectra
         self.ref_spec_interp = dict()   # Empty dictionary to hold reference spectra after sampling to spectrometer wavelengths
         self.ref_spec_conv = dict()     # Empty dictionary to hold reference spectra after convolving with ILS
@@ -205,13 +206,22 @@ class IFitWorker:
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
 
         # LD attributes
+        self.corr_light_dilution = True
+        self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
         self.ifit_so2_0, self.ifit_err_0 = None, None
         self.ifit_so2_1, self.ifit_err_1 = None, None
-        self.so2_grid_ppmm = np.arange(0, 5000, 20)
+        self.grid_max_ppmm = 5000
+        self.grid_increment_ppmm = 20
+        self.so2_grid_ppmm = np.arange(0, self.grid_max_ppmm, self.grid_increment_ppmm)
         self.so2_grid = np.multiply(self.so2_grid_ppmm, 2.652e+15)    # Convert SO2 in ppmm to molecules/cm2
         self.ldf_grid = np.arange(0, 1.00, 0.005)
         self.analyser0 = None
         self.analyser1 = None
+        self.fit = None
+        self.fit_0 = None
+        self.fit_1 = None
+        self.fit_0_uncorr = None
+        self.fit_1_uncorr = None
 
     def reset_self(self):
         """Some resetting of object, before processing occurs"""
@@ -514,6 +524,7 @@ class IFitWorker:
         if len(self.spec_dict['plume']) > 0:
             self.wavelengths, self.plume_spec_raw = load_spectrum(os.path.join(self.spec_dir,
                                                                                self.spec_dict['plume'][0]))
+            self.spec_time = self.get_spec_time(self.spec_dict['plume'][0])
         if len(self.spec_dict['dark']) > 0:
             ss_id = self.spec_specs.file_ss.replace('{}', '')
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
@@ -649,26 +660,51 @@ class IFitWorker:
             self.stray_corr_spectra()
 
         # Run processing
-        fit = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
-                                         fit_window=[self.start_fit_wave, self.end_fit_wave])
+        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+                                           fit_window=[self.start_fit_wave, self.end_fit_wave])
+        self.applied_ld_correction = False
 
-        # Unpack results
-        for species in self.ref_spec_used:
-            self.column_density[species] = fit.params[species].fit_val
-            self.abs_spec_species[species] = fit.meas_od[species]
-            self.ref_spec_fit[species] = fit.synth_od[species]
-            self.fit_errs[species] = fit.params[species].fit_err
-        self.abs_spec_species['Total'] = fit.fit
-        self.ref_spec_fit['Total'] = fit.spec
-        self.abs_spec_species['residual'] = fit.resid
-        self.std_err = fit.params['SO2'].fit_err   # RMSE from residual
+
 
         # Update wavelengths
-        self.wavelengths_cut = fit.grid
+        self.wavelengths_cut = fit_0.grid
+
+        # If we have light dilution correction we run it here
+        if self.corr_light_dilution:
+            if None in [self.ifit_so2_0, self.ifit_err_1, self.ifit_so2_1, self.ifit_err_1]:
+                print('{} SO2 grids not found for light dilution correction. '
+                      'Use load_ld_lookup() or light_dilution_cure_generator()'.format(str(self.__class__).split()[-1]))
+            else:
+                # Process second fit window
+                fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+                                                   fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
+                self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
+                self.fit_1_uncorr = fit_1
+                df_lookup, df_refit, fit_0, fit_1 = self.ld_lookup(so2_dat=(fit_0.params['SO2'].fit_val,
+                                                                            fit_1.params['SO2'].fit_val),
+                                                                   so2_dat_err=(fit_0.params['SO2'].fit_err,
+                                                                                fit_1.params['SO2'].fit_err),
+                                                                   wavelengths=self.wavelengths,
+                                                                   spectra=self.plume_spec_corr,
+                                                                   spec_time=self.spec_time)
+                self.fit_0 = fit_0  # Save corrected fits
+                self.fit_1 = fit_1
+                self.applied_ld_correction = True
+
+        # Unpack results (either from light dilution corrected or not)
+        for species in self.ref_spec_used:
+            self.column_density[species] = fit_0.params[species].fit_val
+            self.abs_spec_species[species] = fit_0.meas_od[species]
+            self.ref_spec_fit[species] = fit_0.synth_od[species]
+            self.fit_errs[species] = fit_0.params[species].fit_err
+        self.abs_spec_species['Total'] = fit_0.fit
+        self.ref_spec_fit['Total'] = fit_0.spec
+        self.abs_spec_species['residual'] = fit_0.resid
+        self.std_err = fit_0.params['SO2'].fit_err   # RMSE from residual
 
         # Set flag defining that data has been fully processed
         self.processed_data = True
-        self.fit = fit     # Save fit in attribute
+        self.fit = fit_0     # Save fit in attribute
 
     def process_dir(self, spec_dir=None, plot=False):
         """
@@ -688,6 +724,7 @@ class IFitWorker:
 
             self.wavelengths, self.plume_spec_raw = load_spectrum(os.path.join(self.spec_dir,
                                                                                self.spec_dict['plume'][i]))
+            self.spec_time = self.get_spec_time(self.spec_dict['plume'][i])
 
             # Get dark spectrum
             ss_id = self.spec_specs.file_ss.replace('{}', '')
@@ -698,7 +735,7 @@ class IFitWorker:
             self.process_doas()
 
             # Update results
-            times.append(self.get_spec_time(self.spec_dict['plume'][i]))
+            times.append(self.spec_time)
             cds.append(self.column_density['SO2'])
 
         for cd in cds:
@@ -820,6 +857,7 @@ class IFitWorker:
             # Extract filename and create datetime object of spectrum time
             filename = os.path.split(pathname)[-1]
             spec_time = self.get_spec_time(filename)
+            self.spec_time = spec_time
 
             # Extract shutter speed
             ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
@@ -965,7 +1003,14 @@ class IFitWorker:
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
                                  ils_path=self.ils_path)
 
-    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), max_ppmm=5000):
+    def update_grid(self, max_ppmm, increment=20):
+        """Updates ppmm resolution for light dilution lookup grid"""
+        self.grid_max_ppmm = max_ppmm
+        self.grid_increment_ppmm = increment
+        self.so2_grid_ppmm = np.arange(0, max_ppmm, increment)
+        np.multiply(self.so2_grid_ppmm, 2.652e+15)
+
+    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now()):
         """
         Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
         Code in ld_curve_generator.py on light_dilution branch of ifit.
@@ -975,7 +1020,6 @@ class IFitWorker:
         :param spec:            np.array    Clear spectrum intensity. Intensities should already be corrected for
                                             stray-light and dark current
         :param spec_date:       datetime    Clear spectrum acquisition time - used for saving lookup table
-        :param max_ppmm:        int         Maximum ppmm to be modelled in grid
         """
         self.update_ld_analysers()      # Update light dilution analysers if the fit windows have been changed
 
@@ -1084,8 +1128,10 @@ class IFitWorker:
         # --------------------
         # Define filenames
         date_str = spec_date.strftime(self.spec_specs.file_datestr)
-        filename_0 = '{}_ld_lookup_{}-{}.npy'.format(date_str, self.start_fit_wave, self.end_fit_wave)
-        filename_1 = '{}_ld_lookup_{}-{}.npy'.format(date_str, self.start_fit_wave_2, self.end_fit_wave_2)
+        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, self.start_fit_wave, self.end_fit_wave,
+                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
+        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, self.start_fit_wave_2, self.end_fit_wave_2,
+                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
         file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
         file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
 
@@ -1094,6 +1140,7 @@ class IFitWorker:
         lookup_1 = np.array([ifit_so2_1, ifit_err_1])
 
         # Save files
+        print('Saving light dilution grids: {}, {}'.format(file_path_0, file_path_1))
         np.save(file_path_0, lookup_0)
         np.save(file_path_1, lookup_1)
 
@@ -1109,13 +1156,23 @@ class IFitWorker:
         setattr(self, 'ifit_so2_{}'.format(fit_num), x)
         setattr(self, 'ifit_err_{}'.format(fit_num), y)
 
-    def ld_lookup(self, so2_dat, so2_dat_err):
+    def ld_lookup(self, so2_dat, so2_dat_err, wavelengths, spectra, spec_time):
         """
         Performs lookup on currently loaded table, to find the best estimate of SO2 and light dilution factor
+
         :param so2_dat:     array-like
-            SO2 data to lookup. If single data point the function will convert to array. NOTE: SO2 data should be an
+            SO2 data to lookup. If single tuple the function will convert to array of tuple. NOTE: SO2 data should be an
+            SO2 data to lookup. If single tuple the function will convert to array of tuple. NOTE: SO2 data should be an
             iterable of tuples. Each tuple (x_1, x_2) represents one spectrum retrieval from the 2 separate fit windows.
             i.e. each spectrum provides 2 SO2 column densities, and this is what should be provided here
+        :param so2_dat_err  array-like
+            Corresponding so2 errors for above so2 data
+        :param wavelengths: array-like
+            Contains arrays of wavelength data - used for final refitting of spectrum.
+        :param spectra:     array-like
+            Contains arrays of spectra. Data corresponds to associated index of so2_dat
+        :param spec_time    array-like
+            Contains array of spectra times.
         :return:
         """
 
@@ -1136,13 +1193,15 @@ class IFitWorker:
         # Record dimensions of curve array
         shape = np.shape(self.ifit_so2_0)
 
-        # List column names
+        # List column names (2 DFs: one for grid search of LDF one for refit using LDF)
         col_names = ('Number', 'SO2_0', 'SO2_1', 'SO2', 'SO2_min', 'SO2_max', 'LDF', 'LDF_min', 'LDF_max')
+        col_names_refit = ('Number', 'time', 'LDF', 'SO2_0', 'SO2_0_err', 'SO2_1', 'SO2_1_err')
 
         n_spec = np.arange(len(so2_dat))
 
         # Create dataframe
         results_df = pd.DataFrame(index=n_spec, columns=col_names)
+        results_refit = pd.DataFrame(index=n_spec, columns=col_names_refit)
 
         # Use shapely objects to improve speed
         points_shapely = [Point(point) for point in so2_dat]
@@ -1157,7 +1216,7 @@ class IFitWorker:
         tree = STRtree(poly_shapely)
 
         for i, point in enumerate(so2_dat):
-            print('Evaluating light dilution: point {} of {}'.format(i+1, len(i)))
+            print('Evaluating light dilution for spectrum: {}'.format(spec_time[i].strftime("%Y-%m-%d %H%M%S")))
 
             # Extract error and shapely point on current loop
             point_shapely = points_shapely[i]
@@ -1262,9 +1321,20 @@ class IFitWorker:
                 self.analyser0.params['LDF'].set(value=ldf_best)
                 self.analyser1.params['LDF'].set(value=ldf_best)
             print(self.analyser0.params['LDF'].value)
-            # TODO continue refit rewrite
 
+            # Fit spectrum for in 2 fit windows
+            fit0 = self.analyser0.fit_spectrum([wavelengths[i], spectra[i]], calc_od=['SO2', 'Ring', 'O3'],
+                                               update_params=False)
 
+            fit1 = self.analyser1.fit_spectrum([wavelengths[i], spectra[i]], calc_od=['SO2', 'Ring', 'O3'],
+                                               update_params=False)
+
+            row = [i, spec_time[i], ldf_best]
+            row += [fit0.params['SO2'].fit_val, fit0.params['SO2'].fit_err]
+            row += [fit1.params['SO2'].fit_val, fit1.params['SO2'].fit_err]
+            results_refit.loc[i] = row
+
+        return results_df, results_refit, fit0, fit1
 
 # ==================================================================================================================
 

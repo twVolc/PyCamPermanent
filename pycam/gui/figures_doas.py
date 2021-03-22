@@ -566,9 +566,12 @@ class CDSeries:
 class CalibrationWindow:
     """
     Generates top-level window containing calibration figures for DOAS instruments.
-    :param  fig_setts: dict     Dictionary containing settings values for figures
+    :param  fig_setts:  dict     Dictionary containing settings values for figures
+    :param gui:         PyCam
     """
-    def __init__(self, fig_setts=GUISettings()):
+    def __init__(self, fig_setts=GUISettings(), gui=None):
+        self.gui = None
+
         # Setup reference spectra objects
         self.ref_frame = dict()
         for spec in species:
@@ -577,6 +580,9 @@ class CalibrationWindow:
                                            fig_setts=fig_setts)
 
         self.ils_frame = ILSFrame(doas_work=doas_worker, fig_setts=fig_setts)
+
+    def add_gui(self, gui):
+        self.gui = gui
 
     def generate_frame(self):
         self.frame = tk.Toplevel()
@@ -589,9 +595,17 @@ class CalibrationWindow:
         # Reference spectra
         self.ref_spec_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=4)
         self.ref_spec_frame.pack(side=tk.LEFT, anchor='nw')
-        # TODO turn this into a notepad rather than packing frame by frame
+
+        style = self.gui.style
+        style.configure('One.TNotebook.Tab', **self.gui.layout_old[0][1])
+        self.tabs = ttk.Notebook(self.ref_spec_frame, style='One.TNotebook.Tab')
+        self.species_tabs = dict()
+        self.tabs.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, padx=2, pady=2)
+
         for frame in self.ref_frame:
-            self.ref_frame[frame].__setup_gui__(self.ref_spec_frame)
+            self.species_tabs[frame] = ttk.Frame(self.tabs, borderwidth=2)
+            self.tabs.add(self.species_tabs[frame], text=frame)
+            self.ref_frame[frame].__setup_gui__(self.species_tabs[frame])
             self.ref_frame[frame].frame.pack(side=tk.TOP, anchor='nw', fill=tk.BOTH, padx=5, pady=5)
 
         # ILS frame
@@ -727,7 +741,12 @@ class RefPlot:
         """Plot up reference spectrum"""
         self.ax_SO2.lines[0].set_data(self.doas_worker.ref_spec[self.species][:, 0], self.doas_worker.ref_spec[self.species][:, 1])
         self.ax_SO2.set_xlim(self.min_wavelength, self.max_wavelength)
-        self.ax_SO2.set_ylim([0, np.amax(self.doas_worker.ref_spec[self.species][:, 1])])
+        if self.species == 'Ring':
+            lim_1 = np.amax(self.doas_worker.ref_spec[self.species][:, 1])
+            lim_0 = np.amin(self.doas_worker.ref_spec[self.species][:, 1])
+            self.ax_SO2.set_ylim([lim_0, lim_1])
+        else:
+            self.ax_SO2.set_ylim([0, np.amax(self.doas_worker.ref_spec[self.species][:, 1])])
         if len(self.ref_spec_path) > 53:
             ref_spec_abbr = '...' + self.ref_spec_path[-50:]
         else:

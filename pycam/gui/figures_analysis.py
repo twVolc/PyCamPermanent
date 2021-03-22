@@ -9,6 +9,7 @@ from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
+from pycam.doas.ifit_worker import IFitWorker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line
 from pycam.io_py import save_pcs_line, load_pcs_line
@@ -3427,7 +3428,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.in_frame = True
 
         self.frame = tk.Toplevel()
-        self.frame.title('Optical flow settings')
+        self.frame.title('Cross-correlation settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
         row = 0
@@ -4112,7 +4113,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
 class LightDilutionSettings(LoadSaveProcessingSettings):
     """
-        Optical flow settings frame
+        Light dilution settings frame
 
             To add a new variable:
             1. Add it as a tk variable in initiate variables
@@ -4122,8 +4123,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             5. Add its default value to processing_setting_defaults.txt
         """
 
-    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, doas_work=doas_worker,
+                 cam_specs=CameraSpecs(), fig_setts=gui_setts):
         self.pyplis_worker = pyplis_work
+        self.doas_worker = doas_work
         self.pyplis_worker.fig_dilution = self
         self.q = queue.Queue()
         self.cam_specs = cam_specs
@@ -4135,6 +4138,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.fig_scat_size = (self.fig_size[0], self.fig_size[1]-2)
         self.img_A = None
         self.img_B = None
+        self.gui = None
+        self.init_dir = FileLocator.SPEC_PATH_WINDOWS
+        self.dark_spec_path = None
+        self.dark_filename = None
+        self.clear_spec_path = None
+        self.clear_filename = None
+        self.max_str_len = 70
+        self.path_widg_length = self.max_str_len + 2
 
         # Set up lines for drawing light dilution extraction and the colours they will be
         self.max_lines = 5
@@ -4153,6 +4164,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         if generate_frame:
             self.initiate_variables()
             self.generate_frame()
+
+    def add_gui(self, gui):
+        """Adds PyCam object as gui (used for Notebook style"""
+        self.gui = gui
 
     def start_draw(self, parent):
         self.parent = parent
@@ -4178,6 +4193,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._I0_MIN = tk.IntVar()
         self._tau_thresh = tk.DoubleVar()
         self._dil_recal_time = tk.IntVar()
+
+        # Spectrometer light dilution variable
+        self._grid_max_ppmm = tk.IntVar()
+        self._grid_increment_ppmm = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -4222,6 +4241,38 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     def draw_meth(self, value):
         self._draw_meth.set(value)
 
+    @property
+    def grid_max_ppmm(self):
+        return self._grid_max_ppmm.get()
+
+    @grid_max_ppmm.setter
+    def grid_max_ppmm(self, value):
+        self._grid_max_ppmm.set(value)
+
+    @property
+    def grid_increment_ppmm(self):
+        return self._grid_increment_ppmm.get()
+
+    @grid_increment_ppmm.setter
+    def grid_increment_ppmm(self, value):
+        self._grid_increment_ppmm.set(value)
+
+    @property
+    def dark_spec_path_short(self):
+        try:
+            return_str = '...' + self.dark_spec_path[-(self.max_str_len-3):]
+        except (IndexError, TypeError):
+            return_str = self.dark_spec_path
+        return return_str
+
+    @property
+    def clear_spec_path_short(self):
+        try:
+            return_str = '...' + self.clear_spec_path[-(self.max_str_len-3):]
+        except (IndexError, TypeError):
+            return_str = self.clear_spec_path
+        return return_str
+
     def generate_frame(self):
         """
         Generates widget settings frame
@@ -4235,11 +4286,27 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.in_frame = True
 
         self.frame = tk.Toplevel()
-        self.frame.title('Optical flow settings')
+        self.frame.title('Light dilution settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
         self.frame.grid_rowconfigure(1, weight=1)
 
-        frame_setts = ttk.LabelFrame(self.frame, text='Settings', borderwidth=3)
+        # Notebook setup for toggling between camera and sectrometer light dilution settings
+        style = self.gui.style
+        style.configure('One.TNotebook.Tab', **self.gui.layout_old[0][1])
+        self.tabs = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
+
+        self.frame_cam = ttk.Frame(self.tabs)
+        self.frame_spec = ttk.Frame(self.tabs)
+        self.tabs.add(self.frame_cam, text='Camera')
+        self.tabs.add(self.frame_spec, text='Spectrometer')
+        self.tabs.pack(side=tk.TOP, fill="both", expand=1)
+
+        self._setup_cam_frame()
+        self._setup_spec_frame()
+
+    def _setup_cam_frame(self):
+        """Camera frame setup"""
+        frame_setts = ttk.LabelFrame(self.frame_cam, text='Settings', borderwidth=3)
         frame_setts.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
 
         lab = ttk.Label(frame_setts, text='Recalibration time [minutes]:')
@@ -4269,7 +4336,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         check_butt_2.grid(row=row, column=1)
         self.draw_meth = 1
 
-        right_frame = ttk.Frame(self.frame)
+        right_frame = ttk.Frame(self.frame_cam)
         right_frame.grid(row=0, column=1)
         right_frame.grid_rowconfigure(0, weight=1)
 
@@ -4308,10 +4375,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         # -------------------------
         # Build light dilution figure
         # -------------------------
-        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame_cam, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=1, column=0, columnspan=2, sticky='n', padx=5, pady=5)
         self._build_fig_img()
-        self.frame_xtra_figs = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_xtra_figs = ttk.Frame(self.frame_cam, relief=tk.RAISED, borderwidth=3)
         self.frame_xtra_figs.grid(row=0, column=2, rowspan=2, sticky='nsew', padx=5, pady=5)
         self.fig_canvas_xtra = [[None, None], [None, None]]
         # Build figure displaying cross-correlation
@@ -4340,6 +4407,116 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.toolbar_B.pack(side=tk.TOP)
 
         # self.__draw_canv__()
+
+    def _setup_spec_frame(self):
+        """Setup spectrometer frame"""
+        # Load spectra
+        self.load_spec = ttk.LabelFrame(self.frame_spec, text='Load spectra')
+        self.load_spec.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        row = 0
+        label = ttk.Label(self.load_spec, text='Dark filename:')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
+        self.name_dark = ttk.Label(self.load_spec, text=self.dark_spec_path_short, width=self.path_widg_length)
+        self.name_dark.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        self.select_dark = ttk.Button(self.load_spec, text='Load Dark Spectrum', command=self.choose_dark_spec)
+        self.select_dark.grid(row=row, column=2, sticky='e', padx=self.pdx, pady=self.pdy)
+        row += 1
+        label = ttk.Label(self.load_spec, text='Clear filename:')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
+        self.name_clear = ttk.Label(self.load_spec, text=self.clear_spec_path_short, width=self.path_widg_length)
+        self.name_clear.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        self.select_clear = ttk.Button(self.load_spec, text='Load Dark Spectrum', command=self.choose_clear_spec)
+        self.select_clear.grid(row=row, column=2, sticky='e', padx=self.pdx, pady=self.pdy)
+
+        # TODO Add load grid option - 2 window grids can be loaded and used
+
+        # Options
+        self.opt_frame = ttk.LabelFrame(self.frame_spec, text='Grid Settings')
+        self.opt_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+
+        ttk.Label(self.opt_frame, text='Maximum [ppm.m]:').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(self.opt_frame, text='Increment [ppm.m]:').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        max_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_max_ppmm, from_=0, to=20000, increment=10)
+        max_ppmm_spin.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
+        incr_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_increment_ppmm, from_=0, to=100,
+                                     increment=1)
+        incr_ppmm_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
+
+    def choose_dark_spec(self):
+        """Loads dark spectrum with file prompt"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+
+        dark_spec_path = filedialog.askopenfilename(initialdir=self.init_dir, title='Select dark spectrum',
+                                                     filetypes=(("NumPy arrays", "*.npy"),("Text files", "*.txt"),
+                                                                ("All files", "*.*")))
+        self.load_dark_spec(dark_spec_path)
+
+    def load_dark_spec(self, dark_spec_path):
+        """Loads dark spectrum into IFitWorker"""
+        filename, ext = os.path.splitext(dark_spec_path)
+        if ext == '.npy':
+            wavelengths, spectrum = np.load(dark_spec_path)
+        elif ext == '.txt':
+            wavelengths, spectrum = np.load(dark_spec_path)
+        else:
+            print('Unrecognised file type for loading clear spectrum')
+            return
+        self.dark_spec_path = dark_spec_path
+        self.dark_filename = os.path.split(dark_spec_path)[-1]
+        self.doas_worker.wavelengths = wavelengths
+        self.doas_worker.dark_spec = spectrum
+
+    def choose_clear_spec(self):
+        """Loads clear spectrum with file prompt"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+
+        clear_spec_path = filedialog.askopenfilename(initialdir=self.init_dir, title='Select clear spectrum',
+                                                     filetypes=(("NumPy arrays", "*.npy"),("Text files", "*.txt"),
+                                                                ("All files", "*.*")))
+        self.load_clear_spec(clear_spec_path)
+
+    def load_clear_spec(self, clear_spec_path):
+        """Loads clear spectrum into IFitWorker"""
+        filename, ext = os.path.splitext(clear_spec_path)
+        if ext == '.npy':
+            wavelengths, spectrum = np.load(clear_spec_path)
+        elif ext == '.txt':
+            wavelengths, spectrum = np.load(clear_spec_path)
+        else:
+            print('Unrecognised file type for loading clear spectrum')
+            return
+        self.clear_spec_path = clear_spec_path
+        self.clear_filename = os.path.split(clear_spec_path)[-1]
+        self.doas_worker.wavelengths = wavelengths
+        self.doas_worker.clear_spec_raw = spectrum
+
+    def run_ld_lookup_generator(self):
+        """Runs light dilution lookup grid generator"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+
+        # Correct clear spectrum
+        self.doas_worker.dark_corr_spectra()
+        self.doas_worker.stray_corr_spectra()
+
+        # Run generator
+        spec_time = self.doas_worker.get_spec_time(self.clear_filename)
+        self.doas_worker.update_grid(self.grid_max_ppmm, self.grid_increment_ppmm)
+        self.doas_worker.light_diluiton_curve_generator(self.doas_worker.wavelengths,
+                                                        self.doas_worker.clear_spec_corr,
+                                                        spec_date=spec_time)
 
     def _build_fig_img(self):
         """Build figure frame for dilution correction"""
