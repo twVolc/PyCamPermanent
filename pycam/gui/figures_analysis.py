@@ -4144,6 +4144,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.dark_filename = None
         self.clear_spec_path = None
         self.clear_filename = None
+        self.grid_0_path = None
+        self.grid_1_path = None
         self.max_str_len = 70
         self.path_widg_length = self.max_str_len + 2
 
@@ -4195,6 +4197,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._dil_recal_time = tk.IntVar()
 
         # Spectrometer light dilution variable
+        self._use_light_dilution_spec = tk.IntVar()
         self._grid_max_ppmm = tk.IntVar()
         self._grid_increment_ppmm = tk.IntVar()
 
@@ -4242,6 +4245,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._draw_meth.set(value)
 
     @property
+    def use_light_dilution_spec(self):
+        return self._use_light_dilution_spec.get()
+
+    @use_light_dilution_spec.setter
+    def use_light_dilution_spec(self, value):
+        self.use_light_dilution_spec.set(int(value))
+
+    @property
     def grid_max_ppmm(self):
         return self._grid_max_ppmm.get()
 
@@ -4271,6 +4282,22 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             return_str = '...' + self.clear_spec_path[-(self.max_str_len-3):]
         except (IndexError, TypeError):
             return_str = self.clear_spec_path
+        return return_str
+
+    @property
+    def grid_0_path_short(self):
+        try:
+            return_str = '...' + self.grid_0_path[-(self.max_str_len-3):]
+        except (IndexError, TypeError):
+            return_str = self.grid_0_path
+        return return_str
+
+    @property
+    def grid_1_path_short(self):
+        try:
+            return_str = '...' + self.grid_1_path[-(self.max_str_len-3):]
+        except (IndexError, TypeError):
+            return_str = self.grid_1_path
         return return_str
 
     def generate_frame(self):
@@ -4410,9 +4437,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
     def _setup_spec_frame(self):
         """Setup spectrometer frame"""
+        # Use light dilution checklist
+        self.ld_spec_check = ttk.Checkbutton(self.frame_spec, text='Use spectrometer light dilution correction',
+                                             variable=self._use_light_dilution_spec, command=self.set_spec_ld)
+        self.ld_spec_check.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+
         # Load spectra
         self.load_spec = ttk.LabelFrame(self.frame_spec, text='Load spectra')
-        self.load_spec.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.load_spec.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
 
         row = 0
         label = ttk.Label(self.load_spec, text='Dark filename:')
@@ -4430,6 +4462,24 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.select_clear.grid(row=row, column=2, sticky='e', padx=self.pdx, pady=self.pdy)
 
         # TODO Add load grid option - 2 window grids can be loaded and used
+        # Load grids
+        self.load_grid = ttk.LabelFrame(self.frame_spec, text='Load grids')
+        self.load_grid.grid(row=2, column=0, sticky='nsew', padx=2, pady=2)
+
+        row = 0
+        label = ttk.Label(self.load_grid, text='Grid 1:')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
+        self.name_grid_0 = ttk.Label(self.load_grid, text=self.grid_0_path_short, width=self.path_widg_length)
+        self.name_grid_0.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        self.select_grid_0 = ttk.Button(self.load_grid, text='Load', command=lambda: self.choose_grid(0))
+        self.select_grid_0.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
+        row += 1
+        label = ttk.Label(self.load_grid, text='Grid 2:')
+        label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
+        self.name_grid_1 = ttk.Label(self.load_grid, text=self.grid_1_path_short, width=self.path_widg_length)
+        self.name_grid_1.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        self.select_grid_1 = ttk.Button(self.load_grid, text='Load', command=lambda: self.choose_grid(1))
+        self.select_grid_1.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
 
         # Options
         self.opt_frame = ttk.LabelFrame(self.frame_spec, text='Grid Settings')
@@ -4443,6 +4493,15 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                      increment=1)
         incr_ppmm_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
+    def set_spec_ld(self):
+        """Updates DOASWorker light dilution flag"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+        self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+
     def choose_dark_spec(self):
         """Loads dark spectrum with file prompt"""
         if not isinstance(self.doas_worker, IFitWorker):
@@ -4452,9 +4511,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             return
 
         dark_spec_path = filedialog.askopenfilename(initialdir=self.init_dir, title='Select dark spectrum',
-                                                     filetypes=(("NumPy arrays", "*.npy"),("Text files", "*.txt"),
-                                                                ("All files", "*.*")))
+                                                    filetypes=(("NumPy arrays", "*.npy"),("Text files", "*.txt"),
+                                                               ("All files", "*.*")))
         self.load_dark_spec(dark_spec_path)
+        self.name_dark.configure(text=self.dark_spec_path_short)
 
     def load_dark_spec(self, dark_spec_path):
         """Loads dark spectrum into IFitWorker"""
@@ -4480,9 +4540,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             return
 
         clear_spec_path = filedialog.askopenfilename(initialdir=self.init_dir, title='Select clear spectrum',
-                                                     filetypes=(("NumPy arrays", "*.npy"),("Text files", "*.txt"),
+                                                     filetypes=(("NumPy arrays", "*.npy"), ("Text files", "*.txt"),
                                                                 ("All files", "*.*")))
         self.load_clear_spec(clear_spec_path)
+        self.name_clear.configure(text=self.clear_spec_path_short)
 
     def load_clear_spec(self, clear_spec_path):
         """Loads clear spectrum into IFitWorker"""
@@ -4498,6 +4559,22 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.clear_filename = os.path.split(clear_spec_path)[-1]
         self.doas_worker.wavelengths = wavelengths
         self.doas_worker.clear_spec_raw = spectrum
+
+    def choose_grid(self, grid_num):
+        """Gives file dialog for loading grid and then loads it to DOAS worker object"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+
+        grid_path = filedialog.askopenfilename(initialdir=self.init_dir, title='Select clear spectrum',
+                                               filetypes=(("NumPy arrays", "*.npy"), ("Text files", "*.txt"),
+                                                          ("All files", "*.*")))
+        self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num)
+        setattr(self, 'grid_{}_path'.format(grid_num), grid_path)
+        getattr(self, 'name_grid_{}'.format(grid_num)).configure(text=getattr(self,
+                                                                              'grid_{}_path_short'.format(grid_num)))
 
     def run_ld_lookup_generator(self):
         """Runs light dilution lookup grid generator"""

@@ -997,7 +997,7 @@ class IFitWorker:
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
                                  ils_path=self.ils_path)
 
-        if self.analyser0 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
+        if self.analyser1 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
                 or self.end_fit_wave_2 != self.analyser1.fit_window[1]:
             self.analyser1 = Analyser(params=self.params, fit_window=[self.start_fit_wave_2, self.end_fit_wave_2],
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
@@ -1007,7 +1007,10 @@ class IFitWorker:
         """Updates ppmm resolution for light dilution lookup grid"""
         self.grid_max_ppmm = max_ppmm
         self.grid_increment_ppmm = increment
-        self.so2_grid_ppmm = np.arange(0, max_ppmm, increment)
+        new_so2_grid_ppmm = np.arange(0, max_ppmm, increment)
+        if not np.array_equal(self.so2_grid_ppmm, new_so2_grid_ppmm):
+            print('Changing SO2 grid for light dilution correction. If preloading grids, ensure both match this grid.')
+        self.so2_grid_ppmm = new_so2_grid_ppmm
         np.multiply(self.so2_grid_ppmm, 2.652e+15)
 
     def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now()):
@@ -1156,6 +1159,20 @@ class IFitWorker:
         setattr(self, 'ifit_so2_{}'.format(fit_num), x)
         setattr(self, 'ifit_err_{}'.format(fit_num), y)
 
+        # Extract grid info from filename
+        filename = os.path.split(file_path)[-1]
+        fit_windows, grid = filename.split('_')[-2:]
+        grid = grid.split('ppmm')[0]
+        grid_max_ppmm, grid_increment_ppmm = grid.split('-')[-2:]
+        self.update_grid(int(grid_max_ppmm), int(grid_increment_ppmm))
+
+        # Fit window update
+        start_fit_wave, end_fit_wave = fit_windows.split('-')
+        if fit_num == 0:
+            self.start_fit_wave, self.end_fit_wave = int(start_fit_wave), int(end_fit_wave)
+        elif fit_num == 1:
+            self.start_fit_wave_2, self.end_fit_wave_2 = int(start_fit_wave), int(end_fit_wave)
+
     def ld_lookup(self, so2_dat, so2_dat_err, wavelengths, spectra, spec_time):
         """
         Performs lookup on currently loaded table, to find the best estimate of SO2 and light dilution factor
@@ -1180,15 +1197,30 @@ class IFitWorker:
             _ = [x for x in so2_dat[0]]
         except TypeError:
             so2_dat = np.array([so2_dat])
+        try:
+            _ = [x for x in so2_dat_err[0]]
+        except TypeError:
             so2_dat_err = np.array([so2_dat_err])
+        try:
+            _ = [x for x in wavelengths[0]]
+        except TypeError:
+            wavelengths = np.array([wavelengths])
+        try:
+            _ = [x for x in spectra[0]]
+        except TypeError:
+            spectra = np.array([spectra])
+        try:
+            _ = [x for x in spec_time[0]]
+        except TypeError:
+            spec_time = np.array([spec_time])
 
         # Make polygons out of curves
         indices, polygons = lookup.create_polygons(self.ifit_so2_0, self.ifit_so2_1)
 
         # Reshape polygon object to enable STRtrees
         poly_shape = polygons.shape
-        shaped_polygons = polygons.reshape(poly_shape[0]*poly_shape[1]*2,3,2)
-        shaped_indices  = indices.reshape(poly_shape[0]*poly_shape[1]*2,3)
+        shaped_polygons = polygons.reshape(poly_shape[0]*poly_shape[1]*2, 3, 2)
+        shaped_indices = indices.reshape(poly_shape[0]*poly_shape[1]*2, 3)
 
         # Record dimensions of curve array
         shape = np.shape(self.ifit_so2_0)
