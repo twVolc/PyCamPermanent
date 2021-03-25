@@ -549,8 +549,11 @@ class DOASFigure:
                 self.doas_worker.column_density['SO2'], self.doas_worker.std_err))
         elif isinstance(self.doas_worker, IFitWorker):
             if self.species != 'Total' and self.species != 'residual':
-                self.ax.set_title('{} Column density [cm-2]: {:.2e}          STD Error: {:.2e}'.format(self.species,
-                    self.doas_worker.column_density[self.species], self.doas_worker.fit_errs[self.species]))
+                self.ax.set_title('{} Column density [cm-2]: {:.2e}          STD Error: {:.2e}'
+                                  '           LDF: {:.2f}'.format(self.species,
+                                                                  self.doas_worker.column_density[self.species],
+                                                                  self.doas_worker.fit_errs[self.species],
+                                                                  self.doas_worker.ldf_best))
             else:
                 self.ax.set_title(self.species)
 

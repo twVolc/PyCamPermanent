@@ -23,6 +23,8 @@ save_opt_flow=1
 pcs_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_1.txt,C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_2.txt'
 img_registration='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/image_registration/villarrica_cv_registration.npy'
 dil_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/dil_lines/villarica_line_1.txt'
+ld_lookup_1='./Data/saved_objects/ld_lookups/2019-05-29T124401_ld_lookup_306-316_0-5000-20ppmm.npy'
+ld_lookup_2='./Data/saved_objects/ld_lookups/2019-05-29T124401_ld_lookup_312-322_0-5000-20ppmm.npy'
 
 # Processing save settings
 save_img_aa=0

@@ -52,7 +52,7 @@ class PyMenu:
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
         # Load options
-        self.load_frame = LoadFrame(pyplis_work=pyplis_worker)
+        self.load_frame = LoadFrame(pyplis_work=pyplis_worker, doas_work=doas_worker)
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
@@ -204,9 +204,11 @@ class LoadFrame(LoadSaveProcessingSettings):
     """
     Class giving options to load a range of variables, either during immediately or on startup
     """
-    def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, init_dir=FileLocator.SAVED_OBJECTS):
+    def __init__(self, pyplis_work=pyplis_worker, doas_work=doas_worker, generate_frame=False,
+                 init_dir=FileLocator.SAVED_OBJECTS):
         super().__init__()
         self.pyplis_worker = pyplis_work
+        self.doas_worker = doas_work
         self.init_dir = init_dir
         self.pdx, self.pdy = 2, 5
         self.sep = ','
@@ -225,12 +227,17 @@ class LoadFrame(LoadSaveProcessingSettings):
         """Setup tk variables for save options"""
         self.vars = {'pcs_lines': str,
                      'img_registration': str,
-                     'dil_lines': str}
+                     'dil_lines': str,
+                     'ld_lookup_1': str,
+                     'ld_lookup_2': str
+                     }
         self.num_pcs_lines = 5
         self._pcs_lines = [self.no_line] * self.num_pcs_lines
         self.img_registration = ''
         self.num_dil_lines = 5
         self._dil_lines = [self.no_line] * self.num_dil_lines
+        self.ld_lookup_1 = 'None'
+        self.ld_lookup_2 = 'None'
 
     def gather_vars(self):
         """Required for LoadSaveProcessSettings as it is called after loading. Do some general house keeping"""
@@ -295,19 +302,33 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.dil_lines_labs = [None] * self.num_dil_lines
         self.dil_add_butt = [None] * self.num_dil_lines
         self.dil_rem_butt = [None] * self.num_dil_lines
-        row_line = 0
         for i in range(self.num_dil_lines):
             lab = ttk.Label(dil_frame, text='File:')
-            lab.grid(row=row_line, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+            lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
             self.dil_lines_labs[i] = ttk.Label(dil_frame, text=self.dil_lines_short[i], width=self.max_len_str)
-            self.dil_lines_labs[i].grid(row=row_line, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+            self.dil_lines_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
             self.dil_add_butt[i] = ttk.Button(dil_frame, text='Change line',
                                               command=lambda i=i: self.add_dil_startup(i))
-            self.dil_add_butt[i].grid(row=row_line, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
+            self.dil_add_butt[i].grid(row=i, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
             self.dil_rem_butt[i] = ttk.Button(dil_frame, text='Remove line',
                                               command=lambda i=i: self.remove_dil_startup(i))
-            self.dil_rem_butt[i].grid(row=row_line, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
-            row_line += 1
+            self.dil_rem_butt[i].grid(row=i, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        # Light dilution spectrometer lookup
+        row += 1
+        spec_dil_frame = tk.LabelFrame(self.load_frame, text='Spectrometer light dilution lookup',
+                                       relief=tk.RAISED, borderwidth=2)
+        spec_dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        self.spec_dil_labs = [None, None]
+        self.spec_dil_butt = [None, None]
+        for i in range(2):
+            lab = ttk.Label(spec_dil_frame, text='Fit window {}:'.format(i+1))
+            lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+            self.spec_dil_labs[i] = ttk.Label(spec_dil_frame, text=self.ld_lookup_short[i], width=self.max_len_str)
+            self.spec_dil_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+            self.spec_dil_butt[i] = ttk.Button(spec_dil_frame, text='Change grid',
+                                               command=lambda i=i: self.add_lookup_startup(i))
+            self.spec_dil_butt[i].grid(row=i, column=2, sticky='e', padx=self.pdx, pady=self.pdy)
 
         row += 1
         update_butt = ttk.Button(self.load_frame, text='Save changes', command=lambda: self.set_defaults(self.frame))
@@ -361,6 +382,16 @@ class LoadFrame(LoadSaveProcessingSettings):
             else:
                 short_list[i] = line
 
+        return short_list
+
+    @property
+    def ld_lookup_short(self):
+        short_list = ['None'] * 2
+        for i, line in enumerate([self.ld_lookup_1, self.ld_lookup_2]):
+            if len(line) > self.max_len_str:
+                short_list[i] = '...' + line[-self.max_len_str+3:]
+            else:
+                short_list[i] = line
         return short_list
 
     @property
@@ -448,6 +479,37 @@ class LoadFrame(LoadSaveProcessingSettings):
             if line is not self.no_line:
                 self.load_dil(filename=line)
 
+    def add_lookup_startup(self, num):
+        """
+        Edits light dilution lookup table used at startup
+        :param num:     int     Lookup table index (fit window. 1 or 2)
+        """
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=FileLocator.LD_LOOKUP,
+                                              filetypes=[('Numpy array', '*.npy')])
+
+        if len(filename) > 0:
+            # Update lookup
+            setattr(self, 'ld_lookup_{}'.format(num))
+            self.spec_dil_labs[num].configure(text=self.ld_lookup_short[num])
+
+    def set_ld_lookups(self):
+        """Loads all lookup tables"""
+        for i, filepath in enumerate([self.ld_lookup_1, self.ld_lookup_2]):
+            if filepath is not 'None':
+                self.load_lookup(filename=filepath, num=i)
+
+    def load_lookup(self, filename=None, num=0):
+        """Loads lookup table"""
+        if filename is None:
+            kwargs = {}
+            if self.in_frame:
+                kwargs['parent'] = self.frame
+            filename = filedialog.askopenfilename(initialdir=FileLocator.LD_LOOKUP, **kwargs)
+
+        # Load lookup table through the light dilution gui
+        if len(filename) > 0:
+            light_dilution.choose_grid(num, grid_path=filename)
+
     def add_reg_startup(self):
         """
         Edits image registration object used at startup
@@ -490,6 +552,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         """Runs all load functions to prepare pyplis worker"""
         self.set_all_pcs_lines()
         self.set_all_dil_lines()
+        self.set_ld_lookups()
         # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
         self.load_img_reg(filename=self.img_registration, rerun=False)
 

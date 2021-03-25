@@ -210,6 +210,7 @@ class IFitWorker:
         self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
         self.ifit_so2_0, self.ifit_err_0 = None, None
         self.ifit_so2_1, self.ifit_err_1 = None, None
+        self.ifit_so2_0_path, self.ifit_so2_0_path = 'None', 'None'
         self.grid_max_ppmm = 5000
         self.grid_increment_ppmm = 20
         self.so2_grid_ppmm = np.arange(0, self.grid_max_ppmm, self.grid_increment_ppmm)
@@ -222,6 +223,7 @@ class IFitWorker:
         self.fit_1 = None
         self.fit_0_uncorr = None
         self.fit_1_uncorr = None
+        self.ldf_best = np.nan      # Best estimate of light dilution factor
 
     def reset_self(self):
         """Some resetting of object, before processing occurs"""
@@ -487,9 +489,35 @@ class IFitWorker:
         """Load spectrum"""
         pass
 
-    def load_dark(self):
+    def load_dark_spec(self, dark_spec_path):
+        """Loads dark spectrum"""
+        filename, ext = os.path.splitext(dark_spec_path)
+        if ext == '.npy':
+            wavelengths, spectrum = np.load(dark_spec_path)
+        elif ext == '.txt':
+            wavelengths, spectrum = np.load(dark_spec_path)
+        else:
+            print('Unrecognised file type for loading clear spectrum')
+            return
+        self.wavelengths = wavelengths
+        self.dark_spec = spectrum
+
+    def load_dark_coadd(self, dark_spec_path):
         """Load drk images -> co-add to generate single dark image"""
         pass
+
+    def load_clear_spec(self, clear_spec_path):
+        """Loads clear spectrum"""
+        filename, ext = os.path.splitext(clear_spec_path)
+        if ext == '.npy':
+            wavelengths, spectrum = np.load(clear_spec_path)
+        elif ext == '.txt':
+            wavelengths, spectrum = np.load(clear_spec_path)
+        else:
+            print('Unrecognised file type for loading clear spectrum')
+            return
+        self.wavelengths = wavelengths
+        self.clear_spec_raw = spectrum
 
     def load_dir(self, spec_dir=None, prompt=True, plot=True):
         """Load spectrum directory
@@ -674,6 +702,7 @@ class IFitWorker:
             if None in [self.ifit_so2_0, self.ifit_err_1, self.ifit_so2_1, self.ifit_err_1]:
                 print('{} SO2 grids not found for light dilution correction. '
                       'Use load_ld_lookup() or light_dilution_cure_generator()'.format(str(self.__class__).split()[-1]))
+                self.ldf_best = np.nan
             else:
                 # Process second fit window
                 fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
@@ -690,6 +719,8 @@ class IFitWorker:
                 self.fit_0 = fit_0  # Save corrected fits
                 self.fit_1 = fit_1
                 self.applied_ld_correction = True
+        else:
+            self.ldf_best = np.nan
 
         # Unpack results (either from light dilution corrected or not)
         for species in self.ref_spec_used:
@@ -757,6 +788,11 @@ class IFitWorker:
         except KeyError:
             self.results.fit_errs.append(np.nan)
 
+        try:
+            self.results.ldfs.append(doas_dict['LDF'])
+        except KeyError:
+            self.results.ldfs.append(np.nan)
+
     def rem_doas_results(self, time_obj, inplace=False):
         """
         Remove DOAS result values from time series
@@ -779,17 +815,24 @@ class IFitWorker:
 
         return results
 
-    def make_doas_results(self, times, column_densities, stds=None, species='SO2'):
+    def make_doas_results(self, times, column_densities, stds=None, ldfs=None, species='SO2'):
         """
         Makes pydoas DOASResults object from timeseries
         :param times:   arraylike           Datetimes of column densities
         :param column_densities: arraylike  Column densities
         :param stds:    arraylike           Standard errors in the column density values
+        :param ldfs:    array-like          Light dilution factors
         :param species: str                 Gas species
         """
         # If we have a low value we can assume it is in ppm.m (arbitrary deifnition but it should hold for almost every
         # case). So then we need to convert to molecules/cm
         doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
+
+        # Created ldfs attribute which holds light dilution factors
+        if ldfs is not None:
+            doas_results.ldfs = ldfs
+        else:
+            doas_results.ldfs = [np.nan] * len(stds)
         return doas_results
 
     def start_processing_threadless(self, spec_dir=None):
@@ -881,6 +924,7 @@ class IFitWorker:
                               'abs': self.abs_spec_species,     # Absorption spectrum
                               'ref': self.ref_spec_fit,         # Reference spectra (scaled)
                               'std_err': self.std_err,          # Standard error of fit
+                              'LDF': self.ldf_best,              # Light dilution factor
                               'column_density': self.column_density}    # Column density
 
             # Update results object
@@ -1013,7 +1057,7 @@ class IFitWorker:
         self.so2_grid_ppmm = new_so2_grid_ppmm
         np.multiply(self.so2_grid_ppmm, 2.652e+15)
 
-    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now()):
+    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
         """
         Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
         Code in ld_curve_generator.py on light_dilution branch of ifit.
@@ -1021,9 +1065,23 @@ class IFitWorker:
         from the same clear spectrum with the same fit window - it will not notify the user if it is overwriting a file
         :param wavelengths:     np.array    Array of wavelengths
         :param spec:            np.array    Clear spectrum intensity. Intensities should already be corrected for
-                                            stray-light and dark current
+                                            stray-light and dark current if is_corr is True
         :param spec_date:       datetime    Clear spectrum acquisition time - used for saving lookup table
+        :param is_corr:         bool        Flags of clear spectrum is corrected for stray light and dark current.
+                                            If False, the correction is applied here
         """
+        if not is_corr:
+            self.clear_spec_raw = spec
+
+            # Ensure we have updated the pixel space of for stray light window - simply setting property runs update
+            self.start_stray_wave = self.start_stray_wave
+            self.end_stray_wave = self.end_stray_wave
+
+            # Correct clear spectrum and then reassign it to spec
+            self.dark_corr_spectra()
+            self.stray_corr_spectra()
+            spec = self.clear_spec_corr
+
         self.update_ld_analysers()      # Update light dilution analysers if the fit windows have been changed
 
         # Create generator that encompasses full fit window
@@ -1056,6 +1114,7 @@ class IFitWorker:
         spectra_suite = np.zeros(shape)
 
         # Create synthetic spectra by updating parameters
+        print('Creating synthetic spectra with forward model')
         for i, so2 in enumerate(self.so2_grid):
             for j, ldf in enumerate(self.ldf_grid):
 
@@ -1073,6 +1132,7 @@ class IFitWorker:
         # Analyse spectra in first waveband
         # =============================================================================
         print('Analyse synthetic spectra in waveband 1')
+        print('---------------------------------------')
 
         # Create arrays to store answers
         ifit_so2_0 = np.zeros((shape[0], shape[2]))
@@ -1080,6 +1140,7 @@ class IFitWorker:
 
         # Loop through each synthetic spectrum
         for i, so2 in enumerate(self.so2_grid):
+            print('Fitting SO2 value: {}'.format('SO2'))
             for j, ldf in enumerate(self.ldf_grid):
 
                 #Extract syntheteic spectrum for suite of spectra
@@ -1100,6 +1161,7 @@ class IFitWorker:
         # Analyse spectra in second waveband
         # =============================================================================
         print('Analyse synthetic spectra in waveband 2')
+        print('---------------------------------------')
 
         # Create arrays to store answers
         ifit_so2_1 = np.zeros((shape[0],shape[2]))
@@ -1107,6 +1169,7 @@ class IFitWorker:
 
         # Loop through each synthetic spectrum
         for i, so2 in enumerate(self.so2_grid):
+            print('Fitting SO2 value: {}'.format('SO2'))
             for j, ldf in enumerate(self.ldf_grid):
 
                 #Extract syntheteic spectrum for suite of spectra
@@ -1158,6 +1221,7 @@ class IFitWorker:
         x, y = dat  # unpack data into cd and error grids
         setattr(self, 'ifit_so2_{}'.format(fit_num), x)
         setattr(self, 'ifit_err_{}'.format(fit_num), y)
+        setattr(self, 'ifit_so2_{}_path'.format(fit_num), file_path)
 
         # Extract grid info from filename
         filename = os.path.split(file_path)[-1]
@@ -1360,7 +1424,7 @@ class IFitWorker:
 
             fit1 = self.analyser1.fit_spectrum([wavelengths[i], spectra[i]], calc_od=['SO2', 'Ring', 'O3'],
                                                update_params=False)
-
+            self.ldf_best = ldf_best
             row = [i, spec_time[i], ldf_best]
             row += [fit0.params['SO2'].fit_val, fit0.params['SO2'].fit_err]
             row += [fit1.params['SO2'].fit_val, fit1.params['SO2'].fit_err]

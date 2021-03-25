@@ -45,7 +45,6 @@ class FileLocator:
     IMG_SPEC_PATH = PYCAM_ROOT_PI + '/Images/'                  # Image and spectra path on main Pi
     IMG_SPEC_PATH_WINDOWS = DAT_DIR_WINDOWS + 'Images/'         # Image and spectra path on Windows machine
     SPEC_PATH_WINDOWS = DAT_DIR_WINDOWS + 'Spectra/'
-    LD_LOOKUP = SPEC_PATH_WINDOWS + 'ld_lookups'
 
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
 
@@ -83,6 +82,7 @@ class FileLocator:
     DATA = PYCAM_ROOT_WINDOWS + '/Data/'
     SAVED_OBJECTS = DATA + 'saved_objects/'
     PCS_LINES = SAVED_OBJECTS + 'pcs_lines/'
+    LD_LOOKUP = SAVED_OBJECTS + 'ld_lookups/'
 
 
 class ConfigInfo:
