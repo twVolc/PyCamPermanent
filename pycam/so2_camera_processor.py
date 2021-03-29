@@ -540,7 +540,7 @@ class PyplisWorker:
         if len(img_dir) > 0 and os.path.exists(img_dir):
             self.img_dir = img_dir
         else:
-            raise ValueError('Image directory not recognised: {}'.format(img_dir))
+            return
 
         # Update first_image flag
         self.first_image = True

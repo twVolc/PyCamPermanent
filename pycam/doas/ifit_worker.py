@@ -7,6 +7,7 @@ critical for getting the gradient of AA vs ppm.m in camera calibration.
 This work may also allow light dilution correction following Varnam 2021
 """
 
+import time
 import queue
 import numpy as np
 import datetime
@@ -166,9 +167,11 @@ class IFitWorker:
         # Figures
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
+        self.fig_series = None          # pycam.doas.CDSeries object
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        self.results.ldfs = []
 
         # ==============================================================================================================
         # iFit setup
@@ -208,6 +211,8 @@ class IFitWorker:
         # LD attributes
         self.corr_light_dilution = True
         self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
+        self.recal_ld_mins = 0                  # Recalibration time for light dilution correction (means don't have to calculate it for every spectrum)
+        self.spec_time_last_ld = None           # Time of spectrum for last LDF lookup - used with recal_ld_mins to decide whether to lookup LDf or use previous LDF
         self.ifit_so2_0, self.ifit_err_0 = None, None
         self.ifit_so2_1, self.ifit_err_1 = None, None
         self.ifit_so2_0_path, self.ifit_so2_0_path = 'None', 'None'
@@ -227,8 +232,11 @@ class IFitWorker:
 
     def reset_self(self):
         """Some resetting of object, before processing occurs"""
-        # Reset results objecct
-        self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        # Reset results object
+        self.reset_doas_results()
+
+        # Reset last LDF correction
+        self.spec_time_last_ld = None
 
     @property
     def start_stray_wave(self):
@@ -699,26 +707,38 @@ class IFitWorker:
 
         # If we have light dilution correction we run it here
         if self.corr_light_dilution:
-            if None in [self.ifit_so2_0, self.ifit_err_1, self.ifit_so2_1, self.ifit_err_1]:
+            if False in [isinstance(x, np.ndarray) for x in
+                         [self.ifit_so2_0, self.ifit_err_1, self.ifit_so2_1, self.ifit_err_1]]:
                 print('{} SO2 grids not found for light dilution correction. '
                       'Use load_ld_lookup() or light_dilution_cure_generator()'.format(str(self.__class__).split()[-1]))
                 self.ldf_best = np.nan
             else:
-                # Process second fit window
-                fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
-                                                   fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
-                self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
-                self.fit_1_uncorr = fit_1
-                df_lookup, df_refit, fit_0, fit_1 = self.ld_lookup(so2_dat=(fit_0.params['SO2'].fit_val,
-                                                                            fit_1.params['SO2'].fit_val),
-                                                                   so2_dat_err=(fit_0.params['SO2'].fit_err,
-                                                                                fit_1.params['SO2'].fit_err),
-                                                                   wavelengths=self.wavelengths,
-                                                                   spectra=self.plume_spec_corr,
-                                                                   spec_time=self.spec_time)
-                self.fit_0 = fit_0  # Save corrected fits
-                self.fit_1 = fit_1
-                self.applied_ld_correction = True
+                # Perform full hunt for LDF if the last LDF lookup was beyond the specified time for recal or we don't
+                # have a previous ldf. If last point was NaN we also try a recalibration as NaN may mean the previous
+                # spectrum didn't have enough information to calculate LDF (e.g. it may have been free of SO2)
+                if self.spec_time_last_ld is None or np.isnan(self.ldf_best) or \
+                        self.spec_time - self.spec_time_last_ld >= datetime.timedelta(minutes=self.recal_ld_mins):
+
+                    # Process second fit window
+                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr],
+                                                       calc_od=self.ref_spec_used,
+                                                       fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
+                    self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
+                    self.fit_1_uncorr = fit_1
+                    df_lookup, df_refit, fit_0, fit_1 = self.ld_lookup(so2_dat=(fit_0.params['SO2'].fit_val,
+                                                                                fit_1.params['SO2'].fit_val),
+                                                                       so2_dat_err=(fit_0.params['SO2'].fit_err,
+                                                                                    fit_1.params['SO2'].fit_err),
+                                                                       wavelengths=self.wavelengths,
+                                                                       spectra=self.plume_spec_corr,
+                                                                       spec_time=self.spec_time)
+                    self.fit_0 = fit_0  # Save corrected fits
+                    self.fit_1 = fit_1
+                    self.applied_ld_correction = True
+                    self.spec_time_last_ld = self.spec_time     # Set this spec time to last ld calculation spec time
+                else:
+                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_corr, self.ldf_best)
+
         else:
             self.ldf_best = np.nan
 
@@ -728,8 +748,8 @@ class IFitWorker:
             self.abs_spec_species[species] = fit_0.meas_od[species]
             self.ref_spec_fit[species] = fit_0.synth_od[species]
             self.fit_errs[species] = fit_0.params[species].fit_err
-        self.abs_spec_species['Total'] = fit_0.fit
-        self.ref_spec_fit['Total'] = fit_0.spec
+        self.abs_spec_species['Total'] = fit_0.spec
+        self.ref_spec_fit['Total'] = fit_0.fit
         self.abs_spec_species['residual'] = fit_0.resid
         self.std_err = fit_0.params['SO2'].fit_err   # RMSE from residual
 
@@ -772,6 +792,11 @@ class IFitWorker:
         for cd in cds:
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
+    def reset_doas_results(self):
+        """Makes empty doas results object"""
+        self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        self.results.ldfs = []
+
     def add_doas_results(self, doas_dict):
         """
         Add column densities to DoasResults object, which should be already created
@@ -789,9 +814,16 @@ class IFitWorker:
             self.results.fit_errs.append(np.nan)
 
         try:
-            self.results.ldfs.append(doas_dict['LDF'])
+            ldf = doas_dict['LDF']
         except KeyError:
-            self.results.ldfs.append(np.nan)
+            ldf = np.nan
+        try:
+            self.results.ldfs.append(ldf)
+        # If we get an attribute error we create the attribute, fill it with nans and then set the most recent value to
+        # LDF
+        except AttributeError:
+            self.results.ldfs = [np.nan] * len(self.results.fit_errs)
+            self.results.ldfs[-1] = ldf
 
     def rem_doas_results(self, time_obj, inplace=False):
         """
@@ -805,13 +837,16 @@ class IFitWorker:
         indices = [x for x in self.results.index if x < time_obj]
         fit_err_idxs = self.results.index >= time_obj
         fit_errs = np.array(list(compress(self.results.fit_errs, fit_err_idxs)))
+        ldfs = np.array(list(compress(self.results.ldfs, fit_err_idxs)))
         if inplace:
             self.results.drop(indices, inplace=True)
             self.results.fit_errs = fit_errs
+            self.results.ldfs = ldfs
             results = None
         else:
             results = DoasResults(self.results.drop(indices, inplace=False))
             results.fit_errs = fit_errs
+            results.ldfs = ldfs
 
         return results
 
@@ -912,7 +947,10 @@ class IFitWorker:
             # Load spectrum
             self.wavelengths, self.plume_spec_raw = load_spectrum(pathname)
 
+            time_1 = time.time()
             self.process_doas()
+            print('Processed: {}'.format(pathname))
+            print('Time taken: {}'.format(time.time() - time_1))
 
             # Gather all relevant information and spectra and pass it to PyplisWorker
             processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
@@ -936,7 +974,6 @@ class IFitWorker:
 
             # Or if we are not in a processing thread we update the plots directly here
             # else:
-            # TODO check this works, but I think I can update whether processing_in_thread or not - always do it here?
             if self.fig_spec is not None:
                 self.fig_spec.update_dark()
                 self.fig_spec.update_plume()
@@ -944,6 +981,8 @@ class IFitWorker:
             # Update doas plot
             if self.fig_doas is not None:
                 self.fig_doas.update_plot()
+            if self.fig_series is not None:
+                self.fig_series.update_plot()
 
             print('Processed file: {}'.format(filename))
 
@@ -1020,6 +1059,11 @@ class IFitWorker:
         # Load ILS
         self.ILS_wavelengths, self.ILS = np.loadtxt(ils_path, unpack=True)
 
+        # Force updating of ld analysers to use new ILS
+        self.update_ld_analysers(force_both=True)
+        print('Updating ILS. Light dilution analysers will be updated. This could cause issues if lookup grids'
+              'were generated with a different ILS. Please ensure ILS represents the lookup grids currently in use')
+
     def update_ils(self):
         """Updates ILS in Analyser object for iFit (code taken from __init__ of Analyser, this should work..."""
         grid_ils = np.arange(self.ILS_wavelengths[0], self.ILS_wavelengths[-1], self.analyser.model_spacing)
@@ -1027,7 +1071,7 @@ class IFitWorker:
         self.analyser.ils = ils / np.sum(ils)
         self.analyser.generate_ils = False
 
-    def update_ld_analysers(self):
+    def update_ld_analysers(self, force_both=False):
         """
         Updates the 2 fit window analysers based on current it window definitions. This could be invoked by a button to
         prevent it being run every time the fit window is change, saving time - preventing lag in the GUI. Should only
@@ -1035,13 +1079,13 @@ class IFitWorker:
         :return:
         """
         # Only create new objects if the old ones aren't the as expected
-        if self.analyser0 is None or self.start_fit_wave != self.analyser0.fit_window[0] \
+        if force_both or self.analyser0 is None or self.start_fit_wave != self.analyser0.fit_window[0] \
                 or self.end_fit_wave != self.analyser0.fit_window[1]:
             self.analyser0 = Analyser(params=self.params, fit_window=[self.start_fit_wave, self.end_fit_wave],
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
                                  ils_path=self.ils_path)
 
-        if self.analyser1 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
+        if force_both or self.analyser1 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
                 or self.end_fit_wave_2 != self.analyser1.fit_window[1]:
             self.analyser1 = Analyser(params=self.params, fit_window=[self.start_fit_wave_2, self.end_fit_wave_2],
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
@@ -1237,6 +1281,9 @@ class IFitWorker:
         elif fit_num == 1:
             self.start_fit_wave_2, self.end_fit_wave_2 = int(start_fit_wave), int(end_fit_wave)
 
+        # Update analysers with fit window settings
+        self.update_ld_analysers()
+
     def ld_lookup(self, so2_dat, so2_dat_err, wavelengths, spectra, spec_time):
         """
         Performs lookup on currently loaded table, to find the best estimate of SO2 and light dilution factor
@@ -1278,6 +1325,10 @@ class IFitWorker:
         except TypeError:
             spec_time = np.array([spec_time])
 
+        # Add light dilution parameter to analyser
+        self.analyser0.params.add('LDF', value=0.0, vary=False)
+        self.analyser1.params.add('LDF', value=0.0, vary=False)
+
         # Make polygons out of curves
         indices, polygons = lookup.create_polygons(self.ifit_so2_0, self.ifit_so2_1)
 
@@ -1312,7 +1363,7 @@ class IFitWorker:
         tree = STRtree(poly_shapely)
 
         for i, point in enumerate(so2_dat):
-            print('Evaluating light dilution for spectrum: {}'.format(spec_time[i].strftime("%Y-%m-%d %H%M%S")))
+            print('Evaluating light dilution for spectrum: {}'.format(spec_time[i].strftime("%Y-%m-%d %H:%M:%S")))
 
             # Extract error and shapely point on current loop
             point_shapely = points_shapely[i]
@@ -1373,8 +1424,8 @@ class IFitWorker:
             elif answer_flag == 'None':
 
                 # Check if point is below error zero on either uncorrected SO2 SCD
-                if (point[0] < -(np.mean(2*so2_dat_err[0])/2.652e15) or
-                        point[1] < -(np.mean(2*so2_dat_err[1])/2.652e15)):
+                if (point[0] < -(np.mean(2*point_err[0])) or
+                        point[1] < -(np.mean(2*point_err[1]))):
                     so2_best = np.nan
                     ldf_best = np.nan
 
@@ -1416,7 +1467,7 @@ class IFitWorker:
                 # Change analyser values
                 self.analyser0.params['LDF'].set(value=ldf_best)
                 self.analyser1.params['LDF'].set(value=ldf_best)
-            print(self.analyser0.params['LDF'].value)
+            print('LDF: {}'.format(self.analyser0.params['LDF'].value))
 
             # Fit spectrum for in 2 fit windows
             fit0 = self.analyser0.fit_spectrum([wavelengths[i], spectra[i]], calc_od=['SO2', 'Ring', 'O3'],
@@ -1432,7 +1483,31 @@ class IFitWorker:
 
         return results_df, results_refit, fit0, fit1
 
-# ==================================================================================================================
+    def ldf_refit(self, wavelengths, spectrum, ldf):
+        """
+        Runs ifit with ldf defined. Useful if we don't want to calculate a new LDF for every single data point.
+        This will save time. i.e. can check when last LDF was calculated and if it was recently you can pass it to
+        this rather than running ld_lookpup. ASSUMING LDF DOESN'T CHANGE RAPIDLY IN TIME
+        """
+        if np.isnan(ldf):
+            # Change analyser values
+            self.analyser0.params['LDF'].set(value=0)
+            self.analyser1.params['LDF'].set(value=0)
+        else:
+            # Change analyser values
+            self.analyser0.params['LDF'].set(value=ldf)
+            self.analyser1.params['LDF'].set(value=ldf)
+
+        # Fit spectrum for in 2 fit windows
+        fit0 = self.analyser0.fit_spectrum([wavelengths, spectrum], calc_od=['SO2', 'Ring', 'O3'],
+                                           update_params=False)
+
+        fit1 = self.analyser1.fit_spectrum([wavelengths, spectrum], calc_od=['SO2', 'Ring', 'O3'],
+                                           update_params=False)
+
+        self.ldf_best = ldf
+        return fit0, fit1
+    # ==================================================================================================================
 
 
 class SpectraError(Exception):

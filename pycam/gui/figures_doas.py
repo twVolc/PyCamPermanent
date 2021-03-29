@@ -2,9 +2,10 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
 
+import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.patches import Rectangle
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 import numpy as np
 import queue
@@ -13,7 +14,7 @@ import datetime
 from pycam.doas.doas_worker import DOASWorker
 from pycam.doas.ifit_worker import IFitWorker
 from pycam.doas.cfg import doas_worker, species
-from pycam.gui.cfg import gui_setts
+from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
 # from acquisition_gui import AcquisitionFrame
 from pycam.cfg import pyplis_worker, process_settings
 from pycam.setupclasses import SpecSpecs
@@ -490,6 +491,8 @@ class DOASFigure:
         else:
             if self.species == 'Total':
                 self.ax.set_ylabel('Intensity')
+            elif self.species == 'residual':
+                self.ax.set_ylabel('Fit residual [%]')
             else:
                 self.ax.set_ylabel('Optical depth')
         self.ax.set_ylim([-0.2, 0.2])
@@ -562,8 +565,106 @@ class CDSeries:
     """
     Generates time series of SO2 columns densities from spectrometer
     """
-    def __init__(self):
-        pass
+    def __init__(self, parent, doas_work=doas_worker, fig_setts=gui_setts):
+        self.parent = parent
+        self.doas_worker = doas_work
+        self.doas_worker.fig_series = self
+        self.q = queue.Queue()
+        self.dpi = fig_setts.dpi
+        self.figsize = fig_setts.fig_doas
+
+        self.cd_colour = 'blue'
+        self.err_colour = 'gray'
+        self.ldf_colour = 'red'
+
+        self.time_fmt = '%H:%M'
+
+        self.frame = ttk.Frame(self.parent, relief=tk.RAISED, borderwidth=4)
+        self._setup_gui()
+
+    def _setup_gui(self):
+        """Organises widget drawing"""
+
+
+        # Figure setup
+        self.fig = plt.Figure(figsize=self.figsize, dpi=self.dpi)
+        self.ax = self.fig.subplots(1, 1)
+        self.ax_ldf = self.ax.twinx()
+        self.fig.set_facecolor(fig_face_colour)
+        for child in self.ax.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        self.ax.set_xlabel('Time [HH:MM]')
+        self.ax.set_ylabel('Column density [ppm.m]')
+        self.ax_ldf.set_ylabel('LDF', color=self.ldf_colour)
+        self.ax_ldf.set_ylim([0, 1])
+        self.ax.grid(which='major', axis='both')
+        self.ax.set_title('Spectrometer time series')
+        self.fig.tight_layout()
+
+        # Finalise canvas and gridding
+        self.canv = FigureCanvasTkAgg(self.fig, master=self.frame)
+        self.canv.get_tk_widget().pack(side=tk.TOP)
+
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.canv, self.frame)
+        toolbar.update()
+        self.canv._tkcanvas.pack(side=tk.TOP)
+
+        self.update_plot()
+
+        self.__draw_canv__()
+
+    def update_plot(self):
+        """Updates plot with current doas_worker results"""
+        # Get required fields
+        times = self.doas_worker.results.index
+        cds = self.doas_worker.results.values / self.doas_worker.ppmm_conv
+        fit_errs = np.array(self.doas_worker.results.fit_errs) / self.doas_worker.ppmm_conv
+        ldfs = np.array(self.doas_worker.results.ldfs)
+
+        # Clear previous data
+        try:
+            self.series_scatter.pop(0).remove()
+            self.series_errors[0].remove()
+            for line in self.series_errors[1]:
+                line.remove()
+            for line in self.series_errors[2]:
+                line.remove()
+            self.series_ldfs.pop(0).remove()
+        except AttributeError:
+            pass
+
+        # Plot new data
+        self.series_scatter = self.ax.plot(times, cds, markersize=5, marker='.', color=self.cd_colour, linestyle='None')
+        self.series_errors = self.ax.errorbar(times, cds, yerr=fit_errs, ecolor=self.err_colour, linestyle='None')
+
+        # Plot ldfs
+        self.series_ldfs = self.ax_ldf.plot(times, ldfs, markersize=5, color=self.ldf_colour,
+                                            linestyle='None', marker='x')
+
+        # Set axis limits
+        if len(times) > 0:
+            self.ax.set_xlim([times[0] - datetime.timedelta(seconds=5), times[-1] + datetime.timedelta(seconds=5)])
+
+        # Update plot
+        self.q.put(1)
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            # print('Got {} from q'.format(update))
+            if update == 1:
+                self.canv.draw()
+            else:
+                print('Closing canvas drawing')
+                return
+        except queue.Empty:
+            pass
+        self.frame.after(refresh_rate, self.__draw_canv__)
+
 
 
 class CalibrationWindow:

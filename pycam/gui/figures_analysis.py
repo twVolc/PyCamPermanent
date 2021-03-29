@@ -4190,7 +4190,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.vars = {'amb_roi': list,
                      'I0_MIN': int,
                      'tau_thresh': float,
-                     'dil_recal_time': int}     # Time [minutes] until recalibration of light dilution
+                     'dil_recal_time': int,     # Time [minutes] until recalibration of light dilution
+                     'use_ligh_dilution_spec': int,
+                     'grid_max_ppmm': int,
+                     'grid_increment_ppmm': int,
+                     'spec_recal_time': int}
+
 
         self.amb_roi = [0, 0, 0, 0]
         self._I0_MIN = tk.IntVar()
@@ -4201,10 +4206,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._use_light_dilution_spec = tk.IntVar()
         self._grid_max_ppmm = tk.IntVar()
         self._grid_increment_ppmm = tk.IntVar()
-
-        # TODO current quick fix for max_ppmm and increment values - probably should actually load them from a file
-        self.grid_max_ppmm = self.doas_worker.grid_max_ppmm
-        self.grid_increment_ppmm = self.doas_worker.grid_increment_ppmm
+        self._spec_recal_time = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -4255,7 +4257,15 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
     @use_light_dilution_spec.setter
     def use_light_dilution_spec(self, value):
-        self.use_light_dilution_spec.set(int(value))
+        self._use_light_dilution_spec.set(int(value))
+
+    @property
+    def spec_recal_time(self):
+        return self._spec_recal_time.get()
+
+    @spec_recal_time.setter
+    def spec_recal_time(self, value):
+        self._spec_recal_time.set(int(value))
 
     @property
     def grid_max_ppmm(self):
@@ -4451,16 +4461,27 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     def _setup_spec_frame(self):
         """Setup spectrometer frame"""
         # Use light dilution checklist
-        self.ld_spec_check = ttk.Checkbutton(self.frame_spec, text='Use spectrometer light dilution correction',
-                                             variable=self._use_light_dilution_spec, command=self.set_spec_ld)
-        self.ld_spec_check.grid(row=0, column=0, sticky='w', padx=2, pady=2)
 
-        self.run_butt = ttk.Button(self.frame_spec, text='Generate lookup', command=self.run_ld_lookup_generator)
-        self.run_butt.grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        options_frame = ttk.LabelFrame(self.frame_spec, text='Options')
+        options_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        # Use light dilution checkbutton
+        self.ld_spec_check = ttk.Checkbutton(options_frame, text='Use spectrometer light dilution correction',
+                                             variable=self._use_light_dilution_spec, command=self.set_spec_ld)
+        self.ld_spec_check.grid(row=0, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+
+        # Recalibration spinbox
+        ttk.Label(options_frame, text='Recalibrate LDF [minutes]:').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        recal_spin = ttk.Spinbox(options_frame, textvariable=self._spec_recal_time, from_=0, to=60, increment=1,
+                                 width=2, command=self.set_spec_recal)
+        recal_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
+
+        self.run_butt = ttk.Button(options_frame, text='Generate lookup', command=self.run_ld_lookup_generator)
+        self.run_butt.grid(row=2, column=0, sticky='w', padx=2, pady=2)
 
         # Load spectra
         self.load_spec = ttk.LabelFrame(self.frame_spec, text='Load spectra')
-        self.load_spec.grid(row=2, column=0, sticky='nsew', padx=2, pady=2)
+        self.load_spec.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
 
         row = 0
         label = ttk.Label(self.load_spec, text='Dark filename:')
@@ -4479,7 +4500,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Options
         self.opt_frame = ttk.LabelFrame(self.frame_spec, text='Grid Settings')
-        self.opt_frame.grid(row=0, column=1, rowspan=2, sticky='nsew', padx=2, pady=2)
+        self.opt_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
         ttk.Label(self.opt_frame, text='Maximum [ppm.m]:').grid(row=0, column=0, sticky='w', padx=2, pady=2)
         ttk.Label(self.opt_frame, text='Increment [ppm.m]:').grid(row=1, column=0, sticky='w', padx=2, pady=2)
@@ -4491,7 +4512,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Load grids
         self.load_grid = ttk.LabelFrame(self.frame_spec, text='Load grids')
-        self.load_grid.grid(row=2, column=1, sticky='nsew', padx=2, pady=2)
+        self.load_grid.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
 
         row = 0
         label = ttk.Label(self.load_grid, text='Grid 1:')
@@ -4510,7 +4531,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Figure frame
         self.frame_grid = tk.LabelFrame(self.frame_spec, text='Light dilution grid', relief=tk.RAISED, borderwidth=5)
-        self.frame_grid.grid(row=3, column=0, columnspan=2, sticky='nw', padx=5, pady=5)
+        self.frame_grid.grid(row=2, column=0, columnspan=2, sticky='nw', padx=5, pady=5)
         self._build_fig_grid()
 
         # Try to draw after everything has been setup
@@ -4524,6 +4545,15 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                  'Please switch from DOAS to iFit and then attempt correction')
             return
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+
+    def set_spec_recal(self):
+        """Updates doas_worker recalibration time for light dilution factor generation"""
+        if not isinstance(self.doas_worker, IFitWorker):
+            messagebox.showerror('Cannot run light dilution correction',
+                                 'Light dilution correction is only available when iFit is used.\n'
+                                 'Please switch from DOAS to iFit and then attempt correction')
+            return
+        self.doas_worker.recal_ld_mins = self.spec_recal_time
 
     def choose_dark_spec(self, dark_spec_path=None):
         """
@@ -4908,6 +4938,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.I0_MIN = self.I0_MIN
         self.pyplis_worker.tau_thresh = self.tau_thresh
         self.pyplis_worker.dil_recal_time = self.dil_recal_time
+        self.doas_worker.recal_ld_mins = self.spec_recal_time
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""

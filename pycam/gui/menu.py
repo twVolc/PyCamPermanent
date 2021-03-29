@@ -23,6 +23,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 import time
 import os
+import threading
 
 
 class PyMenu:
@@ -126,7 +127,7 @@ class PyMenu:
         self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
-        self.submenu_proc.add_command(label='Process DOAS', command=doas_worker.start_processing_threadless)
+        self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
 
@@ -173,6 +174,12 @@ class PyMenu:
         # Loop through keys to setup cascading menus
         for key in keys:
             self.frame.add_cascade(label=key, menu=self.menus[key])
+
+    def thread_doas_processing(self):
+        """Threads DOAS processsing so gui frees up"""
+        thread = threading.Thread(target=doas_worker.start_processing_threadless, args=())
+        thread.daemon = True
+        thread.start()
 
 
 class Settings:
@@ -495,7 +502,7 @@ class LoadFrame(LoadSaveProcessingSettings):
     def set_ld_lookups(self):
         """Loads all lookup tables"""
         for i, filepath in enumerate([self.ld_lookup_1, self.ld_lookup_2]):
-            if filepath is not 'None':
+            if filepath != 'None':
                 self.load_lookup(filename=filepath, num=i)
 
     def load_lookup(self, filename=None, num=0):

@@ -8,7 +8,7 @@ from .misc import Indicator, ScrollWindow
 import pycam.gui.cfg as cfg
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
-from pycam.gui.figures_doas import SpectraPlot, DOASPlot
+from pycam.gui.figures_doas import SpectraPlot, DOASPlot, CDSeries
 from pycam.gui.figures_analysis import ImageSO2, SequenceInfo, TimeSeriesFigure
 
 import tkinter as tk
@@ -97,6 +97,9 @@ class SpecWind:
         self.spec_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
         self.doas_frame.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
 
+        # CD time series frame
+        self.series = CDSeries(self.plt_frame, doas_work=doas_worker)
+        self.series.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
 
 class AnalysisWind:
     """Window for viewing analysis of data - absorbance images and emission rates etc"""

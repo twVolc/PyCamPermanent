@@ -2,15 +2,15 @@
 
 # This file contains the settings for loading default pyplis worker objects for startup in the gui
 
-init_img_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Seq_1\'
-dark_img_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\'
-init_spec_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\'
-dark_spec_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\'
-bg_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399829ss_Clear.png'
-bg_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png'
-bg_dark_A='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_Dark.png'
-bg_dark_B='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
-cell_cal_dir='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\Data\Images\Villarrica\Cal_1\'
+init_img_dir='.\Data\Images\Villarrica\Seq_1\'
+dark_img_dir='.\Data\Images\Villarrica\Cal_1\'
+init_spec_dir='.\tests\test_data\test_spectra\'
+dark_spec_dir='.\tests\test_data\test_spectra\'
+bg_A='.\Data\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399829ss_Clear.png'
+bg_B='.\Data\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png'
+bg_dark_A='.\Data\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_Dark.png'
+bg_dark_B='.\Data\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
+cell_cal_dir='.\Data\Images\Villarrica\Cal_1\'
 cal_type_int=1
 use_sensitivity_mask=1
 use_light_dilution=0
@@ -20,9 +20,9 @@ buff_size=200
 save_opt_flow=1
 
 # Start-up object loading
-pcs_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_1.txt,C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/pcs_lines/villaricca_line_2.txt'
-img_registration='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/image_registration/villarrica_cv_registration.npy'
-dil_lines='C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam/Data/saved_objects/dil_lines/villarica_line_1.txt'
+pcs_lines='./Data/saved_objects/pcs_lines/villaricca_line_1.txt,./Data/saved_objects/pcs_lines/villaricca_line_2.txt'
+img_registration='./Data/saved_objects/image_registration/villarrica_cv_registration.npy'
+dil_lines='./Data/saved_objects/dil_lines/villarica_line_1.txt'
 ld_lookup_1='./Data/saved_objects/ld_lookups/2019-05-29T124401_ld_lookup_306-316_0-5000-20ppmm.npy'
 ld_lookup_2='./Data/saved_objects/ld_lookups/2019-05-29T124401_ld_lookup_312-322_0-5000-20ppmm.npy'
 
@@ -43,7 +43,7 @@ auto_bg_cmap=0
 
 # DOAS calibration and DOAS-AA calibration
 doas_method=ifit
-ILS_path='C:\Users\tw9616\Documents\PostDoc\Permanent Camera\PyCamPermanent\pycam\tests\test_data\test_spectra\2019-07-03_302nm_ILS.txt'
+ILS_path='.\tests\test_data\test_spectra\2019-07-03_302nm_ILS.txt'
 maxrad_doas=20.0
 remove_doas_mins=8
 doas_recal=1
@@ -78,3 +78,7 @@ amb_roi=[550, 20, 600, 70]
 I0_MIN=0
 tau_thresh=0.01
 dil_recal_time=30
+use_light_dilution_spec=1
+grid_max_ppmm=5000
+grid_increment_ppmm=20
+spec_recal_time=10
