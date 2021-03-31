@@ -101,6 +101,9 @@ class Indicator:
             self.sock.connect_socket_timeout(timeout=5)
         except ConnectionError:
             self.indicator_off()
+            messagebox.showerror('Connection failed', 'Unable to connect to instrument.\n\n'
+                                                      'Please check connection settings are correct \n'
+                                                      'and the instrument is available on the network.')
             return
 
         # If the connection was made successfully we turn the indicator on

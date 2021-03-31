@@ -11,7 +11,7 @@ from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackg
 from pycam.cfg import pyplis_worker
 from pycam.gui.figures_doas import CalibrationWindow
 from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec, ftp_client, config
-from pycam.gui.acquisition import BasicAcqHandler
+from pycam.gui.acquisition import BasicAcqHandler, CommHandler
 from pycam.gui.network import InstrumentConfiguration
 from pycam.gui.logs import LogTemperature
 
@@ -42,8 +42,9 @@ opti_flow = OptiFlowSettings(fig_setts=gui_setts)
 # Light dilution frame
 light_dilution = LightDilutionSettings(fig_setts=gui_setts)
 
-# Communications handler
+# Communications handlers
 basic_acq_handler = BasicAcqHandler(pyplis_worker, img_dir=current_dir_img, spec_dir=current_dir_spec)
+automated_acq_handler = CommHandler()
 
 # Instrument configuration
 instrument_cfg = InstrumentConfiguration(ftp_client, config)

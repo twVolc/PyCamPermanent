@@ -6,8 +6,8 @@ from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
-    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, calibration_wind, instrument_cfg, \
-    temp_log
+    opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, automated_acq_handler,\
+    calibration_wind, instrument_cfg, temp_log
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
@@ -103,13 +103,24 @@ class PyMenu:
         self.menus[tab].add_cascade(label='Data Transfer', menu=self.submenu_data)
         self.submenu_data.add_command(label='Start transfer', command=cfg.ftp_client.watch_dir)
         self.submenu_data.add_command(label='Stop transfer', command=cfg.ftp_client.stop_watch)
-        self.submenu_data.add_command(label='Options')  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
+        self.submenu_data.add_command(label='Options', command=self.not_implemented)  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
         self.submenu_data.add_separator()
         self.submenu_data.add_command(label='Get temperature log', command=temp_log.generate_frame)
         self.menus[tab].add_separator()
 
         # Manual acquisition
-        self.menus[tab].add_command(label='Manual acquisition', command=basic_acq_handler.build_manual_capture_frame)
+        self.submenu_acq = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Acquisition settings', menu=self.submenu_acq)
+        self.submenu_acq.add_command(label='Manual acquisition', command=basic_acq_handler.build_manual_capture_frame)
+        self.submenu_acq.add_separator()
+        self.submenu_acq.add_command(label='Start automated acquisition',
+                                     command=lambda: automated_acq_handler.acq_comm(start_cont=True))
+        self.submenu_acq.add_command(label='Stop automated acquisition',
+                                     command=automated_acq_handler.stop_cont)
+        self.submenu_acq.add_separator()
+        self.submenu_acq.add_command(label='Update all settings', command=automated_acq_handler.acq_comm)
+        self.submenu_acq.add_command(label='Update spectrometer settings', command=automated_acq_handler.acq_spec_full)
+        self.submenu_acq.add_command(label='Update camera settings', command=automated_acq_handler.acq_spec_full)
         self.menus[tab].add_separator()
 
         # Geometry setup
@@ -174,6 +185,11 @@ class PyMenu:
         # Loop through keys to setup cascading menus
         for key in keys:
             self.frame.add_cascade(label=key, menu=self.menus[key])
+
+    def not_implemented(self):
+        """Function to call if the desired command has not been implemented yet"""
+        messagebox.showinfo('Not implemented', 'This command is currently under development '
+                                               'and therefore not available.')
 
     def thread_doas_processing(self):
         """Threads DOAS processsing so gui frees up"""

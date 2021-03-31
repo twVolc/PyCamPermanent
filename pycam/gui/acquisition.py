@@ -11,7 +11,7 @@ from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter.messagebox import askyesno
+from tkinter.messagebox import askyesno, showerror
 import numpy as np
 import os
 import datetime
@@ -566,6 +566,7 @@ class SpectrometerSettingsWidget(TkVariables):
         e.grid(row=3, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
+
 class CommHandler:
     """
     Handles communication backend between GUI settings and socket connection
@@ -577,15 +578,50 @@ class CommHandler:
     spec: SpectrometerSettingsWidget
         Frontend class for spectrometer acquisition settings
     """
-    def __init__(self, cam, spec, parent):
+    def __init__(self, cam=None, spec=None, parent=None):
         self.cam = cam
         self.spec = spec
-        self.frame = tk.Frame(parent)
+        self.connection = None
 
-        self.acq_button = ttk.Button(self.frame, text='Update instrument', command=self.acq_comm)
+        # Build frame if provided a parent
+        if parent is not None:
+            self.frame = tk.Frame(parent)
 
-    def acq_comm(self):
-        """Performs the acquire command, sending all relevant"""
+            self.acq_button = ttk.Button(self.frame, text='Update instrument', command=self.acq_comm)
+            self.acq_button.grid(row=0, column=0)
+
+    def add_settings_objs(self, cam, spec):
+        """Updates camera and spectrometer settings widgets as they may not be available on instantiation"""
+        self.cam = cam
+        self.spec = spec
+
+    def add_connection(self, conn):
+        """
+        Adds connection so we can tell if instrument is connected
+        :param conn:    Indicator      Connection indicator
+        """
+        self.connection = conn
+
+    def check_connection(self):
+        """Checks if there is a connection"""
+        if not self.connection.connected:
+            showerror('No instrument connected', 'No instrument is connected, cannot update settings.')
+        return self.connection.connected
+
+    def stop_cont(self):
+        """Stops continuous capture"""
+        if not self.check_connection():
+            return
+
+        # Create dictionary with commands to stop camera and spectrometer automated measurements
+        cmd_dict = {'SPC': 1, 'SPS': 1}
+        cfg.send_comms.q.put(cmd_dict)
+
+    def acq_comm(self, start_cont=False):
+        """Performs the acquire command, sending all relevant info"""
+        if not self.check_connection():
+            return
+
         # Setup empty command dictionary
         cmd_dict = dict()
 
@@ -597,6 +633,10 @@ class CommHandler:
         for cmd in self.spec.cmd_dict:
             cmd_dict[cmd] = getattr(self.spec, self.spec.cmd_dict[cmd])
 
+        if start_cont:
+            cmd_dict['STC'] = 1
+            cmd_dict['STS'] = 1
+
         # Add dictionary command to queue to be sent
         cfg.send_comms.q.put(cmd_dict)
 
@@ -604,6 +644,9 @@ class CommHandler:
         """Send camera communications
         :param acq_type:    str   Type of acquisition - forms the final section of the filename of the resulting image
         """
+        if not self.check_connection():
+            return
+
         # Setup empty command dictionary
         cmd_dict = dict()
 
@@ -619,6 +662,9 @@ class CommHandler:
 
     def acq_spec_full(self, acq_type=None):
         """Sends spectrometer communications"""
+        if not self.check_connection():
+            return
+
         # Setup empty command dictionary
         cmd_dict = dict()
 
