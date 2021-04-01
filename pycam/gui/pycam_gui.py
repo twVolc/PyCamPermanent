@@ -17,7 +17,8 @@ from pycam.networking.sockets import SocketClient
 from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
-    light_dilution, cross_correlation, basic_acq_handler, automated_acq_handler, instrument_cfg, calibration_wind
+    light_dilution, cross_correlation, basic_acq_handler, automated_acq_handler, instrument_cfg, calibration_wind,\
+    comm_recv_handler
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -84,6 +85,9 @@ class PyCam(ttk.Frame):
         basic_acq_handler.initiate_variables()
         automated_acq_handler.add_settings_objs(self.cam_wind.acq_settings, self.spec_wind.acq_settings)
         automated_acq_handler.add_connection(cfg.indicator)
+        # TODO add message_wind to add_widgets() and make it so that comm_recv_handler writes received comms to there
+        comm_recv_handler.add_widgets(cam_acq=self.cam_wind.acq_settings, spec_acq=self.spec_wind.acq_settings)
+        comm_recv_handler.run()
         geom_settings.initiate_variables()
         process_settings.initiate_variables()
         calibration_wind.add_gui(self)

@@ -9,6 +9,7 @@ from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
 from pycam.utils import check_filename, StorageMount, get_img_time, get_spec_time
 from pycam.io_py import save_img, save_spectrum
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
+from pycam.networking.commands import AcquisitionComms
 
 import socket
 import struct
@@ -126,8 +127,9 @@ class CommsFuncs(SendRecvSpecs):
             'RSC': (bool, 1),           # Restart camera (with this request the remote pis are fully restarted)
             'LOG': (int, [0, 5]),       # Various status report requests:
                                         # 0 - Full log
-                                        # 1 - Battery log
-                                        # 2 - Temperature log
+                                        # 1 - Current settings of camera and spectrometer
+                                        # 2 - Battery log
+                                        # 3 - Temperature log
             }
         self.cmd_list = self.cmd_dict.keys()          # List of keys
         self.cmd_dict['ERR'] = (str, self.cmd_list)   # Error flag, which provides the key in which an error was found
@@ -303,7 +305,10 @@ class MasterComms(CommsFuncs):
 
     def LOG(self, value, connection, socks, config):
         """Acts on LOG command, sending the specified log back to the connection"""
-        pass
+        # If we are passed a 1 this is to get all specs from cameras and spectrometer, so we don't need to do anything
+        # on masterpi
+        if value == 1:
+            return
 
 
 class SocketMeths(CommsFuncs):
@@ -936,6 +941,31 @@ class PiSocketCamComms(SocketClient):
         # Send response
         self.send_comms(self.sock, comm)
 
+    def LOG(self, value):
+        """Act on LOG request"""
+        if value == 1:
+            comm_dict = {'LOG': 1}
+
+            # Loop through attributes associated with camera. Get their current value for camera object and pack this
+            # into the comm dictionary
+            for attr in AcquisitionComms.cam_dict:
+                # If we have a command meant for the other camera we don't use this command, so continue
+                if attr == 'SSA' and self.camera.band == 'off':
+                    continue
+                elif attr == 'SSB' and self.camera.band == 'on':
+                    continue
+                elif attr == 'ATA' and self.camera.band == 'off':
+                    continue
+                elif attr == 'ATB' and self.camera.band == 'on':
+                    continue
+
+                current_val = getattr(self.camera, AcquisitionComms.cam_dict[attr])
+                comm_dict[attr] = current_val
+
+            # Encode and send communications
+            comm = self.encode_comms(comm_dict)
+            self.send_comms(self.sock, comm)
+
     def RSC(self, value):
         """Implements restart of spectrometer script (restart is controlled externally by pycam_masterpi.py)"""
         # Restart is equal to EXT, so just call EXT. Note: This means that EXT response is sent through comms, not RSC
@@ -1172,6 +1202,21 @@ class PiSocketSpecComms(SocketClient):
         """Implements restart of spectrometer script (restart is controlled externally by pycam_masterpi.py"""
         # Restart is equal to EXT, so just call EXT. Note: This means that EXT response is sent through comms, not RSC
         self.EXT(value)
+
+    def LOG(self, value):
+        """Act on LOG request"""
+        if value == 1:
+            comm_dict = {'LOG': 1}
+
+            # Loop through attributes associated with camera. Get their current value for camera object and pack this
+            # into the comm dictionary
+            for attr in AcquisitionComms.spec_dict:
+                current_val = getattr(self.spectrometer, AcquisitionComms.spec_dict[attr])
+                comm_dict[attr] = current_val
+
+            # Encode and send communications
+            comm = self.encode_comms(comm_dict)
+            self.send_comms(self.sock, comm)
 
     def EXT(self, value):
         """Shuts down camera - shutdown of the camera script still needs to be performed"""

@@ -49,6 +49,8 @@ class TkVariables:
 
         self.frame_opts = [1.0, 0.5, 0.33, 0.25, 0.2, 0.1]   # Framerate options
 
+        self.cmd_dict = {}  # Command dictionary relating the command ID to this object's attribute
+
     @property
     def pix_num_x(self):
         """Public access attribute to fetch pix_num_x from GUI"""
@@ -308,6 +310,13 @@ class TkVariables:
         self.coadd = spec.start_coadd
         self.focal_length = spec.estimate_focal_length() * 1000
 
+    def update_acquisition_parameters(self, cmd_dict):
+        """Updates the widgets for each command in the command dictionary"""
+        # Loop through each command in the provided dictionary. Set the correct attribute of this object to the value
+        # in cmd_dict
+        for cmd in cmd_dict:
+            setattr(self, self.cmd_dict[cmd], cmd_dict[cmd])
+
 
 class CameraSettingsWidget(TkVariables):
     """
@@ -473,8 +482,6 @@ class SpectrometerSettingsWidget(TkVariables):
                          'PXS': 'saturation_pixels',
                          'SNS': 'min_saturation',
                          'SXS': 'max_saturation',
-                         'PXC': 'saturation_pixels',
-                         'RWC': 'saturation_rows',
                          'WMN': 'wavelength_min',
                          'WMX': 'wavelength_max'
                          }
@@ -677,6 +684,12 @@ class CommHandler:
 
         # Add dictionary command to queue to be sent
         cfg.send_comms.q.put(cmd_dict)
+
+    def get_instrument_settings(self):
+        """Gets current acquisition settings from instrument"""
+        if not self.check_connection():
+            return
+        cfg.send_comms({'LOG': 1})
 
 
 class BasicAcqHandler:

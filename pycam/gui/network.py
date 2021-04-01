@@ -14,6 +14,7 @@ import subprocess
 import platform
 import time
 import datetime
+import threading
 
 
 def run_pycam(ip):
@@ -148,6 +149,58 @@ class ConnectionGUI:
         except Exception as e:
             print(e)
             self.connection_label.configure(text='No connection found at this address')
+
+
+class GUICommRecvHandler:
+    """
+    Handles receiving communications from the instrument and acts on received commands by updating appropriate interface
+
+    Parameters
+    ----------
+    :param recv_comm:   ExternalRecvConnection
+        Connection to pull any new communications from
+    :param cam_acq:     CameraSettingsWidget
+        Widget containing all camera acquisition settings
+    :param spec_acq:    SpectrometerSettingsWidget
+        Widget containing all camera acquisition settings
+    :param message_wind:
+        Message window frame, to print received commands to
+    """
+    def __init__(self, recv_comm=cfg.recv_comms, cam_acq=None, spec_acq=None, message_wind=None):
+        self.recv_comms = recv_comm
+        self.cam_acq = cam_acq
+        self.spec_acq = spec_acq
+        self.message_wind = message_wind
+        self.thread = None
+        self.running = False
+        self.stop = threading.Event()
+
+        self.widgets = ['cam_acq', 'spec_acq', 'message_wind']
+
+    def add_widgets(self, **kwargs):
+        """Adds widgets to object that may be required for acting on certain received comms (used by pycam_gui)"""
+        for widg in self.widgets:
+            if widg in kwargs:
+                setattr(self, widg, kwargs[widg])
+
+    def run(self):
+        """Start thread to recv and act on comms"""
+        self.thread = threading.Thread(target=self.get_comms, args=())
+        self.thread.daemon = True
+        self.thread.start()
+
+    def get_comms(self):
+        """Gets received communications from the recv_comms queue and acts on them"""
+        while self.stop.is_set():
+            comm = self.recv_comms.q.get(block=True)
+
+            if 'LOG' in comm:
+                # If getting acquisition flags was purpose of comm we update widgets
+                if comm['LOG'] == 1:
+                    if comm['IDN'] in ['CM1', 'CM2']:
+                        self.cam_acq.update_acquisition_parameters(comm)
+                    elif comm['IDN'] == 'SPC':
+                        self.spec_acq.update_acquisition_parameters(comm)
 
 
 class InstrumentConfiguration:

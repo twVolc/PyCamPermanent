@@ -479,3 +479,13 @@ class SpecSpecs:
         """Update _max_DN when bit_depth is defined (two are intrinsically linked)"""
         self._bit_depth = value
         self._max_DN = (2 ** self.bit_depth) - 1
+
+    @property
+    def wavelength_min(self):
+        """Return minimum wavelength of saturation region. Used in socket comms for logging spectrometer specs"""
+        return self.saturation_range[0]
+
+    @property
+    def wavelength_max(self):
+        """Return minimum wavelength of saturation region. Used in socket comms for logging spectrometer specs"""
+        return self.saturation_range[1]

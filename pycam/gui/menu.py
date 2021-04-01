@@ -118,9 +118,11 @@ class PyMenu:
         self.submenu_acq.add_command(label='Stop automated acquisition',
                                      command=automated_acq_handler.stop_cont)
         self.submenu_acq.add_separator()
-        self.submenu_acq.add_command(label='Update all settings', command=automated_acq_handler.acq_comm)
+        self.submenu_acq.add_command(label='Update all instrument settings', command=automated_acq_handler.acq_comm)
         self.submenu_acq.add_command(label='Update spectrometer settings', command=automated_acq_handler.acq_spec_full)
-        self.submenu_acq.add_command(label='Update camera settings', command=automated_acq_handler.acq_spec_full)
+        self.submenu_acq.add_command(label='Update camera settings', command=automated_acq_handler.acq_cam_full)
+        self.submenu_acq.add_command(label='Retrieve current settings',
+                                     command=automated_acq_handler.get_instrument_settings)
         self.menus[tab].add_separator()
 
         # Geometry setup
