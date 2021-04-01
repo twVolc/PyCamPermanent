@@ -157,13 +157,16 @@ class GUICommRecvHandler:
 
     Parameters
     ----------
-    :param recv_comm:   ExternalRecvConnection
+    :param recv_comm:       pycam.networking.sockets.ExternalRecvConnection
         Connection to pull any new communications from
-    :param cam_acq:     CameraSettingsWidget
+
+    :param cam_acq:         pycam.gui.acquisition.CameraSettingsWidget
         Widget containing all camera acquisition settings
-    :param spec_acq:    SpectrometerSettingsWidget
+
+    :param spec_acq:        pycam.gui.acquisition.SpectrometerSettingsWidget
         Widget containing all camera acquisition settings
-    :param message_wind:
+
+    :param message_wind:    pycam.gui.misc.MessageWindow
         Message window frame, to print received commands to
     """
     def __init__(self, recv_comm=cfg.recv_comms, cam_acq=None, spec_acq=None, message_wind=None):
@@ -201,6 +204,14 @@ class GUICommRecvHandler:
                         self.cam_acq.update_acquisition_parameters(comm)
                     elif comm['IDN'] == 'SPC':
                         self.spec_acq.update_acquisition_parameters(comm)
+
+            # Put comms into string for message window
+            mess = 'Received communication from instrument. IDN: {}\n' \
+                   '------------------------------------------------\n'.format(comm['IDN'])
+            for id in comm:
+                if id != 'IDN':
+                    mess += '{}: {}\n'.format(id, comm[id])
+            self.message_wind.add_message(mess)
 
 
 class InstrumentConfiguration:

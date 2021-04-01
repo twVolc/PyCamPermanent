@@ -94,7 +94,7 @@ class Indicator:
     def connect_sock(self):
         """Attempts to connect to socket - threads connection attempt and will timeout after given time"""
         if self.connected:
-            MessageWindow('Connection Error', ['Instrument already connected'])
+            messagebox.showerror('Connection Error', 'Instrument already connected')
             return
 
         try:
@@ -118,7 +118,7 @@ class Indicator:
     def disconnect_sock(self):
         """Closes socket if we are connected"""
         if not self.connected:
-            MessageWindow('Connection Error', ['No connection was found to disconnect from'])
+            messagebox.showerror('Connection Error', 'No connection was present to disconnect from.')
 
         self.sock.close_socket()
 
@@ -146,30 +146,62 @@ class NoInstrumentConnected:
 
 
 class MessageWindow:
-    """Class to create a tkinter frame containing any message
+    """Class to create a tkinter frame for GUI messages to be printed to
 
     Parameters
     ----------
-    title: str
-        Title to be placed at the top of the frame
-    message: list
-        List of messages to be placed as labels within the frame
+    parent: tk.Frame
+        Master frame of widget
     """
 
-    def __init__(self, title, message):
-        self.frame = tk.Toplevel()
-        self.frame.title(title)
+    def __init__(self, parent):
+        self.frame = ttk.Frame(parent, relief=tk.GROOVE, borderwidth=2)
+        self.mess_sep = '\n\n'
+        self.mess_start = '>> '
+        self.message_holder = self.mess_start + self.mess_sep
+        self.num_messages = 30
 
-        for mess in message:
-            label = ttk.Label(self.frame, text=mess)
-            label.pack(padx=5, pady=5)
+        self.text = tk.Text(self.frame)
 
-        button = ttk.Button(self.frame, text='Ok', command=self.close)
-        button.pack(padx=5, pady=5)
+        self.title = ttk.Label(self.frame, text='Messages:', anchor="w").pack(side="top", fill='both')
+        self.canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.mess_frame = ttk.Frame(self.canvas)
+        self.vsb = tk.Scrollbar(self.frame, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.vsb.set)
+        self.hsb = tk.Scrollbar(self.frame, orient="horizontal", command=self.canvas.xview)
+        self.canvas.configure(xscrollcommand=self.hsb.set)
 
-    def close(self):
-        """Closes widget"""
-        self.frame.destroy()
+        self.vsb.pack(side="right", fill="y")
+        self.hsb.pack(side="bottom", fill="x")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.create_window((1, 5), window=self.mess_frame, anchor="nw", tags=self.mess_frame)
+
+        self.mess_frame.bind("<Configure>", self.on_frame_configure)
+        self.init_message()
+
+    def on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def init_message(self):
+        """Startup message"""
+        self.row = 0
+        ttk.Label(self.mess_frame, text='Welcome to PyCamUV').grid(row=self.row, column=0, sticky='w')
+        self.row += 1
+        ttk.Label(self.mess_frame, text='PyCamUV v' + pycam_details['version']).grid(row=self.row, column=0, sticky='w')
+        self.row += 1
+
+
+        for i in range(self.num_messages):
+            self.message_holder += self.mess_start + self.mess_sep
+
+        self.mess_label = ttk.Label(self.mess_frame, text=self.message_holder, justify=tk.LEFT)
+        self.mess_label.grid(row=self.row, column=0, sticky='w')
+
+    def add_message(self, message):
+        """Add message to frame"""
+        message = self.mess_start + message + self.mess_sep
+        self.message_holder = message + self.message_holder.rsplit(self.mess_start, 1)[0]  # Remove first line and append new one
+        self.mess_label.configure(text=self.message_holder)
 
 
 class ScrollWindow:

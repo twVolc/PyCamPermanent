@@ -86,7 +86,8 @@ class PyCam(ttk.Frame):
         automated_acq_handler.add_settings_objs(self.cam_wind.acq_settings, self.spec_wind.acq_settings)
         automated_acq_handler.add_connection(cfg.indicator)
         # TODO add message_wind to add_widgets() and make it so that comm_recv_handler writes received comms to there
-        comm_recv_handler.add_widgets(cam_acq=self.cam_wind.acq_settings, spec_acq=self.spec_wind.acq_settings)
+        comm_recv_handler.add_widgets(cam_acq=self.cam_wind.acq_settings, spec_acq=self.spec_wind.acq_settings,
+                                      message_wind=self.cam_wind.mess_wind)
         comm_recv_handler.run()
         geom_settings.initiate_variables()
         process_settings.initiate_variables()

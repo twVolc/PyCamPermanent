@@ -4,7 +4,7 @@
 Each window forms a tab which can be accessed through the 'View' menu."""
 
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
-from .misc import Indicator, ScrollWindow
+from .misc import Indicator, ScrollWindow, MessageWindow
 import pycam.gui.cfg as cfg
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
@@ -56,6 +56,10 @@ class CameraWind:
         # Image B widget setup
         self.img_B = ImageFigure(self.frame, self.img_reg_frame, lock=draw_lock, name='Image B', band='B')
         self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
+
+        # Message window
+        self.mess_wind = MessageWindow(self.frame)
+        self.mess_wind.frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=2, pady=2)
 
 
 class SpecWind:
