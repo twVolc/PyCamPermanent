@@ -19,7 +19,8 @@ pycam_details = {
 class FileLocator:
     """Defines locations of important files"""
     PYCAM_ROOT_PI = '/home/pi/pycam'                               # Root to pycam on Pis from home directory
-    PYCAM_ROOT_WINDOWS = 'C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam'  # Root to pycam on Windows machine
+    # PYCAM_ROOT_WINDOWS = 'C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam'  # Root to pycam on Windows machine
+    PYCAM_ROOT_WINDOWS = '.'  # Root to pycam on Windows machine
 
     CONF_DIR = PYCAM_ROOT_PI + '/conf/'                         # Directory holding configuration files
     CONF_DIR_WINDOWS = PYCAM_ROOT_WINDOWS + '/conf/'            # Directory holding configuration files on Windows

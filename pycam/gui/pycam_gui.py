@@ -3,7 +3,7 @@
 """Main GUI script to be run as main executable"""
 # Enables Basemap import by pointing to
 import os
-os.environ["PROJ_LIB"] = 'C:\\Users\\tw9616\Anaconda3\\envs\\py38\\Lib\\site-packages\\pyproj'
+os.environ["PROJ_LIB"] = 'C:\\Users\\tw9616\\Anaconda3\\envs\\py38\\Lib\\site-packages\\pyproj'
 
 # import sys
 # sys.path.append("C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\")

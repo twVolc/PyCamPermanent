@@ -16,6 +16,7 @@ from pycam.io_py import save_pcs_line, load_pcs_line
 
 from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask, shifted_color_map
+from pyplis.inout import save_default_source, get_source_info_online
 from geonum import GeoPoint
 
 import tkinter as tk
@@ -1354,6 +1355,9 @@ class GeomSettings:
         self._elev = tk.DoubleVar()
         self._azim = tk.DoubleVar()
         self._volcano = tk.StringVar()
+        self._lat_volc = tk.StringVar()
+        self._lon_volc = tk.StringVar()
+        self._alt_volc = tk.IntVar()
         self._lat_ref = tk.StringVar()
         self._lon_ref = tk.StringVar()
         self._altitude_ref = tk.IntVar()
@@ -1370,7 +1374,7 @@ class GeomSettings:
         # Setting start values of variables
         with open(FileLocator.DEFAULT_GEOM, 'r') as f:
             self.filename = f.readline()
-        self.load_instrument_setup(self.filename)
+        self.load_instrument_setup(self.filename, show_info=False)
 
     def generate_frame(self):
         """Generates the GUI for this frame. This method of generating the frame means that
@@ -1433,12 +1437,6 @@ class GeomSettings:
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Volcano:')
-        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._volcano)
-        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
-
-        row += 1
         button = ttk.Button(self.frame_geom, text='Update settings', command=self.update_geom)
         button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
 
@@ -1456,9 +1454,54 @@ class GeomSettings:
         button = ttk.Button(self.frame_geom, text='Draw geometry', command=self.draw_geometry)
         button.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
 
+        # Volcano information frame
+        self.frame_volc = ttk.LabelFrame(self.frame, text='Volcano information')
+        self.frame_volc.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
+
+        row = 0
+        label = ttk.Label(self.frame_volc, text='Name:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._volcano)
+        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_volc, text='Latitude [dec]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lat_volc)
+        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_volc, text='Longitude [dec]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lon_volc)
+        entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        label = ttk.Label(self.frame_volc, text='Altitude [m]:')
+        label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        spinbox = ttk.Spinbox(self.frame_volc, textvariable=self._alt_volc, from_=0, to=8848, increment=1, width=4)
+        spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+
+        row += 1
+        # This button will force an attempt at downloading info. Useful if user accidentally overwrites volcano data
+        # with the Set info button
+        butt = ttk.Button(self.frame_volc, text='Download info',
+                          command=lambda: self.volcano_search(force_download=True))
+        butt.grid(row=row, column=0, columnspan=2, padx=2, pady=2, sticky='nsew')
+        row += 1
+        # This button will get info first from local volcano database, but if this isn't available it will try to
+        # download the information
+        butt = ttk.Button(self.frame_volc, text='Get info', command=lambda: self.volcano_search(force_download=False))
+        butt.grid(row=row, column=0, padx=2, pady=2, sticky='nsew')
+        # Set the volcano data information with GUI values. This manual input means that we don't need to rely on
+        # the pyplis data download if it isn't working.
+        butt = ttk.Button(self.frame_volc, text='Set info', command=self.volcano_save)
+        butt.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
+        self.frame_volc.grid_rowconfigure(1, weight=1)
+
         # Reference point location widgets
         self.frame_ref = ttk.LabelFrame(self.frame, text='Reference point location')
-        self.frame_ref.grid(row=1, column=0, sticky='new', padx=5, pady=5)
+        self.frame_ref.grid(row=2, column=0, sticky='new', padx=5, pady=5)
 
         row = 0
         label = ttk.Label(self.frame_ref, text='Latitude [dec]:')
@@ -1487,7 +1530,7 @@ class GeomSettings:
 
         # Figure setup
         self.frame_fig = ttk.Frame(self.frame)
-        self.frame_fig.grid(row=0, column=1, rowspan=2, sticky='nw')
+        self.frame_fig.grid(row=0, column=1, rowspan=3, sticky='nw')
 
         self._build_fig()
 
@@ -1595,6 +1638,30 @@ class GeomSettings:
         self._volcano.set(value)
 
     @property
+    def lat_volc(self):
+        return self._lat_volc.get()
+
+    @lat_volc.setter
+    def lat_volc(self, value):
+        self._lat_volc.set(value)
+
+    @property
+    def lon_volc(self):
+        return self._lon_volc.get()
+
+    @lon_volc.setter
+    def lon_volc(self, value):
+        self._lon_volc.set(value)
+
+    @property
+    def alt_volc(self):
+        return self._alt_volc.get()
+
+    @alt_volc.setter
+    def alt_volc(self, value):
+        self._alt_volc.set(value)
+
+    @property
     def lat_ref(self):
         return self._lat_ref.get()
 
@@ -1623,20 +1690,78 @@ class GeomSettings:
         for key in self.geom_dict:
             self.geom_dict[key] = getattr(self, key)
 
-    def update_geom(self):
+    def update_geom(self, show_info=True):
         """Updates pyplis MeasGeom object with values from this frame"""
         # Update geometry dictionary and pyplis worker camera object
         self.gather_geom()
         self.pyplis_worker.update_cam_geom(self.geom_dict)
 
         # Update measurement setup with location
+        self.volcano_search(show_info)
+
+    def volcano_search(self, show_info=True, force_download=False):
+        """
+        Uses pyplis online search to get volcano details
+        :param force_download:  bool        If True, data download is attempted, regardless of whether we have the
+                                            information for this volcano already stored locally. Useful if user
+                                            accidentally overwrites info with incorrect data
+        """
         try:
+            if force_download:
+                # Attempt to download source information
+                source = get_source_info_online(self.volcano.lower())
+
+                # If download was successful the returned dictionary will have contain a name for the source
+                if self.volcano.lower() in source.keys():
+                    save_default_source(source[self.volcano.lower()])
+                else:
+                    raise UnrecognisedSourceError
+
             self.pyplis_worker.measurement_setup(location=self.volcano)
+            self.lat_volc = self.pyplis_worker.meas.meas_geometry.source_lat
+            self.lon_volc = self.pyplis_worker.meas.meas_geometry.source_lon
+            self.alt_volc = self.pyplis_worker.meas.meas_geometry.source_altitude
+
+            if show_info:
+                messagebox.showinfo('Measurement setup updated',
+                                    'If you have edited the volcano, please ensure you have made the correct adjustments\n'
+                                    'to the camera and reference point locations too.\n\nVolcano info:\n'
+                                    'Volcano name: {}\n'
+                                    'Volcano latitude: {}\n'
+                                    'Volcano longitude: {}\n'
+                                    'Volcano altitude [m]: {}'.format(self.pyplis_worker.location,
+                                                                      self.pyplis_worker.meas.meas_geometry.source_lat,
+                                                                      self.pyplis_worker.meas.meas_geometry.source_lon,
+                                                                      self.pyplis_worker.meas.meas_geometry.source_altitude),
+                                    parent=self.frame)
         except UnrecognisedSourceError:
             messagebox.showerror('Source not recognised.',
                                  'The volcano source {} was not recognised. \n'
                                  'Please try a different source name or add '
-                                 'source information manually.'.format(self.volcano))
+                                 'source information manually.'.format(self.volcano),
+                                 parent=self.frame)
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+
+    def volcano_save(self):
+        """Saves volcano data from user input. Saves to pyplis module which contains a text file for volcano info"""
+        a = messagebox.askyesno('Overwriting volcano data', 'Setting volcano info will overwrite any previously stored'
+                                                            'information for this volcano. \n'
+                                                            'Ensure that this is correct before proceeding.\n'
+                                                            'Do you wish to proceed?',
+                                parent=self.frame)
+        if a:
+            source_dict = {'name': self.volcano,
+                           'lat': self.lat_volc,
+                           'lon': self.lon_volc,
+                           'altitude': self.alt_volc}
+            save_default_source(source_dict)
+
+        # Correct frame positioning
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
 
     def save_instrument_setup(self):
         """Saves all of the current instrument geometry settings to a text file, so it can be loaded on start-up"""
@@ -1657,7 +1782,7 @@ class GeomSettings:
             for key in self.geom_dict:
                 f.write('{}={}\n'.format(key, self.geom_dict[key]))
 
-    def load_instrument_setup(self, filepath=None):
+    def load_instrument_setup(self, filepath=None, show_info=True):
         """Loads existing instrument setup"""
         # Get filename to load
         if filepath is None:
@@ -1680,7 +1805,7 @@ class GeomSettings:
                     setattr(self, key, float(value))
 
         # Update geometry settings
-        self.update_geom()
+        self.update_geom(show_info)
 
     def set_default_instrument_setup(self):
         """Sets default instrument setup to load on startup"""
@@ -3116,8 +3241,7 @@ class CellCalibFrame:
         label.grid(row=0, column=0, sticky='w', padx=5)
         self.cal_dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
         self.cal_dir_lab.grid(row=0, column=1, padx=5)
-        change_butt = ttk.Button(self.frame_setts, text='Change directory',
-                                 command=lambda: self.process_setts.get_cell_cal_dir(set_var=True))
+        change_butt = ttk.Button(self.frame_setts, text='Change directory', command=self.change_cal_dir)
         change_butt.grid(row=0, column=2, padx=5)
 
         # Cropped calibration region
@@ -3145,6 +3269,7 @@ class CellCalibFrame:
         use_cell_bg_check = ttk.Checkbutton(self.frame_setts, text='Automatically set background images',
                                           variable=self._use_cell_bg, command=self.run_cal)
         use_cell_bg_check.grid(row=4, column=0, columnspan=2, sticky='w')
+        self.use_cell_bg = 1
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_cell_fit, dpi=self.dpi)
@@ -3204,6 +3329,12 @@ class CellCalibFrame:
         if self.pyplis_worker.got_cal_cell and update_plot:
             self.update_plot()
 
+    def change_cal_dir(self):
+        """Changes the cell directory and loads calibration"""
+        self.process_setts.get_cell_cal_dir(set_var=True)
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
+
     @property
     def cal_dir_short(self):
         try:
@@ -3230,6 +3361,11 @@ class CellCalibFrame:
 
     @property
     def use_cell_bg(self):
+        """
+        Relates to pyplis_worker processing. If True, the clear sky image from the calibration directory is used as the
+        clear sky image for all other processing. If False, the clear sky images defined in post-processing settings
+        is used.
+        """
         return bool(self._use_cell_bg.get())
 
     @use_cell_bg.setter
@@ -3336,6 +3472,8 @@ class CellCalibFrame:
         self.ax_fit.clear()
         self.ax_fit.set_title('Cell CD vs apparent absorbance')
         self.pyplis_worker.cell_calib.plot_all_calib_curves(self.ax_fit)
+        self.ax_fit.set_ylim([min(self.pyplis_worker.cell_calib.calib_data['on'].cd_vec) * 0.95,
+                              max(self.pyplis_worker.cell_calib.calib_data['on'].cd_vec) * 1.05])
         # self.pyplis_worker.cell_calib.plot_calib_curve('aa', ax=self.ax_fit)  # Plotting individual curves - not as tidy
         # self.pyplis_worker.cell_calib.plot_calib_curve('on', ax=self.ax_fit)
         # self.pyplis_worker.cell_calib.plot_calib_curve('off', ax=self.ax_fit)

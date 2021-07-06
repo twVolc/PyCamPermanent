@@ -5,12 +5,13 @@ PyCamPermanent
 Software for permanent installation PiCam
 
 To install:
-> ./doas/cfg.py needs to be modified for absolute pathnames on local machine
 > ./conf/processing_setting_defaults.txt needs to be modified to load clear sky images for specific location
+> 
 > sudo apt install exfat-fuse exfat-utils for SSD compatibility on pi
 
 Hardware setup:
 > Connect GPIO 23 (physical pin 16) on masterpi to GPIO 3 (physical pin 5) on slave pi. This allows off/on functionality through wittypi start-up/shutdown scripts
+> If using a 128GB microSD must expand filesystem after copying disk image. sudo raspi-config > advanced options > expand filesystem. All space should then be available to pi
 
 Bug report:
 1. Disconnecting the ext_comm more than once leads to and index error in close_connection (from masterpi)
@@ -34,7 +35,7 @@ kill the intermittent plot updater when processing is stopped
 Requirements for GUI:
 > In pycam_gui.py must update os.environ[PROJ_LIB] to point to correct place. Only necessary if there are issues with importing basemap
 >
-> pyplis. pyplis.custom_image_import needs to be updated to contain load_picam_png() function
+> pyplis
 >
 > seabreeze (conda install -c conda-forge seabreeze) for pi only
 >

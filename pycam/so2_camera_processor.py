@@ -9,10 +9,11 @@ from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
 from pycam.directory_watcher import create_dir_watcher
+from pycam.img_import import load_picam_png
 
 import pyplis
 from pyplis import LineOnImage
-from pyplis.custom_image_import import load_picam_png
+# from pyplis.custom_image_import import load_picam_png
 from pyplis.helpers import make_circular_mask
 from pyplis.optimisation import PolySurfaceFit
 from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties, find_signal_correlation
@@ -84,7 +85,7 @@ class PyplisWorker:
         self.test_doas_stds = np.random.rand(len(self.test_doas_times)) * 50
 
         # Pyplis object setup
-        self.load_img_func = pyplis.custom_image_import.load_picam_png
+        self.load_img_func = load_picam_png
         self.cam = create_picam_new_filters({})         # Generate pyplis-picam object
         self.meas = pyplis.setupclasses.MeasSetup()     # Pyplis MeasSetup object (instantiated empty)
         self.img_reg = ImageRegistration()              # Image registration object
@@ -713,7 +714,7 @@ class PyplisWorker:
         dark_full = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, len(ss_images)])
         for i, ss_image in enumerate(ss_images):
             # Load image. Coadd.
-            dark_full[:, :, i], meta = pyplis.custom_image_import.load_picam_png(os.path.join(img_dir, ss_image))
+            dark_full[:, :, i], meta = load_picam_png(os.path.join(img_dir, ss_image))
 
         # Coadd images to creat single image
         dark_img = np.mean(dark_full, axis=2)
@@ -3062,6 +3063,7 @@ class ImageRegistration:
 
 
 # ## SCRIPT FUNCTION DEFINITIONS
+
 def create_picam_new_filters(geom_info):
     # Picam camera specs (default)
     cam_specs = CameraSpecs()
@@ -3179,7 +3181,7 @@ def create_picam_new_filters(geom_info):
                        LINK_OFF_TO_ON=True)
 
     # Set the custom image import method
-    cam.image_import_method = pyplis.custom_image_import.load_picam_png
+    cam.image_import_method = load_picam_png
     # That's it...
     return cam
 

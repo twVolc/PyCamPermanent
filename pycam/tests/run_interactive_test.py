@@ -3,7 +3,12 @@
 """To be run on a raspberry pi
 This script tests the interactive_capture() method of <object Camera>"""
 
-from pycam.controllers import Camera
+try:
+    from pycam.controllers import Camera
+except ImportError:
+    import sys
+    sys.path.append('/home/pi/')
+    from pycam.controllers import Camera
 import threading
 
 # Create camera object
@@ -14,7 +19,7 @@ capt_thread = threading.Thread(target=cam.interactive_capture, args=())
 capt_thread.start()
 
 # Send capture command
-command = {'ss': 1000, 'type': 'Dark', 'exit': False}
+command = {'ss': 100000, 'type': 'Plume', 'exit': False}
 cam.capture_q.put(command)
 print('Put command in queue')
 
