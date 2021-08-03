@@ -19,6 +19,7 @@ from pycam.utils import read_file
 import threading
 import queue
 import time
+import atexit
 
 # Read config file
 config = read_file(FileLocator.CONFIG_CAM)
@@ -26,6 +27,7 @@ config = read_file(FileLocator.CONFIG_CAM)
 # -----------------------------------------------------------------
 # Setup camera object
 cam = Camera(band=config['band'])
+atexit.register(cam.close_camera)
 
 # Initialise camera (may need to set shutter speed first?)
 cam.initialise_camera()

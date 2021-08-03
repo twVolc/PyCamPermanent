@@ -22,6 +22,7 @@ from pycam.setupclasses import FileLocator, ConfigInfo, CameraSpecs, SpecSpecs
 from pycam.networking.sockets import SocketClient, SocketServer, ImgRecvConnection, SpecRecvConnection, \
     SocketNames, CommConnection, MasterComms, CommsFuncs
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
+import atexit
 
 
 # Read configuration file which contains important information for various things
@@ -32,6 +33,7 @@ pi_ip = config[ConfigInfo.pi_ip].split(',')
 # Setup mount object
 storage_mount = StorageMount()
 storage_mount.mount_dev()
+atexit.register(storage_mount.unmount_dev)      # Unmount device when script closes
 
 # Kill pycam if it is already running
 stop_script = config[ConfigInfo.stop_script]

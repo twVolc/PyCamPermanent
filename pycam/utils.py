@@ -139,7 +139,7 @@ def kill_process(process='pycam_camera'):
     # Check ps axg output lines to see whether pycam is actually running
     for line in stdout_lines:
         if process in line:
-            subprocess.call(['kill', line.split()[0]])
+            subprocess.call(['kill', '-9', line.split()[0]])
 
 
 def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):

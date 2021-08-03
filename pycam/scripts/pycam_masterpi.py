@@ -21,6 +21,7 @@ import socket
 import subprocess
 import os
 import time
+import atexit
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
@@ -28,6 +29,7 @@ config = read_file(FileLocator.CONFIG)
 # Setup mount object
 storage_mount = StorageMount()
 storage_mount.mount_dev()
+atexit.register(storage_mount.unmount_dev)      # Unmount device when script closes
 
 # ======================================================================================================================
 #  NETWORK SETUP
@@ -55,7 +57,7 @@ for ip in pi_ip:
         ssh_cmd(ssh_clients[-1], 'python3 ' + script)
 
     # Sleep so the kill_process.py has time to finish, as we don't want to kill the new camera script
-    time.sleep(5)
+    time.sleep(10)
 
     # Run core camera script
     ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script])
@@ -78,7 +80,7 @@ for script in local_scripts:
     subprocess.run(py_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Sleep so the kill_process.py has time to finish, as we don't want to kill the new spectrometer script
-time.sleep(5)
+time.sleep(10)
 
 # Run camera script on local machine in the background
 subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
@@ -108,7 +110,9 @@ sock_serv_comm.open_socket()
 # ------------------
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
+    print('Getting data transfer connection: {}'.format(i))
     connection = sock_serv_transfer.acc_connection()
+    print('Got data transfer connection: {}'.format(i))
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
 save_connections = dict()
@@ -265,8 +269,8 @@ while True:
                     try:
                         getattr(master_comms_funcs, key)(comm_cmd[key])
                     except AttributeError as e:
-                        print('Attribute error raised in command {}'.format(key))
-                        print(e)
+                        # print('Attribute error raised in command {}'.format(key))
+                        # print(e)
                         continue
 
 
@@ -382,5 +386,5 @@ while True:
     master_comms_funcs.recv_and_fwd_comms()
 
 
-
+print('Pycam masterpi closing...')
 

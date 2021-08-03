@@ -2837,11 +2837,15 @@ class PyplisWorker:
 
     def stop_watching(self):
         """Stop directory watcher and end processing thread"""
-        self.watcher.stop()
-        self.watching = False
+        if self.watcher is not None:
+            self.watcher.stop()
+            print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+            self.watching = False
 
-        # Stop processing thread when we stop watching the directory
-        self.q.put([self.STOP_FLAG, None])
+            # Stop processing thread when we stop watching the directory
+            self.q.put([self.STOP_FLAG, None])
+        else:
+            print('No directory watcher to stop')
 
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""

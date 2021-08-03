@@ -5,6 +5,8 @@ PyCamPermanent
 Software for permanent installation PiCam
 
 To install:
+> ./conf/cam_specs.txt needs to be set to the correct band on the pis
+>
 > ./conf/processing_setting_defaults.txt needs to be modified to load clear sky images for specific location
 > 
 > sudo apt install exfat-fuse exfat-utils for SSD compatibility on pi

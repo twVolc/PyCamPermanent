@@ -61,6 +61,11 @@ class Camera(CameraSpecs):
         # Create empty image array after we have got pix_num_x/y from super()
         self.image = np.array([self.pix_num_x, self.pix_num_y])  # Image array
 
+    def __del__(self):
+        """Whenever this object is deleted (such as end of script) the camera must be closed to free it up for next
+        time"""
+        self.close_camera()
+
     @property
     def analog_gain(self):
         return self._analog_gain
@@ -110,6 +115,12 @@ class Camera(CameraSpecs):
         # Flag that camera has been initialised
         self.cam_init = True
 
+    def close_camera(self):
+        """"Closes camera - may be required to free up camera for later use in other scripts"""
+        print('Closing camera')
+        self.cam.framerate = 1
+        self.cam.close()
+
     def set_shutter_speed(self, ss):
         """Sets camera shutter speed and will wait until exposure speed has settled close to requested shutter speed
 
@@ -136,7 +147,8 @@ class Camera(CameraSpecs):
         # Denominator used to scale shutter speed. Ideally it would be 1000000 to convert ss 'us' to 's', but this makes
         # the framerate too high as the camera doesn't work perfectly as expected. We therefore make the denominator a
         # little lower so ss isn't perfectly scaled to seconds and gives a slightly larger number
-        denominator = 990000.0
+        # denominator = 990000.0
+        denominator = 850000.0
         framerate = 1 / (self.shutter_speed / denominator)
         if framerate > 20:
             framerate = 20
@@ -147,7 +159,7 @@ class Camera(CameraSpecs):
 
     def check_exposure_speed(self):
         """Checks that exposure speed is within reasonable limits of shutter speed"""
-        while self.cam.exposure_speed < 0.95 * self.shutter_speed or self.cam.exposure_speed > self.shutter_speed:
+        while self.cam.exposure_speed < 0.93 * self.shutter_speed or self.cam.exposure_speed > self.shutter_speed:
             self.cam.shutter_speed = self.shutter_speed
             # print('Exposure speed: {}   Shutter speed: {}'.format(self.cam.exposure_speed, self.shutter_speed))
             time.sleep(0.01)  # Sleep until camera exposure speed is set close enough to requested ss
@@ -324,19 +336,17 @@ class Camera(CameraSpecs):
             else:
                 if 'type' in command:
                     # If a sequence isn't requested we take one typical image
-                    if command['type'] in self.file_type:
+                    # Get time and format
+                    time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
-                        # Get time and format
-                        time_str = format_time(datetime.datetime.now(), self.file_datestr)
+                    # Capture image
+                    self.capture()
 
-                        # Capture image
-                        self.capture()
+                    # Generate filename
+                    filename = self.generate_filename(time_str, command['type'])
 
-                        # Generate filename
-                        filename = self.generate_filename(time_str, command['type'])
-
-                        # Put filename and image in queue
-                        img_q.put([filename, self.image])
+                    # Put filename and image in queue
+                    img_q.put([filename, self.image])
 
     def capture_sequence(self, img_q=None, capt_q=None):
         """Main capturing sequence
@@ -458,7 +468,12 @@ class Camera(CameraSpecs):
             self.capture()
 
             # Generate filename for image and save it
-            self.save_current_image(self.generate_filename(time_str, self.file_type['dark']))
+            # self.save_current_image(self.generate_filename(time_str, self.file_type['dark']))
+            filename = self.generate_filename(time_str, self.file_type['dark'])
+            print('Captured dark: {}'.format(filename))
+
+            # Put images in q
+            self.img_q.put([filename, self.image])
 
         self.in_dark_capture = False
 
@@ -733,20 +748,18 @@ class Spectrometer(SpecSpecs):
             # If continuous capture is not requested we check if any single image is requested
             else:
                 if 'type' in command:
-                    # If a sequence isn't requested we take one typical image
-                    if command['type'] in self.file_type:
+                    # If a sequence isn't requested we take one typical image using the 'type' as the file ending
+                    # Get time and format
+                    time_str = format_time(datetime.datetime.now(), self.file_datestr)
 
-                        # Get time and format
-                        time_str = format_time(datetime.datetime.now(), self.file_datestr)
+                    # Capture spectrum
+                    self.get_spec()
 
-                        # Capture spectrum
-                        self.get_spec()
+                    # Generate filename
+                    filename = self.generate_filename(time_str, command['type'])
 
-                        # Generate filename
-                        filename = self.generate_filename(time_str, command['type'])
-
-                        # Put filename and spectrum in queue
-                        spec_q.put([filename, self.spectrum])
+                    # Put filename and spectrum in queue
+                    spec_q.put([filename, self.spectrum])
 
     def capture_sequence(self, spec_q=None, capt_q=None):
         """Captures sequence of spectra
@@ -854,10 +867,10 @@ class Spectrometer(SpecSpecs):
 
             # Generate filename for spectrum
             filename = self.generate_filename(time_str, self.file_type['dark'])
+            print('Captured dark: {}'.format(filename))
 
             # Add data to queue
-            self.spec_q.put(filename)
-            self.spec_q.put(self.spectrum)
+            self.spec_q.put([filename, self.spectrum])
 
         self.in_dark_capture = False
 

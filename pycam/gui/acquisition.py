@@ -689,7 +689,7 @@ class CommHandler:
         """Gets current acquisition settings from instrument"""
         if not self.check_connection():
             return
-        cfg.send_comms({'LOG': 1})
+        cfg.send_comms.q.put({'LOG': 1})
 
 
 class BasicAcqHandler:
@@ -758,6 +758,8 @@ class BasicAcqHandler:
         ttk.Label(frame_ss, text='Filter B:').grid(row=1, column=0, padx=2, pady=2)
         ttk.Entry(frame_ss, width=7, textvariable=self._ss_A).grid(row=0, column=1, padx=2, pady=2)
         ttk.Entry(frame_ss, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=2, pady=2)
+        self.ss_A = 100000
+        self.ss_B = 100000
         row += 1
 
         # Buttons frame
@@ -820,6 +822,7 @@ class BasicAcqHandler:
         row = 0
         ttk.Label(self.frame_spec, text='Integration time [ms]:').grid(row=row, column=0, padx=2, pady=2)
         ttk.Entry(self.frame_spec, width=7, textvariable=self._ss_spec).grid(row=row, column=1, padx=2, pady=2)
+        self.ss_spec = 100
         row += 1
 
         butt_frame = ttk.Frame(self.frame_spec)
@@ -873,6 +876,8 @@ class BasicAcqHandler:
         """Send camera communications
         :param acq_type:    str   Type of acquisition - forms the final section of the filename of the resulting image
         """
+        # TODO Maybe need to setup transfer of image taken back to the local computer
+
         # Setup empty command dictionary
         cmd_dict = dict()
 
@@ -944,8 +949,8 @@ class BasicAcqHandler:
                         'Continuing to manual capture will stop continuous capture mode from running on the instrument '
                         '(if it is currently running). Do you wish to continue?')
         if mess:
-            # Send commands to stop continuous capture of spectrometer and camera
-            cfg.send_comms.q.put({'SPC': 1, 'SPS': 1})
+            # Send commands to stop continuous capture of spectrometer and camera and stop auto SS
+            cfg.send_comms.q.put({'SPC': 1, 'SPS': 1, 'ATA': 0, 'ATB': 0, 'ATS': 0})
             self.pyplis_worker.stop_watching()
             return 1
         else:
@@ -969,7 +974,7 @@ class BasicAcqHandler:
             self.fltr_a_butt.configure(state=tk.NORMAL)
 
         # Request acquisition
-        self.acq_cam(self.cell_ppmm + self.cam_specs.file_type['cal'],
+        self.acq_cam(str(self.cell_ppmm) + self.cam_specs.file_type['cal'],
                      band=band)
 
     def close_frame(self):

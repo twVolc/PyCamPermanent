@@ -126,12 +126,14 @@ class CommsFuncs(SendRecvSpecs):
             'RSS': (bool, 1),           # Restart spectrometer (restarts pycam_spectrometer.py)
             'RSC': (bool, 1),           # Restart camera (with this request the remote pis are fully restarted)
             'LOG': (int, [0, 5]),       # Various status report requests:
-                                        # 0 - Full log
+                                        # 0 - Test connection (can send just to confirm we have connection to instument)
                                         # 1 - Current settings of camera and spectrometer
                                         # 2 - Battery log
                                         # 3 - Temperature log
+                                        # 4 - Full log
+
             }
-        self.cmd_list = self.cmd_dict.keys()          # List of keys
+        self.cmd_list = list(self.cmd_dict.keys())          # List of keys
         self.cmd_dict['ERR'] = (str, self.cmd_list)   # Error flag, which provides the key in which an error was found
 
     def IDN(self, value, connection, socks, config):
@@ -303,8 +305,14 @@ class MasterComms(CommsFuncs):
 
         print('Restart complete')
 
-    def LOG(self, value, connection, socks, config):
+    def LOG(self, value):
         """Acts on LOG command, sending the specified log back to the connection"""
+        # If value is 0 we simply return the communication - used to confirm we have a connection
+        if value == 0:
+            print('Sending handshake reply')
+            cmd = {'LOG': 0}
+            self.sockets[SocketNames.ext].send_to_all(cmd)
+
         # If we are passed a 1 this is to get all specs from cameras and spectrometer, so we don't need to do anything
         # on masterpi
         if value == 1:
@@ -344,7 +352,7 @@ class SocketMeths(CommsFuncs):
             if key not in self.cmd_dict:
                 continue
 
-            if self.cmd_dict[key][0] is bool:
+            if self.cmd_dict[key][0] is bool or self.cmd_dict[key][0] is int:
                 cmd = str(int(message[key]))
 
             # Floats are converted to strings containing 2 decimal places - is this adequate??
@@ -374,11 +382,15 @@ class SocketMeths(CommsFuncs):
 
         cmd_ret = {'ERR': []}
 
+        print('Message: {}'.format(mess_list))
         # Loop through commands. Stop before the last command as it will be a value rather than key and means we don't
         # hit an IndexError when using i+1
         for i in range(len(mess_list)-1):
-            if mess_list[i] in self.cmd_list:
+            # If the previous message was error then we need to ignore this one as it isn't a command it's an error flag
+            if i-1 > -1 and mess_list[i-1] == 'ERR':
+                continue
 
+            if mess_list[i] in self.cmd_list:
                 # If we have a bool, check that we have either 1 or 0 as command, if not, it is not valid and is ignored
                 if self.cmd_dict[mess_list[i]][0] is bool:
 
@@ -395,7 +407,7 @@ class SocketMeths(CommsFuncs):
                 elif self.cmd_dict[mess_list[i]][0] is str:
                     # Some messages accept any input form - this is signified by an empty list in cmd_dict.
                     # So if this is the case we don't check if the command is valid
-                    if len(self.cmd_dict[mess_list[i]]) == 0:
+                    if len(self.cmd_dict[mess_list[i]][1]) == 0:
                         cmd = mess_list[i+1]
                     else:
                         # Flag error with command if it is not recognised
@@ -409,6 +421,9 @@ class SocketMeths(CommsFuncs):
 
                 # Otherwise we convert message to its type and then test that outcome is within defined bounds
                 else:
+                    # print('Possible error debugging. Got command: {} for type {}, value: {}'.format(mess_list[i],
+                    #                                                                      self.cmd_dict[mess_list[i]][0],
+                    #                                                                                 mess_list[i+1]))
                     cmd = self.cmd_dict[mess_list[i]][0](mess_list[i+1])
 
                     # Flag error with command if it is not recognised
@@ -469,7 +484,6 @@ class SocketMeths(CommsFuncs):
                 # Sockets are blocking, so if we receive no data it means the socket has been closed - so raise error
                 if len(data_buff) == 0:
                     raise socket.error
-
             except:
                 raise
 
@@ -524,6 +538,7 @@ class SocketClient(SocketMeths):
                 except OSError as e:
                     # If the socket was previously closed we may need to create a new socket object to connect
                     if 'WinError 10038' in '{}'.format(e):
+                        print('Creating new socket for connection attempt')
                         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     continue
 
@@ -531,7 +546,7 @@ class SocketClient(SocketMeths):
                 self.send_handshake()
 
         except Exception as e:
-            with open(FileLocator.LOG_PATH + 'client_socket_error.log', 'a') as f:
+            with open(FileLocator.LOG_PATH_PI + 'client_socket_error.log', 'a') as f:
                 f.write('ERROR: ' + str(e) + '\n')
         return
 
@@ -999,7 +1014,7 @@ class PiSocketCamComms(SocketClient):
             pass
 
         # Wait for camera capture thread to close
-        self.camera.capture_thread.join()
+        # self.camera.capture_thread.join()
 
         # Exit script by breaking loop
         sys.exit(0)
@@ -1760,7 +1775,7 @@ class ImgRecvConnection(Connection):
                     if not os.path.exists(backup_path):
                         os.mkdir(backup_path)
 
-                    # Save spectrum to backup location
+                    # Save image to backup location
                     save_img(img, os.path.join(backup_path, filename))
 
             # Return if socket error is thrown (should signify that the connection has been closed)
@@ -1972,6 +1987,7 @@ class ExternalSendConnection(Connection):
             try:
                 # Get command from queue
                 cmd = self.q.get(block=True)
+                print('External comms sending: {}'.format(cmd))
 
                 # Encode command to bytes
                 cmd_bytes = self.sock.encode_comms(cmd)

@@ -1,2 +1,4 @@
 # -*- coding: utf-8 -*-
 # File holding spectrometer specifications
+
+auto_ss=1

@@ -13,6 +13,7 @@ from PIL import ImageTk, Image
 import time
 import threading
 import os
+import socket
 
 
 class About:
@@ -98,8 +99,20 @@ class Indicator:
             return
 
         try:
+            self.sock.close_socket()    # Close socket first, might avoid issues
             self.sock.connect_socket_timeout(timeout=5)
-        except ConnectionError:
+
+            cmd = self.sock.encode_comms({'LOG': 0})
+            self.sock.send_comms(self.sock.sock, cmd)
+            reply = self.sock.recv_comms(self.sock.sock)
+            reply = self.sock.decode_comms(reply)
+            if reply != {'LOG': 0}:
+                print('Unrecognised socket reply')
+                raise ConnectionError
+            else:
+                print('Got pycam handshake reply')
+        except (ConnectionError, socket.error) as e:
+            print(e)
             self.indicator_off()
             messagebox.showerror('Connection failed', 'Unable to connect to instrument.\n\n'
                                                       'Please check connection settings are correct \n'

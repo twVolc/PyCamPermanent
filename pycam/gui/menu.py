@@ -90,13 +90,12 @@ class PyMenu:
 
         self.submenu_cmd = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Commands', menu=self.submenu_cmd)
-        self.submenu_cmd.add_command(label='Shutdown', command=lambda: instrument_cmd('EXT'))
-        self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Restart', command=lambda: instrument_cmd('RST'))
         self.submenu_cmd.add_command(label='Restart cameras', command=lambda: instrument_cmd('RSC'))
         self.submenu_cmd.add_command(label='Restart spectrometer', command=lambda: instrument_cmd('RSS'))
         self.submenu_cmd.add_separator()
         self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
+        self.submenu_cmd.add_command(label='Stop pycam', command=lambda: instrument_cmd('EXT'))
         self.menus[tab].add_separator()
 
         # Data transfer
