@@ -201,6 +201,7 @@ class GUICommRecvHandler:
                 # If getting acquisition flags was purpose of comm we update widgets
                 if comm['LOG'] == 1:
                     if comm['IDN'] in ['CM1', 'CM2']:
+                        # TODO CHeck all of this is actually working and updating parameters
                         self.cam_acq.update_acquisition_parameters(comm)
                     elif comm['IDN'] == 'SPC':
                         self.spec_acq.update_acquisition_parameters(comm)

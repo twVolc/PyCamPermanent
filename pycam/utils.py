@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """Utilities for pycam"""
+from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
+
 import os
 import numpy as np
 import subprocess
@@ -140,6 +142,21 @@ def kill_process(process='pycam_camera'):
     for line in stdout_lines:
         if process in line:
             subprocess.call(['kill', '-9', line.split()[0]])
+
+
+def kill_all(ips, script_name='/home/pi/pycam/scripts/kill_process.py'):
+    """
+    Kills local and remote pycam scripts (mainly for use at the end of pycam_masterpi to ensure everything is
+    shutdown - a bit of a fail-safe
+    """
+    print('Attempting to kill any scripts still running')
+    # Remote pis
+    for ip in ips:
+        ssh_client = open_ssh(ip)
+        ssh_cmd(ssh_client, 'python3 {}'.format(script_name))
+        close_ssh(ssh_client)
+
+    subprocess.run(['python3', script_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):

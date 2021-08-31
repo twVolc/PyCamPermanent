@@ -7,7 +7,6 @@ messages other comms
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 import pycam.gui.cfg as cfg
-from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -15,6 +14,7 @@ from tkinter.messagebox import askyesno, showerror
 import numpy as np
 import os
 import datetime
+import time
 
 
 class TkVariables:
@@ -696,8 +696,9 @@ class BasicAcqHandler:
     """
     Handles basic acquisitions - outside of continuous capture
     """
-    def __init__(self, pyplis_worker, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, pyplis_worker, doas_worker, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self.pyplis_worker = pyplis_worker
+        self.doas_worker = doas_worker
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.frame = None
@@ -708,6 +709,7 @@ class BasicAcqHandler:
 
         self.in_spec_seq = False
         self.in_img_seq = False
+        self.plot_iter_current = None
 
     def initiate_variables(self):
         self._ss_A = tk.IntVar()
@@ -717,6 +719,12 @@ class BasicAcqHandler:
 
     def build_manual_capture_frame(self):
         """Builds frame for controlling manual capture of images and spectra"""
+        # Setup pyplis worker to plot iteratively so that each image is displayed. We can then return the setting to
+        # its old setting value when we close the frame i.e. ensure this doesn't permanently change this setting as that
+        # would be a bit annoying
+        self.plot_iter_current = self.pyplis_worker.plot_iter
+        self.pyplis_worker.plot_iter = True
+
         # Ensure we tell the directory handler that we will work out what directory to use from here
         self.img_dir.auto_mode = False
         self.spec_dir.auto_mode = False
@@ -740,7 +748,8 @@ class BasicAcqHandler:
                 return
 
         # Start pyplis worker watcher
-        self.pyplis_worker.start_watching(self.img_dir.root_dir)
+        self.pyplis_worker.start_watching(self.img_dir.root_dir, recursive=True)
+        self.doas_worker.start_watching(self.spec_dir.root_dir, recursive=True)
 
         # Build capture frame
         self.frame = tk.Toplevel()
@@ -840,6 +849,15 @@ class BasicAcqHandler:
                              command=lambda: self.acq_spec(self.spec_specs.file_type['meas']))
         self.spec_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
+        # Start FTP client watching
+        if cfg.indicator.connected:
+            if cfg.ftp_client.watching_dir:
+                print('Stop watching directory')
+                cfg.ftp_client.stop_watch()
+            time.sleep(5)
+            print('Start watching directory')
+            cfg.ftp_client.watch_dir(new_only=True)
+
     @property
     def ss_A(self):
         return self._ss_A.get()
@@ -876,13 +894,13 @@ class BasicAcqHandler:
         """Send camera communications
         :param acq_type:    str   Type of acquisition - forms the final section of the filename of the resulting image
         """
-        # TODO Maybe need to setup transfer of image taken back to the local computer
 
         # Setup empty command dictionary
         cmd_dict = dict()
 
         # Setup directories depending on the acquisition type
         if acq_type == self.cam_specs.file_type['test']:
+            self.pyplis_worker.force_pair_processing = True
             self.img_dir.set_test_dir()
 
         elif acq_type == self.cam_specs.file_type['meas']:
@@ -923,6 +941,9 @@ class BasicAcqHandler:
         # Setup directories depending on the acquisition type
         if acq_type == self.spec_specs.file_type['test']:
             self.spec_dir.set_test_dir()
+        elif acq_type == self.spec_specs.file_type['dark']:
+            self.spec_dir.set_dark_dir()
+
         elif acq_type == self.spec_specs.file_type['meas']:
             if self.in_spec_seq:
                 self.spec_seq_butt.configure(text='Sequence')
@@ -952,6 +973,7 @@ class BasicAcqHandler:
             # Send commands to stop continuous capture of spectrometer and camera and stop auto SS
             cfg.send_comms.q.put({'SPC': 1, 'SPS': 1, 'ATA': 0, 'ATB': 0, 'ATS': 0})
             self.pyplis_worker.stop_watching()
+            self.doas_worker.stop_watching()
             return 1
         else:
             return 0
@@ -980,9 +1002,12 @@ class BasicAcqHandler:
     def close_frame(self):
         """Closes acquisition frame"""
         # Return the directory handling to auto mode (we only want it to be manual for manual acquisitions)
+        self.pyplis_worker.plot_iter = self.plot_iter_current
         self.img_dir.auto_mode = True
         self.spec_dir.auto_mode = True
         self.pyplis_worker.stop_watching()
+        self.doas_worker.stop_watching()
+        cfg.ftp_client.stop_watch()
 
         self.in_frame = False
         self.frame.destroy()

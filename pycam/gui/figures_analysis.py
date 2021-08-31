@@ -2348,6 +2348,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         Builds tkinter frame for settings
         :return:
         """
+        # Gather current settings as some settings may have been changed elsewhere
+        self.gather_vars()
+
         if self.in_frame:
             self.frame.attributes('-topmost', 1)
             self.frame.attributes('-topmost', 0)

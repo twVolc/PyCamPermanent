@@ -12,7 +12,7 @@ from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, r
     acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms, SocketNames
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.utils import read_file, StorageMount
+from pycam.utils import read_file, StorageMount, kill_all
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
 
 import threading
@@ -43,6 +43,7 @@ host_ip = config[ConfigInfo.host_ip]
 # ======================================================================================================================
 # Loop through remote pis and start scripts on them
 remote_scripts = config[ConfigInfo.remote_scripts].split(',')    # Remote scripts are held in the config file
+# atexit.register(kill_all, pi_ip, script_name=remote_scripts[-1])            # Register killing all scripts at exit
 ssh_clients = []
 print('Running remote scripts...')
 for ip in pi_ip:
@@ -98,12 +99,28 @@ subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
 # Open sockets for image/spectra transfer
 port_transfer = int(config['port_transfer'])
 sock_serv_transfer = SocketServer(host_ip, port_transfer)
-sock_serv_transfer.open_socket()
+# sock_serv_transfer.open_socket()
+while True:
+    try:
+        sock_serv_transfer.open_socket()
+        break
+    except OSError:
+        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+        sock_serv_transfer.close_socket()
+        time.sleep(1)
 
 # Open socket for communication with pis (cameras and spectrometer)
 port_comm = int(config['port_comm'])
 sock_serv_comm = SocketServer(host_ip, port_comm)
-sock_serv_comm.open_socket()
+# sock_serv_comm.open_socket()
+while True:
+    try:
+        sock_serv_comm.open_socket()
+        break
+    except OSError:
+        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+        sock_serv_comm.close_socket()
+        time.sleep(1)
 
 # -------------------
 # Transfer socket
@@ -140,8 +157,7 @@ for ip in pi_ip:
     # Start save thread
     save_connections[ip + '_SPC'].thread_func()
 
-# Camera for master pi
-# Do same for spectrum, which is on the local pi
+# Same as above but for camera on master pi
 save_connections[host_ip] = ImgRecvConnection(sock_serv_transfer, acc_conn=False,
                                               storage_mount=storage_mount, backup=True)
 
@@ -185,9 +201,17 @@ comms_connections[host_ip].thread_func()
 # ----------------------------------
 port_ext = int(config['port_ext'])
 sock_serv_ext = SocketServer(host_ip, port_ext)
-sock_serv_ext.open_socket()
+# sock_serv_ext.open_socket()
+while True:
+    try:
+        sock_serv_ext.open_socket()
+        break
+    except OSError:
+        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+        sock_serv_ext.close_connection()
+        time.sleep(1)
 
-# Create obects for accepting and controlling 2 new connections (one may be local computer conn, other may be wireless)
+# Create objects for accepting and controlling 2 new connections (one may be local computer conn, other may be wireless)
 ext_connections = {'1': CommConnection(sock_serv_ext, acc_conn=True), '2': CommConnection(sock_serv_ext, acc_conn=True)}
 # ----------------------------------
 

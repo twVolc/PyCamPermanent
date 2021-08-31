@@ -295,6 +295,7 @@ class Camera(CameraSpecs):
 
             # Wait for imaging command (expecting a dictionary containing information for acquisition)
             command = capt_q.get(block=True)
+            print('pycam_camera.py: Got message from camera capture queue: {}'.format(command))
 
             if 'exit' in command:
                 # return if commanded to exit
@@ -344,6 +345,7 @@ class Camera(CameraSpecs):
 
                     # Generate filename
                     filename = self.generate_filename(time_str, command['type'])
+                    print('pycam_camera.py: Captured image: {}'.format(filename))
 
                     # Put filename and image in queue
                     img_q.put([filename, self.image])

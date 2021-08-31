@@ -158,6 +158,7 @@ class IFitWorker:
         self.watcher = None
         self.watching_dir = None
         self.watching = False
+        self.STOP_FLAG = 'exit'
 
         self._dark_dir = None
         self.dark_dir = dark_dir        # Directory where dark images are stored
@@ -901,7 +902,7 @@ class IFitWorker:
             self.q_spec.put(os.path.join(self.spec_dir, file))
 
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
-        self.q_spec.put('exit')
+        self.q_spec.put(self.STOP_FLAG)
 
         # Begin processing
         self._process_loop()
@@ -929,7 +930,7 @@ class IFitWorker:
             pathname = self.q_spec.get(block=True)
 
             # Close thread if requested with 'exit' command
-            if pathname == 'exit':
+            if pathname == self.STOP_FLAG:
                 break
 
             # Extract filename and create datetime object of spectrum time
@@ -986,7 +987,7 @@ class IFitWorker:
 
             print('Processed file: {}'.format(filename))
 
-    def start_watching(self, directory):
+    def start_watching(self, directory, recursive=True):
         """
         Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
         Also starts a processing thread, so that the images which arrive can be processed
@@ -996,7 +997,7 @@ class IFitWorker:
             print('Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
-        self.watcher = create_dir_watcher(directory, True, self.directory_watch_handler)
+        self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
         self.watcher.start()
         self.watching_dir = directory
         self.watching = True
@@ -1007,14 +1008,23 @@ class IFitWorker:
 
     def stop_watching(self):
         """Stop directory watcher and end processing thread"""
-        self.watcher.stop()
-        self.watching = False
+        if self.watcher is not None:
+            self.watcher.stop()
+            print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+            self.watching = False
 
-        # Stop the processing thread
-        self.q_spec.put('exit')
+            # Stop processing thread when we stop watching the directory
+            self.q_spec.put(self.STOP_FLAG)
+        else:
+            print('No directory watcher to stop')
 
     def directory_watch_handler(self, pathname, t):
         """Handles new spectra passed from watcher"""
+        _, ext = os.path.splitext(pathname)
+        if ext != self.spec_specs.file_ext:
+            return
+
+        print('Directory Watcher ifit: New file found {}'.format(pathname))
         # Pass path to queue
         self.q_spec.put(pathname)
 

@@ -120,19 +120,37 @@ class CurrentDirectories:
 
         # Check image type from filename and then place it in the correct folder from that
         img_type = filename.split('_')[self.specs.file_type_loc]
+        print('FTP transferring image type: {}'.format(img_type))
         if img_type == self.specs.file_type['test']:
             local_date_dir = self.test_dir
+            if local_date_dir is None:
+                self.set_test_dir()
         elif img_type == self.specs.file_type['meas']:
             local_date_dir = self.seq_dir
+            if local_date_dir is None:
+                self.set_seq_dir()
+                local_date_dir = self.seq_dir
         elif img_type == self.specs.file_type['clear']:
             local_date_dir = self.cal_dir
+            if local_date_dir is None:
+                self.set_cal_dir()
+                local_date_dir = self.cal_dir
         elif self.specs.file_type['cal'] in img_type:
             local_date_dir = self.cal_dir
+            if local_date_dir is None:
+                self.set_cal_dir()
+                local_date_dir = self.cal_dir
         # TODO dark could be in either cal_x or could go in the dark_list dir if I do that? Maybe just have dark_dir as cal_dir?
         elif img_type == self.specs.file_type['dark']:
-            local_date_dir = self.dark_dir
+            # local_date_dir = self.dark_dir
+            local_date_dir = self.cal_dir
+            if local_date_dir is None:
+                self.set_cal_dir()
+                local_date_dir =self.cal_dir
         # If unrecognised file type the image is just put straight in the date directory
         else:
+            if self.date_dir is None:
+                self.date_dir = self.set_date_dir()
             local_date_dir = self.date_dir
 
         # Make directory if it doesn't already exist
@@ -271,9 +289,9 @@ class FTPClient:
             except ftplib.error_perm as e:
                 print(e)
 
-    def get_data(self, img, rm=True):
-        """Downloads image
-        :param img:         str     Filename of image on remote machine
+    def get_data(self, data_name, rm=True):
+        """Downloads image/spectrum
+        :param data_name:   str     Filename of image/spectrum on remote machine
         :param rm:          bool    If True, the file is deleted from the host once it has been transferred
                                     If False, transfer will keep running indefinitely as the transfer does not directly
                                     identify files it has already transferred previously
@@ -285,7 +303,7 @@ class FTPClient:
 
         # Filename organisation for local machine
         # File always goes into dated directory (date is extracted from filename)
-        file = os.path.split(img)[-1]
+        file = os.path.split(data_name)[-1]
         filename, ext = os.path.splitext(file)
 
         # Get correct directory to save to from the directory handler object
@@ -305,39 +323,62 @@ class FTPClient:
         else:
             # Download file
             with open(local_name, 'wb') as f:
+                lock_file = local_name.replace(ext, '.lock')
+                open(lock_file, 'a').close()
                 start_time = time.time()
-                self.connection.retrbinary('RETR ' + img, f.write)
+                self.connection.retrbinary('RETR ' + data_name, f.write)
                 elapsed_time = time.time() - start_time
+                os.remove(lock_file)
+                print('Removing lockfile: {}'.format(lock_file))
                 print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
                                                                                                  elapsed_time))
 
         # Delete file after it has been transferred
         if rm:
             try:
-                self.connection.delete(img)
+                self.connection.delete(data_name)
                 print('Deleted file {} from instrument'.format(filename))
             except ftplib.error_perm as e:
                 print(e)
 
-    def watch_dir(self):
+    def watch_dir(self, lock='.lock', new_only=False):
         """Public access thread starter for _watch_dir"""
         if not self.test_connection():
             print('FTP connection could not be established, directory watching is not possible')
             return
 
-        self.watch_thread = threading.Thread(target=self._watch_dir, args=())
+        self.watch_thread = threading.Thread(target=self._watch_dir, args=(lock, new_only,))
         self.watch_thread.daemon = True
         self.watch_thread.start()
         self.watching_dir = True
 
-    def _watch_dir(self, lock='.lock'):
+    def _watch_dir(self, lock='.lock', new_only=False):
         """
         Watches directory for new files and adds image to queue when they appear. Watches the directory defined by
         self.dir_data_remote.
 
         :param lock: str
             Filename extension which defines when the file is not ready to be collected (in a locked state)
+        :param new_only: bool
+            If True, only new files are transfered across - files already on the instrument are ignored - used for
+            manual acquisitions where we don't want to transfer old images, we want to start with any new ones taken
+            during manual acquisition
         """
+        # Empty old queue
+        with self.watch_q.mutex:
+            self.watch_q.queue.clear()
+
+        # If new_only we need to get a list of all current images, so we can ignore all of these
+        if new_only:
+            # Get file list from host machine
+            try:
+                ignore_list = self.connection.nlst()
+                ignore_list.sort()
+                print('Ignoring files already on instrument: {}'.format(ignore_list))
+            except ftplib.error_perm as e:
+                print(e)
+                ignore_list = []
+
         while True:
             # First check we haven't had a stop request
             try:
@@ -372,13 +413,18 @@ class FTPClient:
                 except queue.Empty:
                     pass
 
-                filename, ext = os.path.splitext(file)
+                # Check if this is a file that we want to ignore
+                if new_only:
+                    if file in ignore_list:
+                        continue
 
-                # Camera image
+                # Extract filename to generate lock file
+                filename, ext = os.path.splitext(file)
                 lock_file = filename + lock
                 if lock_file in file_list:      # Don't download image if it is still locked
                     continue
                 else:
+                    print('Getting file: {}'.format(file))
                     self.get_data(os.path.join(self.dir_data_remote, file))
 
             # Sleep for designated time, so I'm not constantly polling the host

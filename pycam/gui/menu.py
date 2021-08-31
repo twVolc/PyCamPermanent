@@ -146,6 +146,11 @@ class PyMenu:
 
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
+        self.menus[tab].add_separator()
+        self.disp_var = tk.IntVar()
+        self.disp_var.set(0)
+        self.menus[tab].add_checkbutton(label='Display only mode', var=self.disp_var, command=self.set_display_mode)
+
         # ---------------------------------------------------------------------------------------------------------
 
         # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
@@ -198,6 +203,10 @@ class PyMenu:
         thread = threading.Thread(target=doas_worker.start_processing_threadless, args=())
         thread.daemon = True
         thread.start()
+
+    def set_display_mode(self):
+        """Sets the display mode on click of checkbutton"""
+        pyplis_worker.display_only = bool(self.disp_var.get())
 
 
 class Settings:

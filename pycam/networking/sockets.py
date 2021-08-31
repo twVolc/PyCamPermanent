@@ -578,6 +578,7 @@ class SocketClient(SocketMeths):
         """Send client identity information to server"""
         handshake_msg = self.encode_comms(self.id)
         self.send_comms(self.sock, handshake_msg)
+        # print('Sent handshake {} to {}'.format(handshake_msg, self.server_addr))
 
     def close_socket(self):
         """Closes socket by disconnecting from host"""
@@ -1321,11 +1322,12 @@ class SocketServer(SocketMeths):
         """Accept connection and add to listen"""
         # Establish connection with client and append to list of connections
         print('Accepting connection at {}'.format(self.server_addr))
+        # print('Current number of connections: {}'.format(self.num_conns))
         try:
             connection = self.sock.accept()
             self.connections.append(connection)
 
-            # Receive the handshaek to get connection ID
+            # Receive the handshake to get connection ID
             conn_id = self.recv_comms(connection[0])
             conn_id = self.decode_comms(conn_id)
             print('Got connection from {} with ID: {}'.format(connection[1][0], conn_id['IDN']))
@@ -1404,15 +1406,18 @@ class SocketServer(SocketMeths):
             The socket connection object that would be returned by an accept() call
         """
         if connection is not None:
+            print('Closing connection: {}'.format(self.connections))
             for i in range(self.num_conns):
                 if connection in self.connections[i]:
                     # Get ip of connection, just closing print statement
                     ip = self.get_ip(connection=connection)
 
-
-                    connection.shutdown(socket.SHUT_RDWR)
-                    # Close the connection
-                    connection.close()
+                    try:
+                        connection.shutdown(socket.SHUT_RDWR)
+                        # Close the connection
+                        connection.close()
+                    except OSError:
+                        print('Connection already closed, removing it from list')
 
                     # Remove connection from list
                     del self.connections[i]
@@ -1430,9 +1435,12 @@ class SocketServer(SocketMeths):
                 if ip in self.connections[i][1]:
                     conn_num = i
                     conn = self.connections[conn_num][0]
-                    conn.shutdown(socket.SHUT_RDWR)
 
-                    conn.close()
+                    try:
+                        conn.shutdown(socket.SHUT_RDWR)
+                        conn.close()
+                    except OSError:
+                        print('Connection already closed, removing it from list')
 
                     # Remove connection from list
                     del self.connections[conn_num]
@@ -1448,8 +1456,13 @@ class SocketServer(SocketMeths):
             if isinstance(conn_num, int):
                 ip = self.get_ip(conn_num=conn_num)
                 conn = self.connections[conn_num][0]
-                conn.shutdown(socket.SHUT_RDWR)
-                conn.close()
+
+                try:
+                    conn.shutdown(socket.SHUT_RDWR)
+                    conn.close()
+                except OSError:
+                    print('Connection already closed, removing it from list')
+
                 del self.connections[conn_num]
 
                 # Update the number of connections we have
@@ -1598,7 +1611,11 @@ class SocketServer(SocketMeths):
 
         # Loop through connections and send to all
         for conn in self.connections:
-            self.send_comms(conn[0], cmd_bytes)
+            try:
+                self.send_comms(conn[0], cmd_bytes)
+            except BrokenPipeError:
+                print('SocketServer BrokenPipeError: Closeing connection {}'.format(conn))
+                self.close_connection(conn)
 
 
 # ====================================================================
@@ -1731,6 +1748,8 @@ class CommConnection(Connection):
                 self.working = False
                 print('Socket Error, socket was closed, aborting CommConnection thread: {}, {}'.format(self.ip,
                                                                                                        self.sock.port))
+                if isinstance(self.sock, SocketServer):
+                    self.sock.close_connection(connection=self.connection)
                 return
 
         # If event is set we need to exit thread and set receiving to False
@@ -1753,6 +1772,8 @@ class ImgRecvConnection(Connection):
             try:
                 # Receive image from pi client
                 img, filename = self.sock.recv_img(self.connection)
+
+                print('pycam_masterpi: Got new image file: {}'.format(filename))
 
                 # Save image
                 save_img(img, FileLocator.IMG_SPEC_PATH + filename)

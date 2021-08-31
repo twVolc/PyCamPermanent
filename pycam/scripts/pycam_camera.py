@@ -44,7 +44,9 @@ cam.capture_q.put({'start_cont': True})
 # Setup image transfer socket
 serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
 sock_trf = PiSocketCam(serv_ip, port, camera=cam)
+print('pycam_camera: Connecting transfer socket')
 sock_trf.connect_socket()
+print('pycam_camera: Connected transfer socket')
 
 # Start image sending thread
 trf_conn = ImgSendConnection(sock_trf, cam.img_q, acc_conn=False)
@@ -61,7 +63,9 @@ trf_conn.thread_func()
 # Setup comms socket
 serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
 sock_comms = PiSocketCamComms(serv_ip, port, camera=cam)
+print('pycam_camera: Connecting comms socket')
 sock_comms.connect_socket()
+print('pycam_camera: Connected comms socket')
 
 # Setup comm connection and start the thread_func for communications
 comm_connection = CommConnection(sock_comms, acc_conn=False)
@@ -75,7 +79,6 @@ sock_comms.comm_connection = comm_connection
 
 """Final loop where all processes are carried out - mainly comms"""
 while True:
-
     # --------------------------------------------------------------------------------------------
     # Receive comms message and act on it if we have something
     try:
@@ -86,32 +89,10 @@ while True:
             # Loop through each command code in the dictionary, carrying our the commands individually
             for key in comm_cmd:
                 # Call correct method determined by 3 character code from comms message
-                # getattr(sock_comms, key + '_comm')(comm_cmd[key])
                 try:
                     getattr(sock_comms, key)(comm_cmd[key])
                 except AttributeError:
                     continue
-
-                # if key == 'EXT':
-                #     # time.sleep(10)
-                #
-                #     # Ensure transfer thread closes down
-                #     trf_conn.event.set()
-                #     trf_conn.q.put(['close', 1])
-                #
-                #     # Wait for comms connection to thread to close
-                #     while comm_connection.working:
-                #         pass
-                #
-                #     # Wait for image transfer thread to close
-                #     while trf_conn.working:
-                #         pass
-                #
-                #     # Wait for camera capture thread to close
-                #     cam.capture_thread.join()
-                #
-                #     # Exit script by breaking loop
-                #     sys.exit()
 
     except queue.Empty:
         pass

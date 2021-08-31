@@ -18,6 +18,11 @@ Hardware setup:
 Bug report:
 1. Disconnecting the ext_comm more than once leads to and index error in close_connection (from masterpi)
 2. If camera disconnects from masterpi an Index Error is thrown, due to receiving from a connection which doesn't exist possibly?
+3. Every now and then I get a Socket already in use error when starting masterpi, this makes it fail and then the camera continually tries to
+connect. Need to add a loop to the SocketServer somewhere, so that if I get this error I just keep trying to make the socket until it isn't in use. 
+   - I've added a loop to opening sockets in pycam_masterpi.py. This may solve the issue
+4. Get broken pipe error on port 12345 after starting manual acquisition then disconnecting from the insturment and trying to reconnect.
+Need to deal with broken pipe in some way - set up server and client to reconnect rather than needing to restart entire system. 
 
 Dev notes:
 1. If I have an issue with sockets not performing properly, i have recently changed SocketServer.close_socket() to include a 

@@ -258,12 +258,16 @@ class PyplisWorker:
 
         self.plot_iter = True   # Bool defining if plotting iteratively is active. If it is, all images are passed to qs
 
+        self.display_only = False   # If True, images are just sent to GUI to be displayed when they arrive on machine - no processing is performed
         self.process_thread = None  # Placeholder for threading object
         self.in_processing = False
         self.watching = False       # Bool defining if the object is currently watching a directory
         self.watching_dir = None    # Directory that is currently being watched
         self.watcher = None         # Directory watcher object
         self.watched_imgs = dict()  # Dictionary containing new files added to directory - keys are times of images
+        self.watched_pair = {self.cam_specs.file_filterids['on']: None,         #For use with force_pair_processing
+                             self.cam_specs.file_filterids['off']: None}
+        self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
 
     @property
@@ -656,7 +660,9 @@ class PyplisWorker:
             img.subtract_dark_image(dark_img)
             img.img[img.img <= 0] = np.finfo(float).eps     # Set zeros and less to smallest value
         else:
-            warnings.warn('No dark image found, image has been loaded without dark subtraction')
+            warnings.warn('No dark image found, image has been loaded without dark subtraction.'
+                          'Note: Image will still be flagged as dark-corrected so processing can proceed.')
+            img.subtract_dark_image(0)  # Just subtract 0. This ensures the image is flagged as dark-corr
 
         # Set object attribute to the loaded pyplis image
         # (must be done prior to image registration as the function uses object attribute self.img_B)
@@ -668,6 +674,7 @@ class PyplisWorker:
 
         # Add to plot queue if requested
         if plot:
+            print('Updating plot {}'.format(band))
             getattr(self, 'fig_{}'.format(band)).update_plot(img_path)
 
     def find_dark_img(self, img_dir, ss, band='on'):
@@ -690,7 +697,7 @@ class PyplisWorker:
         # Fast dictionary look up for preloaded dark images (using rounded ss value)
         if str(ss_rounded) in self.dark_dict[band].keys():
             dark_img = self.dark_dict[band][str(ss_rounded)]
-            return dark_img
+            return dark_img, None
 
         # List all dark images in directory
         dark_list = [f for f in os.listdir(img_dir)
@@ -708,7 +715,7 @@ class PyplisWorker:
         if len(ss_images) < 1:
             # messagebox.showerror('No dark images found', 'No dark images at a shutter speed of {} '
             #                                              'were found in the directory {}'.format(ss, img_dir))
-            return None
+            return None, None
 
         # If we have images, we loop through them to create a coadded image
         dark_full = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x, len(ss_images)])
@@ -1659,7 +1666,11 @@ class PyplisWorker:
         # If we have lines, and light dilution correction is requested, we run it here,
         # If sufficient time has passed since last model run we get new coefficients, but don't need to rerun the whole
         # model, so that is only done on the first image
-        dt = self.tau_A.meta['start_acq'] - self.dil_recal_last
+        try:
+            # If this throws TypeError dil_recal_last was int, so must be first image and we can set timedelta=0
+            dt = self.tau_A.meta['start_acq'] - self.dil_recal_last
+        except TypeError:
+            dt = datetime.timedelta(minutes=0)
         if self.use_light_dilution and self.first_image:
             lines = [line for line in self.light_dil_lines if isinstance(line, LineOnImage)]
             if len(lines) > 0:
@@ -1697,7 +1708,9 @@ class PyplisWorker:
                 tau_A, tau_B, tau_B_warped = self.model_background(imgs=img_dict, set_vign=False,
                                                                    params=self.background_params, plot=False)
                 self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
-        print('Light dilution correction time: {}'.format(time.time()-t))
+            print('Light dilution correction time: {}'.format(time.time()-t))
+        else:
+            print('Light dilution correction not applied')
 
         # Adjust for changing FOV sensitivity if requested
         if self.use_sensitivity_mask:
@@ -2778,6 +2791,7 @@ class PyplisWorker:
         while True:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
+            print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
 
             if img_path_A == self.STOP_FLAG:
                 return
@@ -2785,6 +2799,7 @@ class PyplisWorker:
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
             # So we finalise processing and then continue (TODO check this is ok)
             if self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
+                print('New image comes from a different day. Finalising previous day of processing.')
                 self.finalise_processing()
 
             # Process the pair
@@ -2816,7 +2831,7 @@ class PyplisWorker:
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
 
-    def start_watching(self, directory):
+    def start_watching(self, directory, recursive=True):
         """
         Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
         Also starts a processing thread, so that the images which arrive can be processed
@@ -2826,7 +2841,7 @@ class PyplisWorker:
             print('Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
-        self.watcher = create_dir_watcher(directory, True, self.directory_watch_handler)
+        self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
         self.watcher.start()
         self.watching_dir = directory
         self.watching = True
@@ -2849,6 +2864,16 @@ class PyplisWorker:
 
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""
+        _, ext = os.path.splitext(pathname)
+        if ext != self.cam_specs.file_ext:
+            return
+
+        # Check that there isn't a lock file blocking it
+        pathname_lock = pathname.replace(ext, '.lock')
+        while os.path.exists(pathname_lock):
+            pass
+
+        print('Directory Watcher cam: New file found {}'.format(pathname))
         # Separate the filename and pathname
         directory, filename = os.path.split(pathname)
 
@@ -2856,20 +2881,43 @@ class PyplisWorker:
         file_info = filename.split('_')
         time_key = file_info[self.cam_specs.file_date_loc]
         fltr = file_info[self.cam_specs.file_fltr_loc]
+        file_type = file_info[self.cam_specs.file_type_loc]
 
-        # If file time doesn't exist yet we create a new key
-        if time_key not in self.watched_imgs.keys():
-            self.watched_imgs[time_key] = {fltr: pathname}
+        # If we are set for display only, we simply load the image, without passing it to the processing queue
+        # And do the same for calibration image, clear sky images or dark image
+        if self.display_only or any(x in file_type for x in [self.cam_specs.file_type['cal'],
+                                                             self.cam_specs.file_type['dark'],
+                                                             self.cam_specs.file_type['clear']]):
+            self.load_img(pathname, plot=True)
 
-        # If the time key already exists, this must be the contemporaneous image from the other filter. So we gather the
-        # image pair and pass them to the processing queue
+        # Can make the processor force pair processing, so even if test images don't have the exact same timestamp they
+        # can be processed simultaneously
+        elif self.force_pair_processing:
+            self.watched_pair[fltr] = pathname
+            # If we have a pair we process it
+            if not None in self.watched_pair.values():
+                print('Putting pair into processing: {}'.format(self.watched_pair.values()))
+                self.q.put(list(self.watched_pair.values()))
+
+                self.watched_pair = {self.cam_specs.file_filterids['on']: None,
+                                     self.cam_specs.file_filterids['off']: None}
+                # Always reset pair processing after doing it once. Not certain if this is best, but it makes sure
+                # we don't get stuck doing pair processing which might cause strange performance
+                self.force_pair_processing = False
         else:
-            self.watched_imgs[time_key][fltr] = pathname
-            img_list = [self.watched_imgs[time_key]['fltrA'], self.watched_imgs[time_key]['fltrB']]
-            self.q.put(img_list)
+            # If file time doesn't exist yet we create a new key
+            if time_key not in self.watched_imgs.keys():
+                self.watched_imgs[time_key] = {fltr: pathname}
 
-            # We can now delete that key from the dictionary - so we don't slowly use up memory
-            del self.watched_imgs[time_key]
+            # If the time key already exists, this must be the contemporaneous image from the other filter. So we gather the
+            # image pair and pass them to the processing queue
+            else:
+                self.watched_imgs[time_key][fltr] = pathname
+                img_list = [self.watched_imgs[time_key]['fltrA'], self.watched_imgs[time_key]['fltrB']]
+                self.q.put(img_list)
+
+                # We can now delete that key from the dictionary - so we don't slowly use up memory
+                del self.watched_imgs[time_key]
 
 
 class ImageRegistration:
