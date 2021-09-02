@@ -114,6 +114,10 @@ class PyCam(ttk.Frame):
         """Closes application"""
         if messagebox.askokcancel("Quit", "Are you sure you want to quit?"):
 
+            # If we are connected to the instrument we should disconnect now.
+            if cfg.indicator.connected:
+                cfg.indicator.disconnect_sock()
+
             # Close main window and stop program
             self.root.destroy()
             sys.exit()

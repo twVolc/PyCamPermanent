@@ -17,7 +17,7 @@ import datetime
 import threading
 
 
-def run_pycam(ip):
+def run_pycam(ip, auto_capt=1):
     """Runs main pycam script on remote machine"""
     if messagebox.askyesno("Please confirm", "Are you sure you want to run pycam_masterpi.py?\n"
                                              "Running this on a machine which already has the script running could cause issues"):
@@ -30,7 +30,7 @@ def run_pycam(ip):
         connection = open_ssh(ip)
 
         # Run ssh command
-        stdin, stderr, stdout = ssh_cmd(connection, 'python3 {}'.format(pycam_path), background=False)
+        stdin, stderr, stdout = ssh_cmd(connection, 'python3 {} {}'.format(pycam_path, auto_capt), background=False)
 
         # Close ssh connection
         close_ssh(connection)

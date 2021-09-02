@@ -36,7 +36,7 @@ try:
                 f.write('{} {} is already running as process {}\n'.format(date_str, start_script_name, line.split()[0]))
             sys.exit()
 
-    start_script = 'python3 ' + start_script + ' &'
+    start_script = 'python3 ' + start_script + ' 1 &'   # Add 1 to pass argument to masterpi for starting auto capture straight away
     subprocess.Popen([start_script], shell=True)
     with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
         f.write('{} {} started on instrument\n'.format(date_str, start_script_name))

@@ -10,6 +10,7 @@ import time
 import queue
 import threading
 import datetime
+import pathlib
 
 
 class CurrentDirectories:
@@ -316,22 +317,22 @@ class FTPClient:
 
         # Create full path to save to
         local_name = os.path.join(local_date_dir, file)
+        local_name = local_name.replace(os.sep, '/')
 
         # Check if file exists - dont overwrite it if so
         if os.path.exists(local_name):
             print('File already exists on local machine, transfer aborted: {}'.format(file))
         else:
             # Download file
+            lock_file = local_name.replace(ext, '.lock')
+            open(lock_file, 'a').close()
             with open(local_name, 'wb') as f:
-                lock_file = local_name.replace(ext, '.lock')
-                open(lock_file, 'a').close()
                 start_time = time.time()
                 self.connection.retrbinary('RETR ' + data_name, f.write)
                 elapsed_time = time.time() - start_time
-                os.remove(lock_file)
-                print('Removing lockfile: {}'.format(lock_file))
-                print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
-                                                                                                 elapsed_time))
+            os.remove(lock_file)
+            print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
+                                                                                             elapsed_time))
 
         # Delete file after it has been transferred
         if rm:
@@ -374,7 +375,7 @@ class FTPClient:
             try:
                 ignore_list = self.connection.nlst()
                 ignore_list.sort()
-                print('Ignoring files already on instrument: {}'.format(ignore_list))
+                # print('Ignoring files already on instrument: {}'.format(ignore_list))
             except ftplib.error_perm as e:
                 print(e)
                 ignore_list = []

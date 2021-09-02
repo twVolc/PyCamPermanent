@@ -23,6 +23,16 @@ import os
 import time
 import atexit
 
+if len(sys.argv) - 1 == 1:
+    if sys.argv[-1] == '1':
+        start_cont = 1
+        print('Continuous capture on start-up is activated')
+    else:
+        print('Continuous capture on start-up not activated')
+        start_cont = 0
+else:
+    start_cont = 0
+
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
 
@@ -61,10 +71,12 @@ for ip in pi_ip:
     time.sleep(10)
 
     # Run core camera script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script])
+    # ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script])
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script] + ' {}'.format(start_cont) + ' > pycam_camera.out 2>&1')        # Mainly for testing, direct output to file
 
     # Run core spectrometer script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script])
+    # ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script])
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script] + ' {}'.format(start_cont) + ' > pycam_spectrometer.out 2>&1')      # Mainly for testing, direct output to file
 
     # Close session
     # If other changes are needed later this line can be removed and clients should still be accessible in list
@@ -84,7 +96,7 @@ for script in local_scripts:
 time.sleep(10)
 
 # Run camera script on local machine in the background
-subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
+subprocess.Popen(['python3', config[ConfigInfo.cam_script], '{}'.format(start_cont), '&'])
 
 # # Spectrometer now run on slave machine
 # # Run spectrometer script on local machine in background

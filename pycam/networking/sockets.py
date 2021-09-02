@@ -529,6 +529,7 @@ class SocketClient(SocketMeths):
         """Opens socket by attempting to make connection with host"""
         try:
             while not self.connect_stat and not event.is_set():
+                time.sleep(0.05)    # Small sleep so it doesn't go mad
                 try:
                     print('Client connecting to {}'.format(self.server_addr))
                     # print(self.sock)

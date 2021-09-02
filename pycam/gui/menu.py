@@ -94,7 +94,10 @@ class PyMenu:
         self.submenu_cmd.add_command(label='Restart cameras', command=lambda: instrument_cmd('RSC'))
         self.submenu_cmd.add_command(label='Restart spectrometer', command=lambda: instrument_cmd('RSS'))
         self.submenu_cmd.add_separator()
-        self.submenu_cmd.add_command(label='Run pycam', command=lambda: run_pycam(cfg.sock.host_ip))
+        self.submenu_cmd.add_command(label='Run pycam (with automated capture)',
+                                     command=lambda: run_pycam(cfg.sock.host_ip, auto_capt=1))
+        self.submenu_cmd.add_command(label='Run pycam (without automated capture)',
+                                     command=lambda: run_pycam(cfg.sock.host_ip, auto_capt=0))
         self.submenu_cmd.add_command(label='Stop pycam', command=lambda: instrument_cmd('EXT'))
         self.menus[tab].add_separator()
 

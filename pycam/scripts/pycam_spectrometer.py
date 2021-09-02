@@ -35,8 +35,14 @@ if spec.spec is not None:
     # Setup thread for controlling spectrometer capture
     spec.interactive_capture()
 
-    # Start up continuous capture straight away
-    spec.capture_q.put({'start_cont': True})
+    if len(sys.argv) - 1 == 1:
+        if sys.argv[-1] == '1':
+            # Start up continuous capture straight away
+            spec.capture_q.put({'start_cont': True})
+            print('pycam_spectrometer.py: Continuous capture started')
+        else:
+            print('pycam_spectrometer.py: Continuous capture not started')
+
 
 # ----------------------------------------------------------------
 # Setup image transfer socket

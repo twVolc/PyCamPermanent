@@ -35,8 +35,13 @@ cam.initialise_camera()
 # Setup thread for controlling camera capture
 cam.interactive_capture()
 
-# Start up continuous capture straight away
-cam.capture_q.put({'start_cont': True})
+if len(sys.argv) - 1 == 1:
+    if sys.argv[-1] == '1':
+        # Start up continuous capture straight away
+        cam.capture_q.put({'start_cont': True})
+        print('pycam_camera.py: Continuous capture started')
+    else:
+        print('pycam_camera.py: Continuous capture not started')
 
 # ------------------------------------------------------------------
 
