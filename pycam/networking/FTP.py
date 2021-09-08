@@ -330,9 +330,14 @@ class FTPClient:
                 start_time = time.time()
                 self.connection.retrbinary('RETR ' + data_name, f.write)
                 elapsed_time = time.time() - start_time
-            os.remove(lock_file)
             print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
                                                                                              elapsed_time))
+            while os.path.exists(lock_file):
+                try:
+                    os.remove(lock_file)
+                except PermissionError:
+                    print('Got permission error trying to delete lock file')
+                    time.sleep(0.02)
 
         # Delete file after it has been transferred
         if rm:
@@ -341,6 +346,8 @@ class FTPClient:
                 print('Deleted file {} from instrument'.format(filename))
             except ftplib.error_perm as e:
                 print(e)
+
+        return local_name, local_date_dir
 
     def watch_dir(self, lock='.lock', new_only=False):
         """Public access thread starter for _watch_dir"""
@@ -426,7 +433,7 @@ class FTPClient:
                     continue
                 else:
                     print('Getting file: {}'.format(file))
-                    self.get_data(os.path.join(self.dir_data_remote, file))
+                    local_file, local_date_dir = self.get_data(os.path.join(self.dir_data_remote, file))
 
             # Sleep for designated time, so I'm not constantly polling the host
             time.sleep(self.refresh_time)

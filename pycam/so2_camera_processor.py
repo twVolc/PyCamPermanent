@@ -1554,44 +1554,78 @@ class PyplisWorker:
             tau_B_warped.edit_log["is_tau"] = True
 
         else:
-            # Get tau_A and tau_B
-            if self.plume_bg.mode == 0:
-                # mask for corr mode 0 (i.e. 2D polyfit)
-                mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
-                mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
-                mask_B = np.ones(vigncorr_B.img.shape, dtype=np.float32)
-                mask_B[vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
-                mask_B_warped = np.ones(vigncorr_B.img.shape, dtype=np.float32)
-                mask_B_warped[vigncorr_B_warped.img < self.polyfit_2d_mask_thresh] = 0
+            try:
+                # Get tau_A and tau_B
+                if self.plume_bg.mode == 0:
+                    # mask for corr mode 0 (i.e. 2D polyfit)
+                    mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
+                    mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
+                    mask_B = np.ones(vigncorr_B.img.shape, dtype=np.float32)
+                    mask_B[vigncorr_B.img < self.polyfit_2d_mask_thresh] = 0
+                    mask_B_warped = np.ones(vigncorr_B.img.shape, dtype=np.float32)
+                    mask_B_warped[vigncorr_B_warped.img < self.polyfit_2d_mask_thresh] = 0
 
-                # First method: retrieve tau image using poly surface fit
-                tau_A = self.plume_bg.get_tau_image(vigncorr_A,
-                                                    mode=self.BG_CORR_MODES[0],
-                                                    surface_fit_mask=mask_A,
-                                                    surface_fit_polyorder=1)
-                tau_B = self.plume_bg.get_tau_image(vigncorr_B,
-                                                    mode=self.BG_CORR_MODES[0],
-                                                    surface_fit_mask=mask_B,
-                                                    surface_fit_polyorder=1)
-                tau_B_warped = self.plume_bg.get_tau_image(vigncorr_B_warped,
-                                                    mode=self.BG_CORR_MODES[0],
-                                                    surface_fit_mask=mask_B_warped,
-                                                    surface_fit_polyorder=1)
-            else:
-                if img_A.edit_log['vigncorr']:
-                    img_A.edit_log['vigncorr'] = False
-                    img_B.edit_log['vigncorr'] = False
-                tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
-                tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
+                    # First method: retrieve tau image using poly surface fit
+                    tau_A = self.plume_bg.get_tau_image(vigncorr_A,
+                                                        mode=self.BG_CORR_MODES[0],
+                                                        surface_fit_mask=mask_A,
+                                                        surface_fit_polyorder=1)
+                    tau_B = self.plume_bg.get_tau_image(vigncorr_B,
+                                                        mode=self.BG_CORR_MODES[0],
+                                                        surface_fit_mask=mask_B,
+                                                        surface_fit_polyorder=1)
+                    tau_B_warped = self.plume_bg.get_tau_image(vigncorr_B_warped,
+                                                        mode=self.BG_CORR_MODES[0],
+                                                        surface_fit_mask=mask_B_warped,
+                                                        surface_fit_polyorder=1)
+                else:
+                    if img_A.edit_log['vigncorr']:
+                        img_A.edit_log['vigncorr'] = False
+                        img_B.edit_log['vigncorr'] = False
+                    tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
+                    tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
 
-                # Generating warped B from warped images -
-                # I think I have to do this here rather than registering tau_B, because the background plume params are
-                # based on tau_A image, so they won't match the B images unles we use registered versions
-                bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
-                self.update_meta(bg_B_warped, self.bg_B)
-                img_B_warped.edit_log['vigncorr'] = False
-                tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
-                self.update_meta(tau_B_warped, img_B_warped)
+                    # Generating warped B from warped images -
+                    # I think I have to do this here rather than registering tau_B, because the background plume params are
+                    # based on tau_A image, so they won't match the B images unles we use registered versions
+                    bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
+                    self.update_meta(bg_B_warped, self.bg_B)
+                    img_B_warped.edit_log['vigncorr'] = False
+                    tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
+                    self.update_meta(tau_B_warped, img_B_warped)
+            except BaseException as e:
+                print('ERROR! When attempting pyplis background modelling: {}'.format(e))
+                print('Reverting to basic rectangular background model. Note subsequent processing will attempt pyplis modelling again unless changed by the user.')
+                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
+                # region of sky, rather than the same coordinates of the image
+                bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
+                bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
+
+                # Tau A
+                r = bg_a / vigncorr_A.img
+                r[r <= 0] = np.finfo(float).eps
+                r[np.isnan(r)] = np.finfo(float).eps
+                tau_A = pyplis.Img(np.log(r))
+
+                # Tau B
+                r = bg_b / vigncorr_B.img
+                r[r <= 0] = np.finfo(float).eps
+                r[np.isnan(r)] = np.finfo(float).eps
+                tau_B = pyplis.Img(np.log(r))
+
+                # Tau B warped
+                vigncorr_B_warped.img[0, 0] = np.finfo(float).eps
+                r = bg_b / vigncorr_B_warped.img
+                r[r <= 0] = np.finfo(float).eps
+                r[np.isnan(r)] = np.finfo(float).eps
+                tau_B_warped = pyplis.Img(np.log(r))
+
+                tau_A.meta["bit_depth"] = np.nan
+                tau_A.edit_log["is_tau"] = True
+                tau_B.meta["bit_depth"] = np.nan
+                tau_B.edit_log["is_tau"] = True
+                tau_B_warped.meta["bit_depth"] = np.nan
+                tau_B_warped.edit_log["is_tau"] = True
 
         # Update metadata of images
         self.update_meta(tau_A, img_A)
@@ -2794,6 +2828,7 @@ class PyplisWorker:
             print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
 
             if img_path_A == self.STOP_FLAG:
+                print('Stopping processing')
                 return
 
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
@@ -2852,7 +2887,7 @@ class PyplisWorker:
 
     def stop_watching(self):
         """Stop directory watcher and end processing thread"""
-        if self.watcher is not None:
+        if self.watcher is not None and self.watching:
             self.watcher.stop()
             print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
             self.watching = False

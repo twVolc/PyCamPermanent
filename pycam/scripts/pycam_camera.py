@@ -35,13 +35,15 @@ cam.initialise_camera()
 # Setup thread for controlling camera capture
 cam.interactive_capture()
 
-if len(sys.argv) - 1 == 1:
-    if sys.argv[-1] == '1':
+if len(sys.argv) > 1:
+    if sys.argv[1] == '1':
         # Start up continuous capture straight away
         cam.capture_q.put({'start_cont': True})
         print('pycam_camera.py: Continuous capture started')
-    else:
+    elif sys.argv[1] == '0':
         print('pycam_camera.py: Continuous capture not started')
+    else:
+        print('pycam_camera.py: Unrecognised command line argument passed to script on execution')
 
 # ------------------------------------------------------------------
 

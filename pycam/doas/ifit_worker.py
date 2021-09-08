@@ -1024,6 +1024,12 @@ class IFitWorker:
         if ext != self.spec_specs.file_ext:
             return
 
+        # Check that there isn't a lock file blocking it
+        # TODO lockfile currently isn't deleting - seems to be some kind of bug - it gets remade after initial creatino/deletion
+        # pathname_lock = pathname.replace(ext, '.lock')
+        # while os.path.exists(pathname_lock):
+        #     pass
+
         print('Directory Watcher ifit: New file found {}'.format(pathname))
         # Pass path to queue
         self.q_spec.put(pathname)

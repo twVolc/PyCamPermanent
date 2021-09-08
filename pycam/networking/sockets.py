@@ -1421,7 +1421,10 @@ class SocketServer(SocketMeths):
                         print('Connection already closed, removing it from list')
 
                     # Remove connection from list
-                    del self.connections[i]
+                    try:
+                        del self.connections[i]
+                    except IndexError:
+                        pass
 
                     # Update the number of connections we have
                     self.num_conns -= 1

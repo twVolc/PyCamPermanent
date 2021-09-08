@@ -16,6 +16,7 @@ import subprocess
 import os
 import socket
 import datetime
+import time
 
 
 
@@ -23,16 +24,36 @@ def close_pycam(ip, port):
     """Closes pycam by setting up a socket and telling the program to shutdown"""
     # TODO need to setup a socket and connect to pycam then send it exit code
     sock_cli = SocketClient(host_ip=ip, port=port)
+    print('Connecting client')
+    sock_cli.connect_socket_timeout(timeout=5)
+
+    # Test connection
+    print('Testing connection')
+    cmd = sock_cli.encode_comms({'LOG': 0})
+    sock_cli.send_comms(sock_cli.sock, cmd)
+    reply = sock_cli.recv_comms(sock_cli.sock)
+    reply = sock_cli.decode_comms(reply)
+    if reply != {'LOG': 0}:
+        print('Unrecognised socket reply')
+        raise ConnectionError
+    else:
+        print('Got pycam handshake reply')
+
+
+    time.sleep(5)
+    # Close connection
+    print('Sending exit command')
     encoded_comm = sock_cli.encode_comms({'EXT': 1})
-    sock_cli.send_comms(encoded_comm)
-    response = sock_cli.recv_comms(sock_cli)
+    sock_cli.send_comms(sock_cli.sock, encoded_comm)
+    print('Sent exit command')
+    response = sock_cli.recv_comms(sock_cli.sock)
     print('Got {} from pycam'.format(response))
 
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)
 host_ip = config[ConfigInfo.host_ip]
-port = config[ConfigInfo.port_ext]
+port = int(config[ConfigInfo.port_ext])
 
 # Start_script
 start_script = config[ConfigInfo.master_script]
@@ -65,6 +86,7 @@ try:
                 'running when stop_instrument.py commenced\n'.format(date_str))
 
 except BaseException as e:
+    print(e)
     with open(FileLocator.ERROR_LOG_PI, 'a', newline='\n') as f:
         f.write('{} ERROR IN STOP SCRIPT: {}\n'.format(date_str, e))
 
