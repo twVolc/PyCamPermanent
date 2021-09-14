@@ -383,6 +383,10 @@ try:
                 if not path:  # probably an exit request
                     continue
 
+                # Ignore lock files as otherwise this watcher recreates the file - not good
+                if '.lock' in path:
+                    continue
+
                 file_is_closed = False
                 while not file_is_closed and self.stay_alive:
 

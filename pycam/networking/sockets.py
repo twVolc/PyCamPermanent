@@ -6,7 +6,7 @@ Socket setup and control for Raspberry Pi network and connection to the remote c
 
 from pycam.controllers import Camera, Spectrometer
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
-from pycam.utils import check_filename, StorageMount, get_img_time, get_spec_time
+from pycam.utils import check_filename, StorageMount, get_img_time, get_spec_time, read_file
 from pycam.io_py import save_img, save_spectrum
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 from pycam.networking.commands import AcquisitionComms
@@ -1284,6 +1284,7 @@ class SocketServer(SocketMeths):
 
         self.host_ip = host_ip              # IP address of host
         self.port = port                    # Communication port
+        self.port_list = None               # List of ports available to this server
         self.server_addr = (host_ip, port)  # Server address
         self.connections = []               # List holding connections
         self.conn_dict = {}
@@ -1294,15 +1295,39 @@ class SocketServer(SocketMeths):
         self.camera = CameraSpecs()         # Camera specifications
         self.spectrometer = SpecSpecs()     # Spectrometer specifications
 
-    def open_socket(self, backlog=5):
+    def get_port_list(self, key, file_path=FileLocator.NET_PORTS_FILE):
+        """Gets possible port numbers from file"""
+        info = read_file(file_path)
+        self.port_list = [int(x) for x in info[key].split(',')]
+        self.port = self.port_list[0]   # Set port to first in list
+        self.server_addr = (self.host_ip, self.port)
+
+    def get_port(self):
+        """Loops through listed port options and checks if each can be used. Once one is found it returns"""
+        for port in self.port_list:
+            self.server_addr = (self.host_ip, port)
+            try:
+                self.sock.bind(self.server_addr)
+                self.port = port
+                print('Server bound to port: {}'.format(port))
+                break
+            except socket.error as e:
+                print('ERROR in using socket address {}: {}'.format(self.server_addr, e))
+
+    def open_socket(self, backlog=5, bind=True):
         """Opens socket and listens for connection
 
         Parameters
         ----------
         backlog: int
-            Number of unaccepted connections allowed before refusing new connections"""
+            Number of unaccepted connections allowed before refusing new connections
+        bind:   bool
+            If True we first bind to the socket. If False we assume the socket is already bound and we just need to
+            start listening
+        """
         # Bind to socket
-        self.sock.bind(self.server_addr)
+        if bind:
+            self.sock.bind(self.server_addr)
 
         # Listen for connection (backlog=5 connections - default)
         self.sock.listen(backlog)

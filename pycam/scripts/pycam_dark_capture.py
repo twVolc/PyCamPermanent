@@ -17,7 +17,7 @@ import subprocess
 import time
 import queue
 import socket
-from pycam.utils import read_file, StorageMount
+from pycam.utils import read_file, StorageMount, write_file
 from pycam.setupclasses import FileLocator, ConfigInfo, CameraSpecs, SpecSpecs
 from pycam.networking.sockets import SocketClient, SocketServer, ImgRecvConnection, SpecRecvConnection, \
     SocketNames, CommConnection, MasterComms, CommsFuncs
@@ -41,6 +41,22 @@ stop_script_name = os.path.split(stop_script)[-1]
 subprocess.call(['python3', stop_script_name, '&'])         # Use call() as this waits until the script completes
 
 # ======================================================================================================================
+# SOCKET SERVER SETUP
+# Open sockets for image/spectra transfer
+sock_serv_transfer = SocketServer(host_ip, None)
+sock_serv_transfer.get_port_list('transfer_ports')
+sock_serv_transfer.get_port()       # Check which port is available from port list
+
+# Open socket for communication with pis (cameras and spectrometer)
+sock_serv_comm = SocketServer(host_ip, None)
+sock_serv_comm.get_port_list('comm_ports')
+sock_serv_comm.get_port()           # Check which port is available from port list
+
+# Write port info to file
+write_file(FileLocator.NET_COMM_FILE, {'ip_address': sock_serv_comm.host_ip, 'port': sock_serv_comm.port})
+write_file(FileLocator.NET_TRANSFER_FILE, {'ip_address': sock_serv_transfer.host_ip, 'port': sock_serv_transfer.port})
+
+# ======================================================================================================================
 # RUN EXTERNAL SCRIPTS TO START INSTRUMENTS AND OPEN THEIR SOCKETS
 # ======================================================================================================================
 # Loop through remote pis and start scripts on them
@@ -49,6 +65,10 @@ ssh_clients = []
 print('Running remote scripts...')
 for ip in pi_ip:
     ssh_clients.append(open_ssh(ip))
+
+    # Upload network port information files
+    file_upload(ssh_clients[-1], FileLocator.NET_COMM_FILE, FileLocator.NET_COMM_FILE)
+    file_upload(ssh_clients[-1], FileLocator.NET_TRANSFER_FILE, FileLocator.NET_TRANSFER_FILE)
 
     # First make sure the up-to-date specs file is present on the pi
     # POSSIBLY DONT DO THIS, AS WE MAY WANT THE REMOTE PROGRAM TO SAVE CAMERA PROPERTIES LOCALLY ON SHUTDOWN?
@@ -91,15 +111,11 @@ subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
 # ======================================================================================================================
 # Accept connections - now that external scripts to create clients have been run, there should be connections to accept
 # ======================================================================================================================
-# Open sockets for image/spectra transfer
-port_transfer = int(config['port_transfer'])
-sock_serv_transfer = SocketServer(host_ip, port_transfer)
-sock_serv_transfer.open_socket()
 
-# Open socket for communication with pis (cameras and spectrometer)
-port_comm = int(config['port_comm'])
-sock_serv_comm = SocketServer(host_ip, port_comm)
-sock_serv_comm.open_socket()
+sock_serv_transfer.open_socket(bind=False)
+
+
+sock_serv_comm.open_socket(bind=False)
 
 # -------------------
 # Transfer socket

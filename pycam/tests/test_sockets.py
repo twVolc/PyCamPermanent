@@ -5,6 +5,7 @@
 """
 from pycam.networking.sockets import read_network_file, SocketServer, PiSocketCam, PiSocketSpec, CommsFuncs, recv_comms
 from pycam.utils import write_file
+from pycam.setupclasses import FileLocator
 import threading
 import socket
 import time
@@ -281,3 +282,12 @@ class TestSockets:
         acc_thread_1.join()
         assert not acc_thread.is_alive()
         assert not acc_thread_1.is_alive()
+
+    def test_load_port_list(self):
+        """Tests the SocketServer function that loads the port list"""
+        sock_serv = SocketServer('127.0.0.1', None)
+        sock_serv.get_port_list('comm_ports', '../conf/network_ports.txt')
+        assert sock_serv.port_list == [12345, 12348, 12349]
+
+        sock_serv.get_port_list('transfer_ports', '../conf/network_ports.txt')
+        assert sock_serv.port_list == [12346, 12350, 12351]

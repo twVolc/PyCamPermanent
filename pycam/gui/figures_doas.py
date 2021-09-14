@@ -533,18 +533,27 @@ class DOASFigure:
             all_dat = self.doas_worker.abs_spec_species[self.species]
 
         if isinstance(self.doas_worker, DOASWorker):
-            ylim = np.amax(np.absolute(all_dat))
+            ylim = np.nanmax(np.absolute(all_dat))
             ylim *= 1.15
             if ylim == 0:
                 ylim = 0.05
             ylims = [-ylim, ylim]
         elif isinstance(self.doas_worker, IFitWorker):
-            min_val = np.amin(all_dat)
+            min_val = np.nanmin(all_dat)
             if min_val >= 0:
                 min_lim = min_val * 0.95
             else:
                 min_lim = min_val * 1.05
-            ylims = [min_lim, np.amax(all_dat) * 1.05]
+            ylims = [min_lim, np.nanmax(all_dat) * 1.05]
+        # Double check we don't have any infinities
+        for i, val in enumerate(ylims):
+            if val == -np.inf:
+                ylims[i] = -1
+            elif val == np.inf:
+                ylims[i] = 1
+        for i, val in enumerate(ylims):
+            if val == np.nan:
+                ylims[i] = i
         self.ax.set_ylim(ylims)
 
         if isinstance(self.doas_worker, DOASWorker):

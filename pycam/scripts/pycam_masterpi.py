@@ -12,7 +12,7 @@ from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, r
     acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms, SocketNames
 from pycam.controllers import CameraSpecs, SpecSpecs
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.utils import read_file, StorageMount, kill_all
+from pycam.utils import read_file, write_file, StorageMount, kill_all
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
 
 import threading
@@ -48,6 +48,26 @@ atexit.register(storage_mount.unmount_dev)      # Unmount device when script clo
 pi_ip = config[ConfigInfo.pi_ip].split(',')
 host_ip = config[ConfigInfo.host_ip]
 
+# Setup socket servers, ensuring they can bind to the port before beginning remote scripts
+# Open sockets for image/spectra transfer
+sock_serv_transfer = SocketServer(host_ip, None)
+sock_serv_transfer.get_port_list('transfer_ports')
+sock_serv_transfer.get_port()       # Check which port is available from port list
+# Open socket for communication with pis (cameras and spectrometer)
+sock_serv_comm = SocketServer(host_ip, None)
+sock_serv_comm.get_port_list('comm_ports')
+sock_serv_comm.get_port()           # Check which port is available from port list
+
+# port_ext = int(config['port_ext'])
+sock_serv_ext = SocketServer(host_ip, None)
+sock_serv_ext.get_port_list('ext_ports')
+sock_serv_ext.get_port()
+
+# Write port info to file
+write_file(FileLocator.NET_COMM_FILE, {'ip_address': sock_serv_comm.host_ip, 'port': sock_serv_comm.port})
+write_file(FileLocator.NET_TRANSFER_FILE, {'ip_address': sock_serv_transfer.host_ip, 'port': sock_serv_transfer.port})
+write_file(FileLocator.NET_EXT_FILE, {'ip_address': sock_serv_ext.host_ip, 'port': sock_serv_ext.port})
+
 # ======================================================================================================================
 # RUN EXTERNAL SCRIPTS TO START INSTRUMENTS AND OPEN THEIR SOCKETS
 # ======================================================================================================================
@@ -58,6 +78,10 @@ ssh_clients = []
 print('Running remote scripts...')
 for ip in pi_ip:
     ssh_clients.append(open_ssh(ip))
+
+    # Upload network port information files
+    file_upload(ssh_clients[-1], FileLocator.NET_COMM_FILE, FileLocator.NET_COMM_FILE)
+    file_upload(ssh_clients[-1], FileLocator.NET_TRANSFER_FILE, FileLocator.NET_TRANSFER_FILE)
 
     # First make sure the up-to-date specs file is present on the pi
     # POSSIBLY DONT DO THIS, AS WE MAY WANT THE REMOTE PROGRAM TO SAVE CAMERA PROPERTIES LOCALLY ON SHUTDOWN?
@@ -108,31 +132,27 @@ subprocess.Popen(['python3', config[ConfigInfo.cam_script], '{}'.format(start_co
 # ======================================================================================================================
 # Accept connections - now that external scripts to create clients have been run, there should be connections to accept
 # ======================================================================================================================
-# Open sockets for image/spectra transfer
-port_transfer = int(config['port_transfer'])
-sock_serv_transfer = SocketServer(host_ip, port_transfer)
-# sock_serv_transfer.open_socket()
-while True:
-    try:
-        sock_serv_transfer.open_socket()
-        break
-    except OSError:
-        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
-        sock_serv_transfer.close_socket()
-        time.sleep(1)
 
-# Open socket for communication with pis (cameras and spectrometer)
-port_comm = int(config['port_comm'])
-sock_serv_comm = SocketServer(host_ip, port_comm)
-# sock_serv_comm.open_socket()
-while True:
-    try:
-        sock_serv_comm.open_socket()
-        break
-    except OSError:
-        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
-        sock_serv_comm.close_socket()
-        time.sleep(1)
+sock_serv_transfer.open_socket(bind=False)
+# while True:
+#     try:
+#         sock_serv_transfer.open_socket()
+#         break
+#     except OSError:
+#         print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+#         sock_serv_transfer.close_socket()
+#         time.sleep(1)
+
+
+sock_serv_comm.open_socket(bind=False)
+# while True:
+#     try:
+#         sock_serv_comm.open_socket()
+#         break
+#     except OSError:
+#         print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+#         sock_serv_comm.close_socket()
+#         time.sleep(1)
 
 # -------------------
 # Transfer socket
@@ -211,17 +231,15 @@ comms_connections[host_ip].thread_func()
 # ----------------------------------
 # Setup external communication port
 # ----------------------------------
-port_ext = int(config['port_ext'])
-sock_serv_ext = SocketServer(host_ip, port_ext)
-# sock_serv_ext.open_socket()
-while True:
-    try:
-        sock_serv_ext.open_socket()
-        break
-    except OSError:
-        print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
-        sock_serv_ext.close_connection()
-        time.sleep(1)
+sock_serv_ext.open_socket(bind=False)
+# while True:
+#     try:
+#         sock_serv_ext.open_socket()
+#         break
+#     except OSError:
+#         print('Address already in use: {}, {}. Sleeping and reattempting to open socket'.format(host_ip, port_transfer))
+#         sock_serv_ext.close_connection()
+#         time.sleep(1)
 
 # Create objects for accepting and controlling 2 new connections (one may be local computer conn, other may be wireless)
 ext_connections = {'1': CommConnection(sock_serv_ext, acc_conn=True), '2': CommConnection(sock_serv_ext, acc_conn=True)}

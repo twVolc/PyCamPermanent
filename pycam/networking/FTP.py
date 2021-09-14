@@ -323,15 +323,18 @@ class FTPClient:
         if os.path.exists(local_name):
             print('File already exists on local machine, transfer aborted: {}'.format(file))
         else:
-            # Download file
+            # Create lockfile
             lock_file = local_name.replace(ext, '.lock')
             open(lock_file, 'a').close()
+
+            # Download file
             with open(local_name, 'wb') as f:
                 start_time = time.time()
                 self.connection.retrbinary('RETR ' + data_name, f.write)
                 elapsed_time = time.time() - start_time
             print('Transferred file {} from instrument to {}. Transfer time: {:.4f}s'.format(filename, local_date_dir,
-                                                                                             elapsed_time))
+                                                                                         elapsed_time))
+
             while os.path.exists(lock_file):
                 try:
                     os.remove(lock_file)

@@ -848,6 +848,13 @@ class BasicAcqHandler:
         self.spec_seq_butt = tk.Button(butt_frame, text=text, width=10,
                              command=lambda: self.acq_spec(self.spec_specs.file_type['meas']))
         self.spec_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        # Dark button
+        dark_butt = tk.Button(butt_frame, text='Dark', width=10, bg='black', fg='white',
+                              command=lambda: self.acq_spec(self.spec_specs.file_type['dark']))
+        dark_butt.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
+        clear_butt = tk.Button(butt_frame, text='Clear', width=10, bg='blue', fg='white',
+                              command=lambda: self.acq_spec(self.spec_specs.file_type['clear']))
+        clear_butt.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
 
         # Start FTP client watching
         if cfg.indicator.connected:

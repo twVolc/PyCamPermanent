@@ -933,6 +933,7 @@ class IFitWorker:
             if pathname == self.STOP_FLAG:
                 break
 
+            print('IFitWorker: processing spectrum: {}'.format(pathname))
             # Extract filename and create datetime object of spectrum time
             filename = os.path.split(pathname)[-1]
             spec_time = self.get_spec_time(filename)
@@ -947,6 +948,11 @@ class IFitWorker:
 
             # Load spectrum
             self.wavelengths, self.plume_spec_raw = load_spectrum(pathname)
+
+            # Update spectra as soon as we have acquired them (don't wait to process as this may take time)
+            if self.fig_spec is not None:
+                self.fig_spec.update_dark()
+                self.fig_spec.update_plume()
 
             time_1 = time.time()
             self.process_doas()
@@ -973,11 +979,7 @@ class IFitWorker:
             if self.processing_in_thread:
                 self.q_doas.put(processed_dict)
 
-            # Or if we are not in a processing thread we update the plots directly here
-            # else:
-            if self.fig_spec is not None:
-                self.fig_spec.update_dark()
-                self.fig_spec.update_plume()
+
 
             # Update doas plot
             if self.fig_doas is not None:
@@ -1024,11 +1026,10 @@ class IFitWorker:
         if ext != self.spec_specs.file_ext:
             return
 
-        # Check that there isn't a lock file blocking it
-        # TODO lockfile currently isn't deleting - seems to be some kind of bug - it gets remade after initial creatino/deletion
-        # pathname_lock = pathname.replace(ext, '.lock')
-        # while os.path.exists(pathname_lock):
-        #     pass
+        # Wait until lockfile is removed
+        pathname_lock = pathname.replace(ext, '.lock')
+        while os.path.exists(pathname_lock):
+            pass
 
         print('Directory Watcher ifit: New file found {}'.format(pathname))
         # Pass path to queue
