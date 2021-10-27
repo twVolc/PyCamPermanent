@@ -552,9 +552,12 @@ class DOASFigure:
             elif val == np.inf:
                 ylims[i] = 1
         for i, val in enumerate(ylims):
-            if val == np.nan:
+            if np.isnan(val):
                 ylims[i] = i
-        self.ax.set_ylim(ylims)
+        try:
+            self.ax.set_ylim(ylims)
+        except BaseException as e:
+            print('Could not set axis limits: {}'.format(ylims))
 
         if isinstance(self.doas_worker, DOASWorker):
             self.ax.set_title('SO2 Column density [ppm.m]: {}          STD Error: {}'.format(

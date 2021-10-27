@@ -805,26 +805,34 @@ class IFitWorker:
         :param doas_dict:   dict       Containing at least keys 'column_density' and 'time'
         """
         cd = doas_dict['column_density']['SO2']
-        cd_err = doas_dict['std_err']
+        try:
+            cd_err = doas_dict['std_err']
+        except KeyError:
+            cd_err = np.nan
 
         # Faster append method - seems to work
         self.results.loc[doas_dict['time']] = cd
-        try:
+        if isinstance(self.results.fit_errs, list):
             self.results.fit_errs.append(cd_err)
-        except KeyError:
-            self.results.fit_errs.append(np.nan)
+        elif isinstance(self.results.fit_errs, np.ndarray):
+            self.results.fit_errs = np.append(self.results.fit_errs, cd_err)
+        else:
+            print('ERROR! Unrecognised datatype for ifit fit errors')
 
+        # Light dilution
         try:
             ldf = doas_dict['LDF']
         except KeyError:
             ldf = np.nan
-        try:
-            self.results.ldfs.append(ldf)
-        # If we get an attribute error we create the attribute, fill it with nans and then set the most recent value to
-        # LDF
-        except AttributeError:
+
+        # If there is no ldf attribute, fill it with nans and then set the most recent value to LDF
+        if not hasattr(self.results, 'ldfs'):
             self.results.ldfs = [np.nan] * len(self.results.fit_errs)
             self.results.ldfs[-1] = ldf
+        elif isinstance(self.results.ldfs, list):
+            self.results.ldfs.append(ldf)
+        elif isinstance(self.results.ldfs, np.ndarray):
+            self.results.ldfs = np.append(self.results.ldfs, ldf)
 
     def rem_doas_results(self, time_obj, inplace=False):
         """

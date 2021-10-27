@@ -387,6 +387,10 @@ try:
                 if '.lock' in path:
                     continue
 
+                # Ignore darkcorr images - we don't want to plot these
+                if '_darkcorr.' in path:
+                    continue
+
                 file_is_closed = False
                 while not file_is_closed and self.stay_alive:
 

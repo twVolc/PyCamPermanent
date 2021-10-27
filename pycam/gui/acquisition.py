@@ -315,7 +315,10 @@ class TkVariables:
         # Loop through each command in the provided dictionary. Set the correct attribute of this object to the value
         # in cmd_dict
         for cmd in cmd_dict:
-            setattr(self, self.cmd_dict[cmd], cmd_dict[cmd])
+            try:
+                setattr(self, self.cmd_dict[cmd], cmd_dict[cmd])
+            except KeyError:
+                pass
 
 
 class CameraSettingsWidget(TkVariables):
@@ -696,17 +699,20 @@ class BasicAcqHandler:
     """
     Handles basic acquisitions - outside of continuous capture
     """
-    def __init__(self, pyplis_worker, doas_worker, img_dir, spec_dir, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, pyplis_worker, doas_worker, img_dir, spec_dir, cell_cal_frame,
+                 cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self.pyplis_worker = pyplis_worker
         self.doas_worker = doas_worker
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
+        self.cell_cal_frame = cell_cal_frame
         self.frame = None
         self.in_frame = False
 
         self.img_dir = img_dir
         self.spec_dir = spec_dir
 
+        self.in_cal = False
         self.in_spec_seq = False
         self.in_img_seq = False
         self.plot_iter_current = None
@@ -806,21 +812,24 @@ class BasicAcqHandler:
         self.dark_butt = tk.Button(frame_cal, text='Dark', bg='black', fg='white',
                                     command=lambda: self.acq_cam(self.cam_specs.file_type['dark']))
         self.dark_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        self.dark_butt.configure(state=tk.DISABLED)
         self.clear_butt = tk.Button(frame_cal, text='Clear', bg='blue', fg='white',
                                      command=lambda: self.acq_cam(self.cam_specs.file_type['clear']))
         self.clear_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        self.clear_butt.configure(state=tk.DISABLED)
         row += 1
 
         self.fltr_a_butt = tk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
         self.fltr_a_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        self.fltr_a_butt.configure(state=tk.DISABLED)
         self.fltr_b_butt = tk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
         self.fltr_b_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         self.fltr_b_butt.configure(state=tk.DISABLED)
         row += 1
 
         # New calibration
-        new_cal_butt = tk.Button(frame_cal, text='New Calibration', command=self.new_cal, bg='green', fg='white')
-        new_cal_butt.grid(row=row, column=0, columnspan=2, stick='nsew', padx=2, pady=2)
+        self.cal_butt = tk.Button(frame_cal, text='New Calibration', command=self.new_cal, bg='green', fg='white')
+        self.cal_butt.grid(row=row, column=0, columnspan=2, stick='nsew', padx=2, pady=2)
         row += 1
 
         # Spectrometer acquisition
@@ -863,7 +872,10 @@ class BasicAcqHandler:
                 cfg.ftp_client.stop_watch()
             time.sleep(5)
             print('Start watching directory')
-            cfg.ftp_client.watch_dir(new_only=True)
+            try:
+                cfg.ftp_client.watch_dir(new_only=True)
+            except ConnectionError:
+                print('FTP client failed. Will not be able to transfer acquired data back to host machine')
 
     @property
     def ss_A(self):
@@ -987,11 +999,38 @@ class BasicAcqHandler:
 
     def new_cal(self):
         """Setup calibration directory and make widgets available"""
-        # Edit buttons so that filter B is enabled first
-        self.fltr_b_butt.configure(state=tk.DISABLED)
-        self.fltr_a_butt.configure(state=tk.NORMAL)
+        # Actions depend on if we are in calibration already or not
+        if self.in_cal:
+            # Check we have all the images we want
+            flag_dict = self.img_dir.check_current_cal_dir()
+            if 0 in flag_dict.values():
+                a = askyesno('End calibration?',
+                             'The current calibration does not contain the full suite of dark, clear and gas '
+                             'cell images. Are you sure you wish to end calibration?')
+                if not a:
+                    return
 
-        self.img_dir.set_cal_dir()
+            self.in_cal = False
+            self.cal_butt.configure(text='New Calibration', bg='green')
+            self.dark_butt.configure(state=tk.DISABLED)
+            self.clear_butt.configure(state=tk.DISABLED)
+            self.fltr_a_butt.configure(state=tk.DISABLED)
+
+            # Run calibration on directory - changing the directory automatically runs calibration
+            self.pyplis_worker.cell_cal_dir = self.img_dir.cal_dir
+
+        # If we aren't in a calibration we are just entering into on
+        else:
+            self.in_cal = True
+            self.cal_butt.configure(text='End Calibration', bg='red')
+
+            # Edit buttons so that filter A is enabled first
+            self.fltr_b_butt.configure(state=tk.DISABLED)
+            self.fltr_a_butt.configure(state=tk.NORMAL)
+            self.dark_butt.configure(state=tk.NORMAL)
+            self.clear_butt.configure(state=tk.NORMAL)
+
+            self.img_dir.set_cal_dir()
 
     def acq_cal_img(self, band):
         """Takes calibration image for defined band"""

@@ -169,7 +169,7 @@ class MessageWindow:
 
     def __init__(self, parent):
         self.frame = ttk.Frame(parent, relief=tk.GROOVE, borderwidth=2)
-        self.mess_sep = '\n\n'
+        self.mess_sep = '\n'
         self.mess_start = '>> '
         self.message_holder = self.mess_start + self.mess_sep
         self.num_messages = 30

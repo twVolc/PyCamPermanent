@@ -11,6 +11,7 @@ from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg,
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
 import pycam.gui.settings as settings
+from pycam.networking.FTP import FileTransferGUI
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
@@ -38,9 +39,13 @@ class PyMenu:
         tkinter Frame object which PyMenu will take as its parent
     sock: SocketClient
         Socket used for connection to external instrument"""
-    def __init__(self, parent, frame):
+    def __init__(self, parent, frame, pyplis_work=pyplis_worker, doas_work=doas_worker):
         self.parent = parent
         self.frame = tk.Menu(frame)
+        self.pyplis_worker = pyplis_work
+        self.doas_worker = doas_work
+        self.ftp_transfer = FileTransferGUI(cfg.ftp_client, self.pyplis_worker, self.doas_worker,
+                                            cfg.current_dir_img, cfg.current_dir_spec, self)
 
         # Setup dictionary to hold menu tabs and list to hold the menu tab names. Each menu tab is held in the
         # dictionary with the assocaited key stored in keys. This makes cascade setup easy by looping through keys
@@ -104,9 +109,9 @@ class PyMenu:
         # Data transfer
         self.submenu_data = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Data Transfer', menu=self.submenu_data)
-        self.submenu_data.add_command(label='Start transfer', command=cfg.ftp_client.watch_dir)
-        self.submenu_data.add_command(label='Stop transfer', command=cfg.ftp_client.stop_watch)
-        self.submenu_data.add_command(label='Options', command=self.not_implemented)  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
+        self.submenu_data.add_command(label='Start transfer', command=self.ftp_transfer.start_transfer)
+        self.submenu_data.add_command(label='Stop transfer', command=self.ftp_transfer.stop_transfer)
+        self.submenu_data.add_command(label='Options', command=self.ftp_transfer.generate_frame)  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
         self.submenu_data.add_separator()
         self.submenu_data.add_command(label='Get temperature log', command=temp_log.generate_frame)
         self.menus[tab].add_separator()

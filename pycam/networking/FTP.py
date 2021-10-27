@@ -10,6 +10,8 @@ import time
 import queue
 import threading
 import datetime
+import tkinter as tk
+import tkinter.ttk as ttk
 import pathlib
 
 
@@ -112,6 +114,23 @@ class CurrentDirectories:
                 cal_dirs.sort()
                 self.cal_dir = os.path.join(self.date_dir, cal_dirs[-1])
 
+    def check_current_cal_dir(self):
+        """
+        Checks status of current calibration direct - if we have clear, dark and cell images, and returns a
+        dictionary flagging each if they have not been taken
+        """
+        img_list = [x for x in os.listdir(self.cal_dir) if self.specs.file_ext in x]
+
+        flag_dict = {self.specs.file_type['cal']: None,
+                     self.specs.file_type['dark']: None,
+                     self.specs.file_type['clear']: None}
+
+        # Loop through file types and check they are in the directory
+        for key in flag_dict:
+            flag_dict[key] = len([x for x in img_list if key in x])
+
+        return flag_dict
+
     def get_file_dir(self, filename):
         """Gets the directory to save the file to"""
         # Extract date if in auto mode, otherwise the directories should already be set from the manual acquisition obj
@@ -159,6 +178,76 @@ class CurrentDirectories:
             os.mkdir(local_date_dir)
 
         return local_date_dir
+
+
+class FileTransferGUI:
+    """
+    Class for controlling image transfer with an options GUI
+    """
+    def __init__(self, ftp_client, pyplis_work, doas_work, img_dir, spec_dir, menu):
+        self.pyplis_worker = pyplis_work
+        self.doas_worker = doas_work
+        self.img_dir = img_dir
+        self.spec_dir = spec_dir
+        self.ftp_client = ftp_client
+        self.menu = menu
+
+        # Defines whether we want to watch for images to then process them. Whether they are then processed, or simply
+        # displayed will depend on if plot_iter is True or if display_only is true. If the settings are not setup
+        # correctly then it's possible to have this button checked but still have no images updated (if plot_iter=0 a
+        # and display_only=0)
+        self._disp_images = tk.IntVar()
+        self._disp_images.set(1)
+
+        self.in_frame = False
+
+    def generate_frame(self):
+        """Generates options frame for FTP transfer"""
+        if self.in_frame:
+            return
+
+        # Create top-level frame
+        self.frame = tk.Toplevel()
+        self.frame.title('File Transfer Options')
+        self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 2),
+                                                 int(self.frame.winfo_screenheight() / 2),
+                                                 int(self.frame.winfo_screenwidth() / 10),
+                                                 int(self.frame.winfo_screenheight() / 10)))
+
+        check = ttk.Checkbutton(self.frame, text='Display images/spectra on transfer', variable=self._disp_images)
+        check.grid(row=0, column=0, sticky='w')
+
+    @property
+    def disp_images(self):
+        return self._disp_images.get()
+
+    @disp_images.setter
+    def disp_images(self, value):
+        self._disp_images.set(value)
+
+    def start_transfer(self):
+        """Starts automatic image transfer from instrument"""
+        if self.disp_images:
+            if not self.pyplis_worker.plot_iter and not self.pyplis_worker.display_only:
+                self.pyplis_worker.display_only = 1
+                self.menu.disp_var.set(1)
+            self.pyplis_worker.start_watching(self.img_dir.root_dir, recursive=True)
+            self.doas_worker.start_watching(self.spec_dir.root_dir, recursive=True)
+
+        try:
+            self.ftp_client.watch_dir()
+        except ConnectionError:
+            print('FTP client failed. Cannot transfer data back to host machine')
+            self.pyplis_worker.stop_watching()
+            self.doas_worker.stop_watching()
+            return
+
+    def stop_transfer(self):
+        """Stop automatic image transfer from instrument"""
+        if self.disp_images:
+            self.pyplis_worker.stop_watching()
+            self.doas_worker.stop_watching()
+        self.ftp_client.stop_watch()
 
 
 class FTPClient:
@@ -355,8 +444,7 @@ class FTPClient:
     def watch_dir(self, lock='.lock', new_only=False):
         """Public access thread starter for _watch_dir"""
         if not self.test_connection():
-            print('FTP connection could not be established, directory watching is not possible')
-            return
+            raise ConnectionError
 
         self.watch_thread = threading.Thread(target=self._watch_dir, args=(lock, new_only,))
         self.watch_thread.daemon = True

@@ -2678,6 +2678,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
         if set_var:
             pyplis_worker.cell_cal_dir = self.cell_cal_dir
 
+    def set_cell_cal_dir(self, cal_dir):
+        """Directly sets cell calibration directory without filedialog"""
+        if not os.path.exists(cal_dir):
+            print('Cannot set calibration directory as requested directory does not exist')
+            return
+        self.cell_cal_dir = cal_dir
+        pyplis_worker.cell_cal_dir = self.cell_cal_dir
+
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
         bg_file = filedialog.askopenfilename(initialdir=self.dark_img_dir)

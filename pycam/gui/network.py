@@ -25,12 +25,19 @@ def run_pycam(ip, auto_capt=1):
 
         # Path to executable
         pycam_path = FileLocator.SCRIPTS + 'pycam_masterpi.py'
+        pycam_path = FileLocator.SCRIPTS + 'start_pycam.sh'
 
-        # Open ssh connection
-        connection = open_ssh(ip)
+        try:
+            # Open ssh connection
+            connection = open_ssh(ip)
+        except TimeoutError:
+            messagebox.showerror('Connection Timeout', 'Attempt to run pycam on {} timed out. Please ensure that the'
+                                                       'instrument is accesible at that IP address'.format(ip))
+            return
 
         # Run ssh command
-        stdin, stderr, stdout = ssh_cmd(connection, 'python3 {} {}'.format(pycam_path, auto_capt), background=False)
+        # stdin, stderr, stdout = ssh_cmd(connection, 'python3 {} {}'.format(pycam_path, auto_capt), background=True)
+        stdin, stderr, stdout = ssh_cmd(connection, '{} {}'.format(pycam_path, auto_capt), background=True)
 
         # Close ssh connection
         close_ssh(connection)
@@ -194,24 +201,28 @@ class GUICommRecvHandler:
 
     def get_comms(self):
         """Gets received communications from the recv_comms queue and acts on them"""
-        while self.stop.is_set():
+        while not self.stop.is_set():
             comm = self.recv_comms.q.get(block=True)
 
             if 'LOG' in comm:
                 # If getting acquisition flags was purpose of comm we update widgets
                 if comm['LOG'] == 1:
                     if comm['IDN'] in ['CM1', 'CM2']:
-                        # TODO CHeck all of this is actually working and updating parameters
                         self.cam_acq.update_acquisition_parameters(comm)
                     elif comm['IDN'] == 'SPC':
                         self.spec_acq.update_acquisition_parameters(comm)
 
-            # Put comms into string for message window
-            mess = 'Received communication from instrument. IDN: {}\n' \
-                   '------------------------------------------------\n'.format(comm['IDN'])
+            mess = ''
             for id in comm:
                 if id != 'IDN':
-                    mess += '{}: {}\n'.format(id, comm[id])
+                    mess += 'COMM ({}) > {}: {}\n'.format(comm['IDN'], id, comm[id])
+
+            # # Put comms into string for message window
+            # mess = 'Received communication from instrument. IDN: {}\n' \
+            #        '------------------------------------------------\n'.format(comm['IDN'])
+            # for id in comm:
+            #     if id != 'IDN':
+            #         mess += '{}: {}\n'.format(id, comm[id])
             self.message_wind.add_message(mess)
 
 

@@ -906,12 +906,19 @@ class PyplisWorker:
         self.cell_calib.prepare_calib_data(pos_x_abs=pos_x_abs, pos_y_abs=pos_y_abs, radius_abs=radius_abs,
                                            on_id=filter_ids['A'], off_id=filter_ids['B'], darkcorr=False)
 
-        slope, offs = self.cell_calib.calib_data['aa'].calib_coeffs
-        print('Calibration parameters AA: {}, {}'.format(slope, offs))
-        slope, offs = self.cell_calib.calib_data['on'].calib_coeffs
-        print('Calibration parameters on-band: {}, {}'.format(slope, offs))
-        slope, offs = self.cell_calib.calib_data['off'].calib_coeffs
-        print('Calibration parameters off-band: {}, {}'.format(slope, offs))
+        try:
+            slope, offs = self.cell_calib.calib_data['aa'].calib_coeffs
+            print('Calibration parameters AA: {}, {}'.format(slope, offs))
+            slope, offs = self.cell_calib.calib_data['on'].calib_coeffs
+            print('Calibration parameters on-band: {}, {}'.format(slope, offs))
+            slope, offs = self.cell_calib.calib_data['off'].calib_coeffs
+            print('Calibration parameters off-band: {}, {}'.format(slope, offs))
+        except TypeError:
+            messagebox.showerror('Calibration failed', 'Calibration failed.'
+                                                       'This is probably related to NaNs in the tau vector. '
+                                                       'It may be that dark correction is creating 0s in the data which'
+                                                       ' result in NaNs through division.')
+            return
 
         # Update cell column density error in each cell
         for key in self.cell_calib.calib_data:
@@ -1059,7 +1066,7 @@ class PyplisWorker:
 
         for ppmm in cell_vals:
             # Set id for this cell (based on its filename)
-            cal_id = ppmm + self.cam_specs.file_type['cal']
+            cal_id = '_' + ppmm + self.cam_specs.file_type['cal']
 
             for band in ['A', 'B']:
                 # Make list for specific calibration cell
@@ -1150,7 +1157,7 @@ class PyplisWorker:
                 # Loop through cells and save those image
                 for ppmm in cell_vals:
                     # Set id for this cell (based on its filename)
-                    cal_id = ppmm + self.cam_specs.file_type['cal']
+                    cal_id = '_' + ppmm + self.cam_specs.file_type['cal']
 
                     # Make list for specific calibration cell and retrieve the most recent filename - this will be used
                     # as the filename for the dark_corr coadded image
@@ -2831,9 +2838,15 @@ class PyplisWorker:
                 print('Stopping processing')
                 return
 
+            # If we are in display only mode we don't perform processing, just load images and display them
+            if self.display_only:
+                for img_name in [img_path_A, img_path_B]:
+                    self.load_img(img_name, plot=True)
+                continue
+
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
             # So we finalise processing and then continue (TODO check this is ok)
-            if self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
+            if not self.first_image and self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
                 print('New image comes from a different day. Finalising previous day of processing.')
                 self.finalise_processing()
 

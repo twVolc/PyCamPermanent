@@ -57,7 +57,7 @@ class PyCam(ttk.Frame):
         self.style.layout('TNotebook.Tab', [])          # Turns off notepad bar
 
         # Menu bar setup
-        self.menu = PyMenu(self, self.root)
+        self.menu = PyMenu(self, self.root, pyplis_worker, doas_worker)
         self.root.config(menu=self.menu.frame)
 
         # -----------------------------------------------
@@ -117,6 +117,8 @@ class PyCam(ttk.Frame):
             # If we are connected to the instrument we should disconnect now.
             if cfg.indicator.connected:
                 cfg.indicator.disconnect_sock()
+
+            comm_recv_handler.stop.set()    # Stop comm_recv_handler
 
             # Close main window and stop program
             self.root.destroy()
