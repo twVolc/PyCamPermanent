@@ -50,6 +50,10 @@ class FileLocator:
     SPEC_PATH_WINDOWS = DAT_DIR_WINDOWS + 'Spectra/'
 
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
+    MOUNT_SSD_SCRIPT = SCRIPTS + 'mount_ssd.py'
+    UNMOUNT_SSD_SCRIPT = SCRIPTS + 'unmount_ssd.py'
+    CLEAR_SSD_SCRIPT = SCRIPTS + 'clear_ssd.py'
+    FREE_SPACE_SSD_SCRIPT = SCRIPTS + 'free_space_ssd.py'
 
     LOG_DIR = '/logs/'
     LOG_PATH_PI = PYCAM_ROOT_PI + LOG_DIR

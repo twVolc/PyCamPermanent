@@ -193,6 +193,8 @@ class MasterComms(CommsFuncs):
 
     def EXT(self, value):
         """Acts on EXT command, closing everything down"""
+        timeout = 10
+
         # Wait for other systems to finish up and enter shutdown routine
         time.sleep(3)
         self.recv_and_fwd_comms()
@@ -206,21 +208,36 @@ class MasterComms(CommsFuncs):
         print('Closed all sockets')
 
         # Wait for all threads to finish (closing sockets should cause this)
+        time_start = time.time()
         for conn in self.ext_connections:
             while self.ext_connections[conn].working or self.ext_connections[conn].accepting:
-                pass
+                # Add a timeout so if we are waiting for too long we just close things without waiting
+                time_wait = time.time() - time_start
+                if time_wait > timeout:
+                    print(' Reached timeout limit waiting for shutdown')
+                    break
 
         print('Ext connections finished')
 
+        time_start = time.time()
         for conn in self.save_connections:
             while self.save_connections[conn].working or self.save_connections[conn].accepting:
-                pass
+                # Add a timeout so if we are waiting for too long we just close things without waiting
+                time_wait = time.time() - time_start
+                if time_wait > timeout:
+                    print(' Reached timeout limit waiting for shutdown')
+                    break
 
         print('Save connections finished')
 
+        time_start = time.time()
         for conn in self.comm_connections:
             while self.comm_connections[conn].working or self.comm_connections[conn].accepting:
-                pass
+                # Add a timeout so if we are waiting for too long we just close things without waiting
+                time_wait = time.time() - time_start
+                if time_wait > timeout:
+                    print(' Reached timeout limit waiting for shutdown')
+                    break
 
         print('Comms connections finished')
 
@@ -1821,7 +1838,7 @@ class ImgRecvConnection(Connection):
                     # Setup directory for file using the filename date
                     date_obj = get_img_time(filename)
                     date_dir = date_obj.strftime(self.date_fmt)
-                    backup_path = os.path.join(self.mount.mount_path, date_dir)
+                    backup_path = os.path.join(self.mount.data_path, date_dir)
                     if not os.path.exists(backup_path):
                         os.mkdir(backup_path)
 
@@ -1872,7 +1889,7 @@ class SpecRecvConnection(Connection):
                     # Setup directory for file using the filename date
                     date_obj = get_spec_time(filename)
                     date_dir = date_obj.strftime(self.date_fmt)
-                    backup_path = os.path.join(self.mount.mount_path, date_dir)
+                    backup_path = os.path.join(self.mount.data_path, date_dir)
                     if not os.path.exists(backup_path):
                         os.mkdir(backup_path)
 

@@ -2,7 +2,7 @@
 
 """Contains all global variables, mainly relating to sockets and the GUI"""
 
-from pycam.utils import read_file
+from pycam.utils import read_file, StorageMount
 from pycam.setupclasses import FileLocator, ConfigInfo, SpecSpecs, CameraSpecs
 from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
@@ -35,7 +35,8 @@ current_dir_spec = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_
                                       specs=SpecSpecs())
 
 # FTP client
-ftp_client = FTPClient(img_dir=current_dir_img, spec_dir=current_dir_spec, network_info=config)
+ftp_client = FTPClient(img_dir=current_dir_img, spec_dir=current_dir_spec, network_info=config,
+                       storage_mount=StorageMount())
 
 # ======================================================================================================================
 

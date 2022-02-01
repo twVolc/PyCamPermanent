@@ -39,6 +39,10 @@ def run_pycam(ip, auto_capt=1):
         # stdin, stderr, stdout = ssh_cmd(connection, 'python3 {} {}'.format(pycam_path, auto_capt), background=True)
         stdin, stderr, stdout = ssh_cmd(connection, '{} {}'.format(pycam_path, auto_capt), background=True)
 
+        # print('STDIN: {}'.format(stdin))
+        # print('STDERR: {}'.format(stderr))
+        # print('STDOUT: {}'.format(stdout))
+
         # Close ssh connection
         close_ssh(connection)
 

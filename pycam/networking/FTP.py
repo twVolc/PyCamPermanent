@@ -2,7 +2,7 @@
 
 """Contains FTP classes for controlling transfer of images and spectra from remote camera to local processing machine"""
 
-from pycam.utils import read_file
+from pycam.utils import read_file, StorageMount
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator, ConfigInfo
 import ftplib
 import os
@@ -12,6 +12,7 @@ import threading
 import datetime
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
 import pathlib
 
 
@@ -259,12 +260,13 @@ class FTPClient:
     :param network_info:    dict                Contains network parameters defining information for FTP transfer
     """
 
-    def __init__(self, img_dir, spec_dir, network_info=None):
+    def __init__(self, img_dir, spec_dir, network_info=None, storage_mount=StorageMount()):
         # TODO Need a way of changing the IP address this connects to - this should be linked to sock ip somehow
 
         self.refresh_time = 1   # Length of time directory watcher sleeps before listing server images again
         self.cam_specs = CameraSpecs()
         self.spec_specs = SpecSpecs()
+        self.storage_mount = storage_mount
         self.watch_q = queue.Queue()
         self.thread = None
         self.watching_dir = False
@@ -534,9 +536,96 @@ class FTPClient:
         if self.watching_dir:
             self.watch_q.put(1)
 
+    def full_ssd_download(self, lock='.lock', delete=False):
+        """
+        Downloads all data currently stored on the SSD
+        :param lock:    str     Extension for lock file
+        :param delete:  bool    If True, all of the data is cleared from the SSD after transfer
+        """
+        if self.watching_dir:
+            print('Cannot perform full download whilst FTP client is already watching for new data.')
+            print('Please stop watching the directory and retry.')
+            return
 
+        # Change working directory to mounted SSD device
+        try:
+            self.connection.cwd(self.storage_mount.data_path)
+        except BaseException as e:
+            messagebox.showerror('Error in data download',
+                                 'The following error was thrown when attempting to find data on SSD: {}\n'
+                                 'Please ensure that the device is mounted '
+                                 'on the R-Pi.'.format(e))
+            return
 
+        # List directories
+        try:
+            dir_list = self.connection.nlst()
+            dir_list.sort()
+        except ftplib.error_perm as e:
+            print(e)
 
+        # Remove unwanted navigation points from the listed directory
+        ignore = ['.', '..']
+        for i in ignore:
+            try:
+                dir_list.remove(i)
+            except ValueError:
+                pass
+
+        # Create frame tracking download
+        frame = tk.Toplevel()
+        lab = ttk.Label(frame, text='DOWNLOADING FILES')
+        lab.grid(row=0, column=0, sticky='nsew')
+        lab = ttk.Label(frame, text='0% complete')
+        lab.grid(row=1, column=0, sticky='nsew')
+
+        # Loop through each directory and download the data
+        num_files = 0
+        for dir_num, date_dir in enumerate(dir_list):
+            # Change working directory to date directory with data in
+            self.connection.cwd(date_dir)
+            file_list = self.connection.nlst()
+
+            # Remove unwanted navigation points from the listed directory
+            for i in ignore:
+                try:
+                    file_list.remove(i)
+                except ValueError:
+                    pass
+
+            # Loop through data downloading it
+            for file in file_list:
+                # Extract filename to generate lock file
+                filename, ext = os.path.splitext(file)
+                lock_file = filename + lock
+                if lock_file in file_list:      # Don't download image if it is still locked
+                    continue
+                else:
+                    print('Getting file: {}'.format(file))
+                    local_file, local_date_dir = self.get_data(os.path.join(self.dir_data_remote, file))
+                    num_files += 1
+
+            perc_complete = int((dir_num / len(dir_list)) * 100)
+            lab.configure(text='{}% complete'.format(perc_complete))
+
+            # Change working directory back to starting point
+            self.connection.cwd(self.storage_mount.data_path)
+
+        # Close loading widget
+        frame.destroy()
+
+        # Delete data if requested
+        if delete:
+            for date_dir in dir_list:
+                self.connection.rmd(date_dir)
+
+        # Change working directory back to pycam so we are out of the mounted device - these means it can be unmounted
+        # if pycam is closed
+        self.connection.cwd(self.dir_data_remote)
+
+        # Tell user how many files have been downloaded
+        messagebox.showinfo('Download complete',
+                            'Downloaded {} files from instrument'.format(num_files))
 
 
 

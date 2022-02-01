@@ -8,6 +8,8 @@ import numpy as np
 import subprocess
 import datetime
 import threading
+import shutil
+import time
 
 
 def check_filename(filename, ext):
@@ -249,6 +251,7 @@ class StorageMount:
     def __init__(self, mount_path='/mnt/pycam/', dev_path=None):
         self.dev_path = dev_path
         self.mount_path = mount_path
+        self.data_path = os.path.join(self.mount_path, 'data')
         self.lock = threading.Lock()
 
         if self.dev_path is None:
@@ -270,6 +273,7 @@ class StorageMount:
         """
         Finds device location based on it being /dev/sda of some kind (not necessarily sda1) and sets self.dev_path
         """
+        sda_path = None
         proc = subprocess.Popen(['sudo fdisk -l /dev/sda'], stdout=subprocess.PIPE, shell=True)
         stdout_value = proc.communicate()[0]
         stdout_str = stdout_value.decode("utf-8")
@@ -281,9 +285,21 @@ class StorageMount:
                 # TODO do some line splitting to get sda path
                 sda_path = line.split()[0]
                 self.dev_path = sda_path
+                print('Found SSD device path at {}'.format(self.dev_path))
+
+        if sda_path is None:
+            print('Could not find SSD device in /dev/sda')
 
     def mount_dev(self):
         """Mount device located at self.dev_path to self.mount_path destination"""
+        if self.is_mounted:
+            print('Device is already mounted')
+            return
+
+        if self.dev_path is None:
+            print('No SSD device path to mount')
+            return
+
         if not os.path.exists(self.mount_path):
             subprocess.call(['sudo', 'mkdir', self.mount_path])
 
@@ -293,8 +309,13 @@ class StorageMount:
         # probably use this in the mntOutput.find() expression too, so I'm searching for the right device.
         # SHould use try: or something that catches if the /dev/sda1 doesn't exist - i.e. no USB stick plugged in.
         # THen print - please plug in device.
-        if not self.is_mounted:
-            subprocess.call(['sudo', 'mount', '-o', 'uid=pi,gid=pi', self.dev_path, self.mount_path])
+        subprocess.call(['sudo', 'mount', '-o', 'uid=pi,gid=pi', self.dev_path, self.mount_path])
+
+        # If the data directory doesn't exist, make it (after the device has been successfully mounted
+        while not self.is_mounted:
+            pass
+        if not os.path.exists(self.data_path):
+            subprocess.call(['sudo', 'mkdir', self.data_path])
 
     def unmount_dev(self):
         """Unmount device located at self.dev_path"""
@@ -303,3 +324,67 @@ class StorageMount:
         # unmount the wrong device - so this needs to be thought about some more.
         if self.is_mounted:
             subprocess.call(['sudo', 'umount', self.dev_path])
+
+    def del_all_data(self):
+        """
+        Deletes all data on storage device.
+        WARNING!!! This will not check, it will jsut delete the data straight away, so make sure you want to perform
+        this before doing so.
+        """
+        all_data = os.listdir(self.data_path)
+
+        for folder in all_data:
+            full_path = os.path.join(self.data_path, folder)
+            try:
+                shutil.rmtree(full_path)
+            except BaseException as e:
+                print("Error: {}".format(e))
+
+    def free_up_space(self, make_space=50):
+        """
+        Frees up some space on the storage device (not a full delete)
+        :param make_space:  int     Amount of space to make on SSD
+        """
+        space = self._get_space()
+
+        # If there is less space than the required space, we list all directories in the data path and delete
+        # Them on by one until space is greater than make_space
+        all_data = os.listdir(self.data_path)
+        all_data.sort()
+
+        # Loop around clearing space
+        i = 0
+        while space < make_space:
+            full_path = os.path.join(self.data_path, all_data[i])
+            i += 1
+            try:
+                shutil.rmtree(full_path)
+            except BaseException as e:
+                print("Error: {}".format(e))
+
+            # Find how much space is now left on SSD
+            space = self._get_space()
+
+    def _get_space(self):
+        """Gets space on SSD"""
+        # Memory location index of 'df -h' output
+        mem_loc = 3
+
+        # Place holder for space - returns None if the device can't be found
+        space = None
+
+        # Get info on SSD space
+        proc = subprocess.Popen(['df -h'], stdout=subprocess.PIPE, shell=True)
+        stdout_value = proc.communicate()[0]
+        stdout_str = stdout_value.decode("utf-8")
+        stdout_lines = stdout_str.split('\n')
+        print(stdout_lines)
+
+        for line in stdout_lines:
+            if self.dev_path in line:
+                details = line.split()
+
+                # Extract number value - one letter (usually G) is at the end so we need to slice the string
+                space = int(details[mem_loc][0:-1])
+        return space
+

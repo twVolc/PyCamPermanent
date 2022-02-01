@@ -15,6 +15,7 @@ from pycam.networking.FTP import FileTransferGUI
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
+from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 
 from pyplis import LineOnImage
 
@@ -114,6 +115,12 @@ class PyMenu:
         self.submenu_data.add_command(label='Options', command=self.ftp_transfer.generate_frame)  # Add options such as directory to transfer to/from?? Maybe only transfer certain data - certain times etc
         self.submenu_data.add_separator()
         self.submenu_data.add_command(label='Get temperature log', command=temp_log.generate_frame)
+        self.submenu_data.add_separator()
+        self.submenu_data.add_command(label='Mount SSD', command=lambda: self.mount_ssd(cfg.ftp_client.host_ip))
+        self.submenu_data.add_command(label='Unmount SSD', command=lambda: self.unmount_ssd(cfg.ftp_client.host_ip))
+        self.submenu_data.add_command(label='SSD full download', command=cfg.ftp_client.full_ssd_download)
+        self.submenu_data.add_command(label='Clear SSD data', command=lambda: self.clear_ssd(cfg.ftp_client.host_ip))
+        self.submenu_data.add_command(label='Free space on SSD', command=lambda: self.free_ssd(cfg.ftp_client.host_ip))
         self.menus[tab].add_separator()
 
         # Manual acquisition
@@ -215,6 +222,103 @@ class PyMenu:
     def set_display_mode(self):
         """Sets the display mode on click of checkbutton"""
         pyplis_worker.display_only = bool(self.disp_var.get())
+
+    def mount_ssd(self, ip, username='pi', password='raspberry'):
+        """
+        Attempts to mount SSD on raspberry pi
+        :param ip:  str     IP address of pi
+        """
+        try:
+            client = open_ssh(ip, uname=username, pwd=password)
+            ssh_cmd(client, 'python3 {}'.format(FileLocator.MOUNT_SSD_SCRIPT))
+            close_ssh(client)
+            messagebox.showinfo('SSD mounted', 'SSD should now be successfully mounted to the Raspberry Pi')
+        except BaseException as e:
+            messagebox.showerror('Error mounting SSD',
+                                 'An error occurred when attempting to mount SSD vis SSH.\n'
+                                 '{}'.format(e))
+
+    def unmount_ssd(self, ip, username='pi', password='raspberry'):
+        """
+        Attempts to mount SSD on raspberry pi
+        :param ip:  str     IP address of pi
+        """
+        try:
+            client = open_ssh(ip, uname=username, pwd=password)
+            ssh_cmd(client, 'python3 {}'.format(FileLocator.UNMOUNT_SSD_SCRIPT))
+            close_ssh(client)
+            messagebox.showinfo('SSD unmounted', 'SSD should now be successfully unmounted to the Raspberry Pi')
+        except BaseException as e:
+            messagebox.showerror('Error unmounting SSD',
+                                 'An error occurred when attempting to mount SSD vis SSH.\n'
+                                 '{}'.format(e))
+
+    def clear_ssd(self, ip, username='pi', password='raspberry'):
+        """
+        Clears all SSD data by SSHing into pi then running the clear_ssd.py script
+        :param ip:  str     IP address of pi
+        """
+        a = messagebox.askyesno('Clear all data?',
+                                'The action will irreversibly clear all of the data currently saved on the SSD drive. '
+                                'Are you sure you want to proceed?')
+        if a:
+            try:
+                client = open_ssh(ip, uname=username, pwd=password)
+                ssh_cmd(client, 'python3 {}'.format(FileLocator.CLEAR_SSD_SCRIPT))
+                close_ssh(client)
+                messagebox.showinfo('SSD cleared', 'SSD data has been cleared.')
+            except BaseException:
+                messagebox.showerror('Error deleting data',
+                                     'An error occurred when attempting to clear SSD data. Please check connection to'
+                                     ' instrument and try again')
+        else:
+            messagebox.showinfo('Aborted', 'Data clear was aborted. No data has been deleted.')
+
+    def free_ssd(self, ip):
+        """
+        Frees space on SSD data by SSHing into pi then running the free_space_ssd.py script
+        :param ip:  str     IP address of pi
+        """
+        self.space_frame = tk.Toplevel()
+        lab = ttk.Label(self.space_frame, text='Define how much space to make available on SSD')
+        lab.grid(row=0, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        lab = ttk.Label(self.space_frame, text='Create space (GB):')
+        lab.grid(row=1, column=0)
+
+        # Free space entry
+        free_space = tk.IntVar()
+        free_space.set(50)
+        entry = ttk.Spinbox(self.space_frame, from_=0, to=1000, increment=5, textvariable=free_space)
+        entry.grid(row=1, column=1, sticky='nsew')
+
+        butt = ttk.Button(self.space_frame,text='Create space', command=lambda: self._free_ssd(ip, free_space.get()))
+        butt.grid(row=2, column=0, sticky='nsew')
+        butt = ttk.Button(self.space_frame, text='Cancel', command=self.space_frame.destroy)
+        butt.grid(row=2, column=1, sticky='nsew')
+
+    def _free_ssd(self, ip, space, username='pi', password='raspberry'):
+        """
+        Frees space on SSD data by SSHing into pi then running the free_space_ssd.py script
+        """
+        a = messagebox.askyesno('Free up space?',
+                                'The action will free up {}GB of space on the SSD. This may lead to '
+                                'irreversible deletion of data.\n'
+                                'Are you sure you want to proceed?'.format(space))
+        if a:
+            try:
+                client = open_ssh(ip, uname=username, pwd=password)
+                ssh_cmd(client, 'python3 {} {}'.format(FileLocator.FREE_SPACE_SSD_SCRIPT, space))
+                close_ssh(client)
+                messagebox.showinfo('SSD cleared', 'SSD data has been cleared.')
+            except BaseException:
+                messagebox.showerror('Error deleting data',
+                                     'An error occurred when attempting to free space on SSD. Please check connection to'
+                                     ' instrument and try again')
+        else:
+            messagebox.showinfo('Aborted', 'Data clear was aborted. No data has been deleted.')
+
+        # Close frame
+        self.space_frame.destroy()
 
 
 class Settings:

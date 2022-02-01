@@ -13,7 +13,7 @@ from pycam.setupclasses import FileLocator
 
 
 # Threshold (in MB)
-threshold = 10000   # 10 GB
+threshold = 100000   # 100 GB
 threshold_kb = threshold * 1000
 
 # Path to imag directory
@@ -21,6 +21,8 @@ img_path = FileLocator.IMG_SPEC_PATH
 
 
 def get_storage_usage(img_path):
+    # TODO change from du to df, as du only gives file size, it doesn't quote total disk space - which is the important
+    # TODO thing
     proc = subprocess.Popen(['du -s {}'.format(img_path)], stdout=subprocess.PIPE, shell=True)
     stdout_value = proc.communicate()[0]
     stdout_str = stdout_value.decode("utf-8")
