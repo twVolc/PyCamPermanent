@@ -40,6 +40,7 @@ class FileLocator:
     CRON_FILE = CRON_DIR + 'script_schedule'                    # Location for start/stop pycam in crontab
 
     NET_PORTS_FILE = CONF_DIR + 'network_ports.txt'             # Network file containing port options
+    NET_PORTS_FILE_WINDOWS = CONF_DIR_WINDOWS + 'network_ports.txt' # Network file containing port options
     NET_COMM_FILE = CONF_DIR + 'network_comm.txt'               # Network file for communicating acquisitions
     NET_TRANSFER_FILE = CONF_DIR + 'network_transfer.txt'       # Network file for transferring data
     NET_EXT_FILE = CONF_DIR + 'network_external.txt'            # Network file for transferring data

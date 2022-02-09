@@ -699,13 +699,14 @@ class BasicAcqHandler:
     """
     Handles basic acquisitions - outside of continuous capture
     """
-    def __init__(self, pyplis_worker, doas_worker, img_dir, spec_dir, cell_cal_frame,
+    def __init__(self, pyplis_worker, doas_worker, img_dir, spec_dir, cell_cal_frame, automated_acq_handler,
                  cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self.pyplis_worker = pyplis_worker
         self.doas_worker = doas_worker
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.cell_cal_frame = cell_cal_frame
+        self.automated_acq_handler = automated_acq_handler      # For resetting auto acquisitions after leaving BasicAcq
         self.frame = None
         self.in_frame = False
 
@@ -1048,6 +1049,7 @@ class BasicAcqHandler:
     def close_frame(self):
         """Closes acquisition frame"""
         # Return the directory handling to auto mode (we only want it to be manual for manual acquisitions)
+        self.automated_acq_handler.acq_comm(start_cont=False)   # Reset settings
         self.pyplis_worker.plot_iter = self.plot_iter_current
         self.img_dir.auto_mode = True
         self.spec_dir.auto_mode = True

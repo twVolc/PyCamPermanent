@@ -6,6 +6,7 @@ import pycam.gui.cfg as cfg
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd
 from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.io_py import write_witty_schedule_file, read_witty_schedule_file, write_script_crontab, read_script_crontab
+from pycam.utils import read_file
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -99,11 +100,14 @@ class ConnectionGUI:
         self._port = tk.IntVar()
         self.host_ip = cfg.sock.host_ip
         self.port = cfg.sock.port
+        self.port_list = None
+        self.get_ports('ext_ports')
 
         ttk.Label(self.frame, text='IP address:').grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         ttk.Label(self.frame, text='Port:').grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         ttk.Entry(self.frame, width=15, textvariable=self._host_ip).grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
-        ttk.Entry(self.frame, width=6, textvariable=self._port).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        ttk.OptionMenu(self.frame, self._port, self.port_list[0], *self.port_list).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        # ttk.Entry(self.frame, width=6, textvariable=self._port).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         self.test_butt = ttk.Button(self.frame, text='Test Connection', command=self.test_connection)
         self.test_butt.grid(row=0, column=2, padx=self.pdx, pady=self.pdy)
@@ -133,6 +137,11 @@ class ConnectionGUI:
     def port(self, value):
         """Public access setter of tk variable _port"""
         self._port.set(value)
+
+    def get_ports(self, key, file_path=FileLocator.NET_PORTS_FILE_WINDOWS):
+        """Gets list of all ports that might be used for comms"""
+        info = read_file(file_path)
+        self.port_list = [int(x) for x in info[key].split(',')]
 
     def update_connection(self):
         """Updates socket address information"""

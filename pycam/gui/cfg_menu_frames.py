@@ -44,9 +44,9 @@ opti_flow = OptiFlowSettings(fig_setts=gui_setts)
 light_dilution = LightDilutionSettings(fig_setts=gui_setts)
 
 # Communications handlers
-basic_acq_handler = BasicAcqHandler(pyplis_worker, doas_worker, img_dir=current_dir_img, spec_dir=current_dir_spec,
-                                    cell_cal_frame=cell_calib)
 automated_acq_handler = CommHandler()
+basic_acq_handler = BasicAcqHandler(pyplis_worker, doas_worker, img_dir=current_dir_img, spec_dir=current_dir_spec,
+                                    cell_cal_frame=cell_calib, automated_acq_handler=automated_acq_handler)
 
 # Instrument configuration
 instrument_cfg = InstrumentConfiguration(ftp_client, config)
