@@ -47,7 +47,8 @@ class SequenceInfo:
     """
     Generates widget containing squence information, which is displayed at the top of the analysis frame
     """
-    def __init__(self, parent, pyplis_work=pyplis_worker, generate_widget=True):
+    def __init__(self, main_gui, parent, pyplis_work=pyplis_worker, generate_widget=True):
+        self.main_gui = main_gui
         self.parent = parent
         self.frame = ttk.LabelFrame(self.parent, text='Sequence information')
         self.pyplis_worker = pyplis_worker
@@ -80,33 +81,34 @@ class SequenceInfo:
     def generate_widget(self):
         """Builds widget"""
         row = 0
-        label = ttk.Label(self.frame, text='Sequence directory:')
+        label = ttk.Label(self.frame, text='Sequence directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.img_dir_lab = ttk.Label(self.frame, text=self.img_dir_short)
+        self.img_dir_lab = ttk.Label(self.frame, text=self.img_dir_short, font=self.main_gui.main_font)
         self.img_dir_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
-        label = ttk.Label(self.frame, text='Date:')
+        label = ttk.Label(self.frame, text='Date:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.date_lab = ttk.Label(self.frame, text=self.date)
+        self.date_lab = ttk.Label(self.frame, text=self.date, font=self.main_gui.main_font)
         self.date_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
-        label = ttk.Label(self.frame, text='Time:')
+        label = ttk.Label(self.frame, text='Time:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.time_lab = ttk.Label(self.frame, text='{} - {}'.format(self.start_time, self.end_time))
+        self.time_lab = ttk.Label(self.frame, text='{} - {}'.format(self.start_time, self.end_time),
+                                  font=self.main_gui.main_font)
         self.time_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
-        label = ttk.Label(self.frame, text='Total images:')
+        label = ttk.Label(self.frame, text='Total images:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.num_img_tot_lab = ttk.Label(self.frame, text=str(self.num_img_tot))
+        self.num_img_tot_lab = ttk.Label(self.frame, text=str(self.num_img_tot), font=self.main_gui.main_font)
         self.num_img_tot_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row += 1
-        label = ttk.Label(self.frame, text='Image pairs:')
+        label = ttk.Label(self.frame, text='Image pairs:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.num_img_pairs_lab = ttk.Label(self.frame, text=str(self.num_img_pairs))
+        self.num_img_pairs_lab = ttk.Label(self.frame, text=str(self.num_img_pairs), font=self.main_gui.main_font)
         self.num_img_pairs_lab.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
     @property
@@ -168,9 +170,11 @@ class ImageSO2(LoadSaveProcessingSettings):
         [x_dimension, y_dimension] list of resolution for SO2 camera imagery
     """
 
-    def __init__(self, parent, pyplis_work=pyplis_worker, image_tau=None, image_cal=None,
+    def __init__(self, main_gui, parent, pyplis_work=pyplis_worker, image_tau=None, image_cal=None,
                  pix_dim=(CameraSpecs().pix_num_x, CameraSpecs().pix_num_y)):
         super().__init__()
+
+        self.main_gui = main_gui
 
         # Get root - used for plotting using refresh after in _draw_canv_()
         parent_name = parent.winfo_parent()
@@ -483,18 +487,18 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Number of lines
         row = 0
-        label = ttk.Label(self.frame_analysis, text='Num. ICAs:')
+        label = ttk.Label(self.frame_analysis, text='Num. ICAs:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._num_ica, from_=1, to=self.max_lines,
-                                    increment=1, command=self.update_ica_num)
+                                    increment=1, command=self.update_ica_num, font=self.main_gui.main_font)
         self.ica_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
         # Line to edit
         row += 1
-        label = ttk.Label(self.frame_analysis, text='Edit ICA:')
+        label = ttk.Label(self.frame_analysis, text='Edit ICA:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_edit_spin = ttk.Spinbox(self.frame_analysis, textvariable=self._current_ica, from_=1, to=self.num_ica,
-                                         increment=1)
+                                         increment=1, font=self.main_gui.main_font)
         self.ica_edit_spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
         # Flip ICA normal button
@@ -503,18 +507,20 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Cross-correlation line (older and younger)
         row += 1
-        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [young]:')
+        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [young]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.x_corr_spin_young = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica_young,
-                                             from_=0, to=self.num_ica, increment=1, command=self.gather_vars)
+                                             from_=0, to=self.num_ica, increment=1, command=self.gather_vars,
+                                             font=self.main_gui.main_font)
         self.x_corr_spin_young.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
 
         row += 1
-        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [old]:')
+        label = ttk.Label(self.frame_analysis, text='Cross-correlation ICA [old]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.x_corr_spin_old = ttk.Spinbox(self.frame_analysis, textvariable=self._xcorr_ica_old,
-                                           from_=0, to=self.num_ica, increment=1, command=self.gather_vars)
+                                           from_=0, to=self.num_ica, increment=1, command=self.gather_vars,
+                                           font=self.main_gui.main_font)
         self.x_corr_spin_old.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
 
     def _build_options(self):
@@ -523,7 +529,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Colour maps
         row = 0
-        label = ttk.Label(self.frame_opts, text='Colour map:')
+        label = ttk.Label(self.frame_opts, text='Colour map:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.opt_menu = ttk.OptionMenu(self.frame_opts, self._cmap, self._cmap.get(), *self.cmaps,
                                        command=self.change_cmap)
@@ -532,7 +538,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Tau or calibrated display
         row += 1
-        label = ttk.Label(self.frame_opts, text='Display:')
+        label = ttk.Label(self.frame_opts, text='Display:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.disp_tau_rad = ttk.Radiobutton(self.frame_opts, text='\u03C4', variable=self._disp_cal, value=0,
                                             command=lambda: self.update_plot(self.image_tau, self.image_cal))
@@ -545,10 +551,10 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Colour level tau
         row += 1
-        label = ttk.Label(self.frame_opts, text='\u03C4 max.:')
+        label = ttk.Label(self.frame_opts, text='\u03C4 max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=9, increment=0.01,
-                                    command=self.scale_img)
+                                    command=self.scale_img, font=self.main_gui.main_font)
         self.spin_max.set('{:.2f}'.format(self.tau_max))
         self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
         self.auto_tau_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_tau,
@@ -557,10 +563,10 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Colour level ppmm
         row += 1
-        label = ttk.Label(self.frame_opts, text='ppm⋅m max.:')
+        label = ttk.Label(self.frame_opts, text='ppm⋅m max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
-                                         increment=50, command=self.scale_img)
+                                         increment=50, command=self.scale_img, font=self.main_gui.main_font)
         self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
         self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
                                               command=self.scale_img)
@@ -1040,7 +1046,8 @@ class TimeSeriesFigure:
     """
     Class for frame holding time series plot and associated functions to update the plot
     """
-    def __init__(self, parent, pyplis_work=pyplis_worker, setts=gui_setts):
+    def __init__(self, main_gui, parent, pyplis_work=pyplis_worker, setts=gui_setts):
+        self.main_gui = main_gui
         self.parent = parent
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_series = self
@@ -1106,10 +1113,10 @@ class TimeSeriesFigure:
         """Builds options widget"""
         self.opts_frame = ttk.LabelFrame(self.frame, text='Options')
 
-        lab = ttk.Label(self.opts_frame, text='Plot line:')
+        lab = ttk.Label(self.opts_frame, text='Plot line:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         self.line_opts = ttk.Combobox(self.opts_frame, textvariable=self._line_plot, justify='left',
-                                      state='readonly')
+                                      state='readonly', font=self.main_gui.main_font)
         self.line_opts.bind('<<ComboboxSelected>>', self.update_plot)
         self.line_opts.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
@@ -1331,6 +1338,7 @@ class GeomSettings:
     def __init__(self, parent=None, generate_frame=False, geom_path=FileLocator.CAM_GEOM, fig_setts=gui_setts):
         self.parent = parent
         self.frame = None
+        self.main_gui=None
         self.geom_path = geom_path
         self.filename = None        # Path to file of current settings
         self.dpi = fig_setts.dpi
@@ -1345,8 +1353,10 @@ class GeomSettings:
             self.initiate_variables()
             self.generate_frame()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """Initiates object, and builds frame if parent is a tk.Frame"""
+        self.main_gui = main_gui
+
         # Tk Variables
         self._lat = tk.StringVar()
         self._lon = tk.StringVar()
@@ -1399,41 +1409,41 @@ class GeomSettings:
 
         row = 0
 
-        label = ttk.Label(self.frame_geom, text='Latitude [dec]:')
+        label = ttk.Label(self.frame_geom, text='Latitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lat)
+        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lat, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Longitude [dec]:')
+        label = ttk.Label(self.frame_geom, text='Longitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lon)
+        entry = ttk.Entry(self.frame_geom, width=10, textvariable=self._lon, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Altitude [m]:')
+        label = ttk.Label(self.frame_geom, text='Altitude [m]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._altitude, from_=0, to=8848, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._altitude, from_=0, to=8848, increment=1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Altitude offset [m]:')
+        label = ttk.Label(self.frame_geom, text='Altitude offset [m]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._alt_offset, from_=0, to=9999, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._alt_offset, from_=0, to=9999, increment=1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Elevation angle [°]:')
+        label = ttk.Label(self.frame_geom, text='Elevation angle [°]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         spinbox = ttk.Spinbox(self.frame_geom, format='%.1f', textvariable=self._elev,
-                              from_=-90, to=90, increment=0.1, width=4)
+                              from_=-90, to=90, increment=0.1, width=4, font=self.main_gui.main_font)
         spinbox.set('{:.1f}'.format(self.elev))
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_geom, text='Azimuth [°]:')
+        label = ttk.Label(self.frame_geom, text='Azimuth [°]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._azim, from_=0, to=359, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._azim, from_=0, to=359, increment=1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -1459,27 +1469,27 @@ class GeomSettings:
         self.frame_volc.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
-        label = ttk.Label(self.frame_volc, text='Name:')
+        label = ttk.Label(self.frame_volc, text='Name:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._volcano)
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._volcano, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_volc, text='Latitude [dec]:')
+        label = ttk.Label(self.frame_volc, text='Latitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lat_volc)
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lat_volc, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_volc, text='Longitude [dec]:')
+        label = ttk.Label(self.frame_volc, text='Longitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lon_volc)
+        entry = ttk.Entry(self.frame_volc, width=10, textvariable=self._lon_volc, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_volc, text='Altitude [m]:')
+        label = ttk.Label(self.frame_volc, text='Altitude [m]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_volc, textvariable=self._alt_volc, from_=0, to=8848, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_volc, textvariable=self._alt_volc, from_=0, to=8848, increment=1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -1504,21 +1514,21 @@ class GeomSettings:
         self.frame_ref.grid(row=2, column=0, sticky='new', padx=5, pady=5)
 
         row = 0
-        label = ttk.Label(self.frame_ref, text='Latitude [dec]:')
+        label = ttk.Label(self.frame_ref, text='Latitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lat_ref)
+        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lat_ref, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_ref, text='Longitude [dec]:')
+        label = ttk.Label(self.frame_ref, text='Longitude [dec]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lon_ref)
+        entry = ttk.Entry(self.frame_ref, width=10, textvariable=self._lon_ref, font=self.main_gui.main_font)
         entry.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
-        label = ttk.Label(self.frame_ref, text='Altitude [m]:')
+        label = ttk.Label(self.frame_ref, text='Altitude [m]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_ref, textvariable=self._altitude_ref, from_=0, to=8000, increment=1, width=4)
+        spinbox = ttk.Spinbox(self.frame_ref, textvariable=self._altitude_ref, from_=0, to=8000, increment=1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -1864,6 +1874,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_bg = self
         self.frame = None
+        self.main_gui=None
         self.in_frame = False
         self.fig_size_tau = gui_setts.fig_bg
         self.dpi = gui_setts.dpi
@@ -1882,8 +1893,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.parent = parent
         self.__draw_canv__()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """Prepares all tk variables"""
+        self.main_gui = main_gui
         self.vars = {'bg_mode': int,
                      'auto_param': int,
                      'polyfit_2d_thresh': int,
@@ -1891,6 +1903,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
                      'auto_bg_cmap': int}
+
 
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
@@ -1929,14 +1942,14 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Mode option menu
         row = 0
-        label = tk.Label(self.opt_frame, text='Intensity threshold (mode 0):')
+        label = ttk.Label(self.opt_frame, text='Intensity threshold (mode 0):', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_thresh, from_=0,
-                           to=pyplis_worker.cam_specs._max_DN, increment=1)
+                           to=pyplis_worker.cam_specs._max_DN, increment=1, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
 
         row += 1
-        label = tk.Label(self.opt_frame, text='Pyplis background model:')
+        label = ttk.Label(self.opt_frame, text='Pyplis background model:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode, self.bg_mode, *pyplis_worker.BG_CORR_MODES)
         self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
@@ -1955,22 +1968,22 @@ class PlumeBackground(LoadSaveProcessingSettings):
         check = ttk.Checkbutton(ref_check_frame, text='Use thresholds to omit images', variable=self._ref_check_mode)
         check.grid(row=0, column=0, columnspan=3, sticky='w')
 
-        lab = ttk.Label(ref_check_frame, text='Threshold lower [molecules/cm2]:')
+        lab = ttk.Label(ref_check_frame, text='Threshold lower [molecules/cm2]:', font=self.main_gui.main_font)
         lab.grid(row=1, column=0, sticky='w')
         thresh_spin = ttk.Spinbox(ref_check_frame, textvariable=self._ref_check_lower, from_=-100, to=0, increment=1,
-                                  width=4)
+                                  width=4, font=self.main_gui.main_font)
         thresh_spin.grid(row=1, column=1, sticky='w')
         thresh_spin.set('{}'.format(int(self._ref_check_lower.get())))
-        lab = ttk.Label(ref_check_frame, text='e16')
+        lab = ttk.Label(ref_check_frame, text='e16', font=self.main_gui.main_font)
         lab.grid(row=1, column=2, sticky='w')
 
-        lab = ttk.Label(ref_check_frame, text='Threshold upper [molecules/cm2]:')
+        lab = ttk.Label(ref_check_frame, text='Threshold upper [molecules/cm2]:', font=self.main_gui.main_font)
         lab.grid(row=2, column=0, sticky='w')
         thresh_spin = ttk.Spinbox(ref_check_frame, textvariable=self._ref_check_upper, from_=0, to=100, increment=1,
-                                  width=4)
+                                  width=4, font=self.main_gui.main_font)
         thresh_spin.grid(row=2, column=1, sticky='w')
         thresh_spin.set('{}'.format(int(self._ref_check_upper.get())))
-        lab = ttk.Label(ref_check_frame, text='e16')
+        lab = ttk.Label(ref_check_frame, text='e16', font=self.main_gui.main_font)
         lab.grid(row=2, column=2, sticky='w')
 
         ref_check_frame.grid_columnconfigure(2, weight=1)
@@ -2001,15 +2014,16 @@ class PlumeBackground(LoadSaveProcessingSettings):
         check.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         row += 1
 
-        ttk.Label(self.fig_sett_frame, text='\u03C4 maximum:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(self.fig_sett_frame, text='\u03C4 maximum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_max, width=4,
-                           command=self.set_cmap, from_=0, to=1, increment=0.01, format='%.2f')
+                           command=self.set_cmap, from_=0, to=1, increment=0.01, format='%.2f',
+                           font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
-        ttk.Label(self.fig_sett_frame, text='\u03C4 minimum:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(self.fig_sett_frame, text='\u03C4 minimum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_min, width=4, command=self.set_cmap,
-                           from_=-1, to=0, increment=0.01, format='%.2f')
+                           from_=-1, to=0, increment=0.01, format='%.2f', font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
@@ -2292,8 +2306,10 @@ class ProcessSettings(LoadSaveProcessingSettings):
     :param parent: tk.Frame     Parent frame
     :param generate_frame: bool   Defines whether the frame is generated on instantiation
     """
-    def __init__(self, parent=None, generate_frame=False):
+    def __init__(self, main_gui=None, parent=None, generate_frame=False):
         super().__init__()
+
+        self.main_gui = main_gui
         self.parent = parent
         self.frame = None
         self.in_frame = False
@@ -2303,10 +2319,10 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
         # Generate GUI if requested
         if generate_frame:
-            self.initiate_variables()
+            self.initiate_variables(main_gui)
             self.generate_frame()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """
         Initiates tk variables to startup values
         :return:
@@ -2326,6 +2342,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'save_opt_flow': int       # If True, optical flow is saved to buffer (takes up more space)
                      }
 
+        self.main_gui = main_gui
         self._plot_iter = tk.IntVar()
         self._bg_A = tk.StringVar()
         self._bg_B = tk.StringVar()
@@ -2367,46 +2384,47 @@ class ProcessSettings(LoadSaveProcessingSettings):
         row = 0
 
         # Background img A directory
-        label = ttk.Label(path_frame, text='On-band background:')
+        label = ttk.Label(path_frame, text='On-band background:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.bg_A_label = ttk.Label(path_frame, text=self.bg_A_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label = ttk.Label(path_frame, text=self.bg_A_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose file', command=lambda: self.get_bg_file('A'))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Background img B directory
-        label = ttk.Label(path_frame, text='Off-band background:')
+        label = ttk.Label(path_frame, text='Off-band background:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.bg_A_label = ttk.Label(path_frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e')
+        self.bg_A_label = ttk.Label(path_frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose file', command=lambda: self.get_bg_file('B'))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Dark directory
-        label = ttk.Label(path_frame, text='Dark image directory:')
+        label = ttk.Label(path_frame, text='Dark image directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_img_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Dark spec directory
-        label = ttk.Label(path_frame, text='Dark spectrum directory:')
+        label = ttk.Label(path_frame, text='Dark spectrum directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length, anchor='e')
+        self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length,
+                                         font=self.main_gui.main_font, anchor='e')
         self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_spec_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Cell calibration directory
-        label = ttk.Label(path_frame, text='Cell calibration directory:')
+        label = ttk.Label(path_frame, text='Cell calibration directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.cell_cal_label = ttk.Label(path_frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
-                                         anchor='e')
+                                        font=self.main_gui.main_font, anchor='e')
         self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_cell_cal_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
@@ -2424,29 +2442,29 @@ class ProcessSettings(LoadSaveProcessingSettings):
         row += 1
 
         # Minimum column density used in analysis
-        lab = ttk.Label(settings_frame, text='Buffer size [images]:')
+        lab = ttk.Label(settings_frame, text='Buffer size [images]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         buff_spin = ttk.Spinbox(settings_frame, textvariable=self._buff_size, from_=1, to=2000, increment=10,
-                                  width=4)
+                                  width=4, font=self.main_gui.main_font)
         buff_spin.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Minimum column density used in analysis
-        lab = ttk.Label(settings_frame, text='Min. CD analysed [molecules/cm²]:')
+        lab = ttk.Label(settings_frame, text='Min. CD analysed [molecules/cm²]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         ans_frame = ttk.Frame(settings_frame)
         ans_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         thresh_spin = ttk.Spinbox(ans_frame, textvariable=self._min_cd, from_=0, to=100, increment=1,
-                                  width=4)
+                                  width=4, font=self.main_gui.main_font)
         thresh_spin.grid(row=0, column=0, sticky='nsew')
         thresh_spin.set('{}'.format(int(self._min_cd.get())))
-        lab = ttk.Label(ans_frame, text='e16')
+        lab = ttk.Label(ans_frame, text='e16', font=self.main_gui.main_font)
         lab.grid(row=0, column=1, sticky='e')
         ans_frame.grid_columnconfigure(0, weight=1)
         row += 1
 
         # Calibration type
-        label = ttk.Label(settings_frame, text='Calibration method:')
+        label = ttk.Label(settings_frame, text='Calibration method:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts,
                                             command=self.update_sens_mask)
@@ -2749,6 +2767,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     """
     def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
                  fig_setts=gui_setts):
+        self.main_gui = None
         self.parent = None
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
@@ -2779,11 +2798,12 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.parent = parent
         self.__draw_canv__()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """
         Initiate tkinter variables
         :return:
         """
+        self.main_gui = main_gui
         self.vars = {'remove_doas_mins': int,
                      'doas_recal': int,
                      'doas_fov_recal_mins': int,
@@ -2866,26 +2886,26 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         row = 0
 
         # Maximum accepted radius for FOV search
-        lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:')
+        lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_opts, textvariable=self._maxrad_doas, from_=0.05, to=10.00, increment=0.05,
-                           width=5)
+                           width=5, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
         # Maximum accepted DOAS-cam time difference
-        lab = ttk.Label(self.frame_opts, text='Max. DOAS-image time diff. [s]:')
+        lab = ttk.Label(self.frame_opts, text='Max. DOAS-image time diff. [s]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_opts, textvariable=self._max_doas_cam_dif, from_=0, to=60, increment=1,
-                           width=3)
+                           width=3, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
         # Calibration data removal after defined time
-        lab = ttk.Label(self.frame_opts, text='Remove data after [minutes]:')
+        lab = ttk.Label(self.frame_opts, text='Remove data after [minutes]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_opts, textvariable=self._remove_doas_mins, from_=1, to=999, increment=1,
-                           width=5)
+                           width=5, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         check_frame = ttk.Frame(self.frame_opts, relief=tk.RAISED)
         check_frame.grid(row=row, column=2, sticky='w', padx=2)
@@ -2895,10 +2915,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         # DOAS FOV calibration rerun after set amount of time. If this time is larger than the buffer size, the
         # calibration will only be able to run the buffer size as a maximum, so some data may be lost.
-        lab = ttk.Label(self.frame_opts, text='Recalibrate FOV after [minutes]:')
+        lab = ttk.Label(self.frame_opts, text='Recalibrate FOV after [minutes]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_opts, textvariable=self._doas_fov_recal_mins, from_=1, to=999, increment=1,
-                           width=5)
+                           width=5, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         check_frame = ttk.Frame(self.frame_opts, relief=tk.RAISED)
         check_frame.grid(row=row, column=2, sticky='w', padx=2)
@@ -2918,7 +2938,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # --------------------------------------------------------------
         # FOV info frame
         # Options frame
-        self.frame_info = tk.LabelFrame(self.frame_ui, text='FOV parameters', relief=tk.RAISED, borderwidth=2)
+        self.frame_info = tk.LabelFrame(self.frame_ui, text='FOV parameters', relief=tk.RAISED, borderwidth=2,
+                                        font=self.main_gui.main_font)
         self.frame_info.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
 
         row = 0
@@ -2926,32 +2947,32 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # Warning label
         lab = tk.Label(self.frame_info, relief=tk.RAISED, anchor='w', justify='left',
                        text='WARNING!!! Editing parameters will\n'
-                            'cause direct changes to the calibration')
+                            'cause direct changes to the calibration', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=2, pady=2)
         row += 1
 
         # Centre FOV pixels
-        lab = ttk.Label(self.frame_info, text='FOV centre pixel:')
+        lab = ttk.Label(self.frame_info, text='FOV centre pixel:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         frame_centre = ttk.Frame(self.frame_info)
         frame_centre.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-        lab = ttk.Label(frame_centre, text='  x')
+        lab = ttk.Label(frame_centre, text='  x', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='e', pady=2)
         spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_x, from_=0, to=self.cam_specs.pix_num_x - 1,
-                           increment=1, width=5)
+                           increment=1, width=5, font=self.main_gui.main_font)
         spin.grid(row=0, column=1, sticky='ew', pady=2)
-        lab = ttk.Label(frame_centre, text='  y')
+        lab = ttk.Label(frame_centre, text='  y', font=self.main_gui.main_font)
         lab.grid(row=0, column=2, sticky='e', pady=2)
         spin = ttk.Spinbox(frame_centre, textvariable=self._centre_pix_y, from_=0, to=self.cam_specs.pix_num_y - 1,
-                           increment=1, width=5)
+                           increment=1, width=5, font=self.main_gui.main_font)
         spin.grid(row=0, column=3, sticky='ew', pady=2)
         row += 1
 
         # DOAS FOV
-        lab = ttk.Label(self.frame_info, text='FOV radius [°]:')
+        lab = ttk.Label(self.frame_info, text='FOV radius [°]:', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(self.frame_info, textvariable=self._fov_rad, from_=0.05, to=90.00,
-                           increment=0.05, width=5)
+                           increment=0.05, width=5, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='ew', padx=2, pady=2)
         row += 1
 
@@ -3196,6 +3217,7 @@ class CellCalibFrame:
     """
     def __init__(self, generate=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), spec_specs=SpecSpecs(),
                  fig_setts=gui_setts, process_setts=None):
+        self.main_gui = None
         self.cam_specs = cam_specs
         self.spec_specs = spec_specs
         self.pyplis_worker = pyplis_work
@@ -3218,12 +3240,12 @@ class CellCalibFrame:
             self.initiate_variables()
             self.generate_frame()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """
         Initiate tkinter variables
         :return:
         """
-        pass
+        self.main_gui = main_gui
 
     def generate_frame(self, update_plot=True):
         """
@@ -3248,9 +3270,9 @@ class CellCalibFrame:
         self.frame_setts = ttk.LabelFrame(self.frame_top, text='Cell calibration settings', borderwidth=5)
         self.frame_setts.pack(side=tk.LEFT, padx=5, pady=5, anchor='nw')
 
-        label = ttk.Label(self.frame_setts, text='Calibration directory:')
+        label = ttk.Label(self.frame_setts, text='Calibration directory:', font=self.main_gui.main_font)
         label.grid(row=0, column=0, sticky='w', padx=5)
-        self.cal_dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short)
+        self.cal_dir_lab = ttk.Label(self.frame_setts, text=self.cal_dir_short, font=self.main_gui.main_font)
         self.cal_dir_lab.grid(row=0, column=1, padx=5)
         change_butt = ttk.Button(self.frame_setts, text='Change directory', command=self.change_cal_dir)
         change_butt.grid(row=0, column=2, padx=5)
@@ -3258,10 +3280,10 @@ class CellCalibFrame:
         # Cropped calibration region
         self._radius = tk.IntVar()
         self.radius = 50
-        rad_lab = ttk.Label(self.frame_setts, text='Crop radius [pix]:')
+        rad_lab = ttk.Label(self.frame_setts, text='Crop radius [pix]:', font=self.main_gui.main_font)
         rad_lab.grid(row=1, column=0, padx=5, sticky='w')
         rad_spin = ttk.Spinbox(self.frame_setts, textvariable=self._radius, from_=1, to=self.cam_specs.pix_num_y,
-                               increment=10, command=self.draw_circle)
+                               increment=10, command=self.draw_circle, font=self.main_gui.main_font)
         rad_spin.grid(row=1, column=1, sticky='w')
 
         self._cal_crop = tk.IntVar()
@@ -3529,6 +3551,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.main_gui = None
         self.parent = None
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_cross_corr = self
@@ -3551,11 +3574,12 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.parent = parent
         self.__draw_canv__()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """
         Initiates all tkinter variables
         :return:
         """
+        self.main_gui = main_gui
         self.vars = {'cross_corr_recal': int
                      }
         self._cross_corr_recal = tk.IntVar()
@@ -3691,11 +3715,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
             self.initiate_variables()
             self.generate_frame()
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
         """
         Initiates all tkinter variables
         :return:
         """
+        self.main_gui = main_gui
         self.vars = {'pyr_scale': float,
                      'levels': int,
                      'winsize': int,
@@ -3790,29 +3815,29 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         row = 0
 
         # pyr_scale
-        pyr_opt = SpinboxOpt(self.param_frame, name='Pyramid scale (pyr_scale)', var=self._pyr_scale, limits=[0, 1, 0.1], row=row)
+        pyr_opt = SpinboxOpt(self.main_gui, self.param_frame, name='Pyramid scale (pyr_scale)', var=self._pyr_scale, limits=[0, 1, 0.1], row=row)
         row += 1
 
         # Levels
-        levels = SpinboxOpt(self.param_frame, name='Number of pyramid levels (levels)', var=self._levels, limits=[0, 10, 1], row=row)
+        levels = SpinboxOpt(self.main_gui, self.param_frame, name='Number of pyramid levels (levels)', var=self._levels, limits=[0, 10, 1], row=row)
         row += 1
 
         # Levels
-        winsize = SpinboxOpt(self.param_frame, name='Averaging window size (winsize)', var=self._winsize,
+        winsize = SpinboxOpt(self.main_gui, self.param_frame, name='Averaging window size (winsize)', var=self._winsize,
                              limits=[0, 100, 1], row=row)
         row += 1
 
         # Levels
-        iterations = SpinboxOpt(self.param_frame, name='Number of iterations (iterations)', var=self._iterations, limits=[0, 500, 1], row=row)
+        iterations = SpinboxOpt(self.main_gui, self.param_frame, name='Number of iterations (iterations)', var=self._iterations, limits=[0, 500, 1], row=row)
         row += 1
 
         # Levels
-        poly_n = SpinboxOpt(self.param_frame, name='Pixel neighbourhood size (poly_n)', var=self._poly_n,
+        poly_n = SpinboxOpt(self.main_gui, self.param_frame, name='Pixel neighbourhood size (poly_n)', var=self._poly_n,
                             limits=[0, 10, 1], row=row)
         row += 1
 
         # Levels
-        poly_sigma = SpinboxOpt(self.param_frame, name='SD of Gaussian smoothing (poly_sigma)', var=self._poly_sigma,
+        poly_sigma = SpinboxOpt(self.main_gui, self.param_frame, name='SD of Gaussian smoothing (poly_sigma)', var=self._poly_sigma,
                                 limits=[0, 10, 0.1], row=row)
         row += 1
 
@@ -3824,27 +3849,27 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         row = 0
 
         # Minimum vector length
-        min_length = SpinboxOpt(self.analysis_frame, name='Minimum vector length analysed', var=self._min_length,
+        min_length = SpinboxOpt(self.main_gui, self.analysis_frame, name='Minimum vector length analysed', var=self._min_length,
                                 limits=[1, 99, 0.1], row=row)
         row += 1
 
         # Minimum vector length
-        min_count_frac = SpinboxOpt(self.analysis_frame, name='Minimum fraction of available vectors',
+        min_count_frac = SpinboxOpt(self.main_gui, self.analysis_frame, name='Minimum fraction of available vectors',
                                     var=self._min_count_frac, limits=[0, 1, 0.05], row=row)
         row += 1
 
         # Maximum Gaussian number for histogram fit
-        hist_dir_gnum_max = SpinboxOpt(self.analysis_frame, name='Maximum Gaussians for histogram fit',
+        hist_dir_gnum_max = SpinboxOpt(self.main_gui, self.analysis_frame, name='Maximum Gaussians for histogram fit',
                                        var=self._hist_dir_gnum_max, limits=[1, 100, 1], row=row)
         row += 1
 
         # Histogram bin width in degrees
-        hist_dir_binres = SpinboxOpt(self.analysis_frame, name='Histogram bin width [deg]', var=self._hist_dir_binres,
+        hist_dir_binres = SpinboxOpt(self.main_gui, self.analysis_frame, name='Histogram bin width [deg]', var=self._hist_dir_binres,
                                 limits=[1, 180, 1], row=row)
         row += 1
 
         # Sigma tolerance for mean flow analysis
-        hist_dir_binres = SpinboxOpt(self.analysis_frame, name='Sigma tolerance for mean flow analysis',
+        hist_dir_binres = SpinboxOpt(self.main_gui, self.analysis_frame, name='Sigma tolerance for mean flow analysis',
                                      var=self._hist_sigma_tol, limits=[1, 4, 0.1], row=row)
         row += 1
 
@@ -3856,7 +3881,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # Cross-correlation
         row += 1
-        spin = SpinboxOpt(self.analysis_frame, name='Cross-correlation length [minutes]:', var=self._cross_corr_recal,
+        spin = SpinboxOpt(self.main_gui, self.analysis_frame, name='Cross-correlation length [minutes]:', var=self._cross_corr_recal,
                           limits=[1, 999, 1], row=row)
         self.xcorr_spin = spin.spin_opt
 
@@ -4508,7 +4533,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         frame_setts = ttk.LabelFrame(self.frame_cam, text='Settings', borderwidth=3)
         frame_setts.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
 
-        lab = ttk.Label(frame_setts, text='Recalibration time [minutes]:')
+        lab = ttk.Label(frame_setts, text='Recalibration time [minutes]:', font=self.gui.main_font)
         lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         spin = ttk.Spinbox(frame_setts, textvariable=self._dil_recal_time, from_=0, to=600)
         spin.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
@@ -4518,9 +4543,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         line_frame.grid(row=1, column=0, columnspan=2, padx=2, pady=2, sticky='nsew')
 
         row = 0
-        lab = ttk.Label(line_frame, text='Edit line:')
+        lab = ttk.Label(line_frame, text='Edit line:', font=self.gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(line_frame, textvariable=self._current_line, from_=1, to=self.max_lines)
+        spin = ttk.Spinbox(line_frame, textvariable=self._current_line, from_=1, to=self.max_lines,
+                           font=self.gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
         del_butt = ttk.Button(line_frame, text='Delete line', command=lambda: self.del_line(self.current_line - 1))
@@ -4544,16 +4570,17 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         thresh_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
 
         row = 0
-        lab = ttk.Label(thresh_frame, text='Minimum intensity:')
+        lab = ttk.Label(thresh_frame, text='Minimum intensity:', font=self.gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(thresh_frame, textvariable=self._I0_MIN, from_=0, to=self.cam_specs._max_DN, increment=1)
+        spin = ttk.Spinbox(thresh_frame, textvariable=self._I0_MIN, from_=0, to=self.cam_specs._max_DN, increment=1,
+                           font=self.gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
         row += 1
-        label = ttk.Label(thresh_frame, text='\u03C4 threshold:')
+        label = ttk.Label(thresh_frame, text='\u03C4 threshold:', font=self.gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=2)
         self.ica_edit_spin = ttk.Spinbox(thresh_frame, textvariable=self._tau_thresh, from_=0, to=1,
-                                         increment=0.005)
+                                         increment=0.005, font=self.gui.main_font)
         self.ica_edit_spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
         # Buttons frame
@@ -4620,9 +4647,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.ld_spec_check.grid(row=0, column=0, columnspan=2, sticky='w', padx=2, pady=2)
 
         # Recalibration spinbox
-        ttk.Label(options_frame, text='Recalibrate LDF [minutes]:').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(options_frame, text='Recalibrate LDF [minutes]:', font=self.gui.main_font).grid(row=1, column=0, sticky='w', padx=2, pady=2)
         recal_spin = ttk.Spinbox(options_frame, textvariable=self._spec_recal_time, from_=0, to=60, increment=1,
-                                 width=2, command=self.set_spec_recal)
+                                 width=2, command=self.set_spec_recal, font=self.gui.main_font)
         recal_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
         self.run_butt = ttk.Button(options_frame, text='Generate lookup', command=self.run_ld_lookup_generator)
@@ -4633,16 +4660,16 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.load_spec.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
 
         row = 0
-        label = ttk.Label(self.load_spec, text='Dark filename:')
+        label = ttk.Label(self.load_spec, text='Dark filename:', font=self.gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
-        self.name_dark = ttk.Label(self.load_spec, text=self.dark_spec_path_short, width=self.path_widg_length)
+        self.name_dark = ttk.Label(self.load_spec, text=self.dark_spec_path_short, width=self.path_widg_length, font=self.gui.main_font)
         self.name_dark.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         self.select_dark = ttk.Button(self.load_spec, text='Load Dark Spectrum', command=self.choose_dark_spec)
         self.select_dark.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
         row += 1
-        label = ttk.Label(self.load_spec, text='Clear filename:')
+        label = ttk.Label(self.load_spec, text='Clear filename:', font=self.gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
-        self.name_clear = ttk.Label(self.load_spec, text=self.clear_spec_path_short, width=self.path_widg_length)
+        self.name_clear = ttk.Label(self.load_spec, text=self.clear_spec_path_short, width=self.path_widg_length, font=self.gui.main_font)
         self.name_clear.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         self.select_clear = ttk.Button(self.load_spec, text='Load Clear Spectrum', command=self.choose_clear_spec)
         self.select_clear.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
@@ -4651,12 +4678,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.opt_frame = ttk.LabelFrame(self.frame_spec, text='Grid Settings')
         self.opt_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
-        ttk.Label(self.opt_frame, text='Maximum [ppm.m]:').grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(self.opt_frame, text='Increment [ppm.m]:').grid(row=1, column=0, sticky='w', padx=2, pady=2)
-        max_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_max_ppmm, from_=0, to=20000, increment=10)
+        ttk.Label(self.opt_frame, text='Maximum [ppm.m]:', font=self.gui.main_font).grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(self.opt_frame, text='Increment [ppm.m]:', font=self.gui.main_font).grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        max_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_max_ppmm, from_=0, to=20000, increment=10, font=self.gui.main_font)
         max_ppmm_spin.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
         incr_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_increment_ppmm, from_=0, to=100,
-                                     increment=1)
+                                     increment=1, font=self.gui.main_font)
         incr_ppmm_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
         # Load grids
@@ -4664,16 +4691,16 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.load_grid.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
 
         row = 0
-        label = ttk.Label(self.load_grid, text='Grid 1:')
+        label = ttk.Label(self.load_grid, text='Grid 1:', font=self.gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
-        self.name_grid_0 = ttk.Label(self.load_grid, text=self.grid_0_path_short, width=self.path_widg_length)
+        self.name_grid_0 = ttk.Label(self.load_grid, text=self.grid_0_path_short, width=self.path_widg_length, font=self.gui.main_font)
         self.name_grid_0.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         self.select_grid_0 = ttk.Button(self.load_grid, text='Load', command=lambda: self.choose_grid(0))
         self.select_grid_0.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
         row += 1
-        label = ttk.Label(self.load_grid, text='Grid 2:')
+        label = ttk.Label(self.load_grid, text='Grid 2:', font=self.gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy)
-        self.name_grid_1 = ttk.Label(self.load_grid, text=self.grid_1_path_short, width=self.path_widg_length)
+        self.name_grid_1 = ttk.Label(self.load_grid, text=self.grid_1_path_short, width=self.path_widg_length, font=self.gui.main_font)
         self.name_grid_1.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         self.select_grid_1 = ttk.Button(self.load_grid, text='Load', command=lambda: self.choose_grid(1))
         self.select_grid_1.grid(row=row, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)

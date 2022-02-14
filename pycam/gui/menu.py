@@ -339,7 +339,7 @@ class Settings:
 
         # Generate the frames for each tab
         self.connection_gui = ConnectionGUI(self.windows)
-        self.gui_settings = settings.SettingsFrame(self.windows, settings=cfg.gui_setts)
+        self.gui_settings = settings.SettingsFrame(parent, self.windows, settings=cfg.gui_setts)
 
         # Add the frames for each tab to the notebook
         self.windows.add(self.connection_gui.frame, text=self.connection_gui.name)

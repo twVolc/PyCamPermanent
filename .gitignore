@@ -137,4 +137,20 @@ pycam/Data/Spectra/lastarria_scan_22-11-2019/
 
 pycam/Data/Spectra/
 
-pycam/Data/Images/
+#pycam/Data/Images/
+
+pycam/Data/Images/2022-02-07/
+
+pycam/Data/Images/2022-02-04/
+
+pycam/Data/Images/2022-02-01/
+
+pycam/Data/Images/2021-10-27/
+
+pycam/Data/Images/Villarrica/Seq_1/Processed_6/
+
+pycam/Data/Images/Villarrica/Seq_1/Processed_2/
+
+pycam/Data/Images/Villarrica/Seq_1/Processed_13/
+
+pycam/Data/Images/Villarrica/Seq_1/Processed_1/

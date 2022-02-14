@@ -330,9 +330,10 @@ class CameraSettingsWidget(TkVariables):
     parent: tk.Frame, ttk.Frame
         Parent frame that widget will be placed into
     """
-    def __init__(self, parent):
+    def __init__(self, main_gui, parent):
         super().__init__()
 
+        self.main_gui = main_gui
         self.parent = parent    # Parent frame
         self.pdx = 2
         self.pdy = 2
@@ -359,7 +360,8 @@ class CameraSettingsWidget(TkVariables):
         # --------------------------------------------------------------------------------------------------------------
         row = 0
 
-        ttk.Label(self.frame, text='Framerate (Hz):').grid(row=row, column=0, padx=5, pady=5, sticky='e')
+        lab = ttk.Label(self.frame, text='Framerate (Hz):', font=self.main_gui.main_font)
+        lab.grid(row=row, column=0, padx=5, pady=5, sticky='e')
         option_menu = ttk.OptionMenu(self.frame, self._framerate, self.frame_opts[3], *self.frame_opts)
         option_menu.config(width=4)
         option_menu.grid(row=row, column=1, padx=5, pady=5, sticky='ew')
@@ -371,10 +373,14 @@ class CameraSettingsWidget(TkVariables):
         self.ss_frame = ttk.LabelFrame(self.frame, text=u'Shutter speed (\u03bcs)', relief=tk.GROOVE)
         self.ss_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
 
-        ttk.Label(self.ss_frame, text='Filter A:').grid(row=0, column=0, padx=self.pdx, pady=self.pdy)
-        ttk.Label(self.ss_frame, text='Filter B:').grid(row=1, column=0, padx=self.pdx, pady=self.pdy)
-        ttk.Entry(self.ss_frame, width=7, textvariable=self._ss_A).grid(row=0, column=1, padx=self.pdx, pady=self.pdy)
-        ttk.Entry(self.ss_frame, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(self.ss_frame, text='Filter A:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(self.ss_frame, text='Filter B:', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, padx=self.pdx, pady=self.pdy)
+        lab = ttk.Entry(self.ss_frame, width=7, textvariable=self._ss_A, font=self.main_gui.main_font)
+        lab.grid(row=0, column=1, padx=self.pdx, pady=self.pdy)
+        lab = ttk.Entry(self.ss_frame, width=7, textvariable=self._ss_B, font=self.main_gui.main_font)
+        lab.grid(row=1, column=1, padx=self.pdx, pady=self.pdy)
         ttk.Checkbutton(self.ss_frame, text='Auto', variable=self._auto_A).grid(row=0, column=2,
                                                                                 padx=self.pdx, pady=self.pdy)
         ttk.Checkbutton(self.ss_frame, text='Auto', variable=self._auto_B).grid(row=1, column=2,
@@ -387,28 +393,33 @@ class CameraSettingsWidget(TkVariables):
         self.sat_frame = ttk.LabelFrame(self.frame, text='Saturation levels', relief=tk.GROOVE)
         self.sat_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
 
-        ttk.Label(self.sat_frame, text='Minimum saturation:').grid(row=0, column=0, padx=self.pdx, pady=self.pdy,
-                                                                   sticky='e')
-        ttk.Label(self.sat_frame, text='Maximum saturation:').grid(row=1, column=0, padx=self.pdx, pady=self.pdy,
-                                                                   sticky='e')
+        lab = ttk.Label(self.sat_frame, text='Minimum saturation:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        lab = ttk.Label(self.sat_frame, text='Maximum saturation:', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         s = ttk.Spinbox(self.sat_frame, width=4, format='%.2f', textvariable=self._min_saturation,
-                        from_=0, to=1, increment=0.01)
+                        from_=0, to=1, increment=0.01, font=self.main_gui.main_font)
         s.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.2f}'.format(self.min_saturation))     # Set intial value to have the right format
-        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._max_saturation, from_=0.00, to=1.00, increment=0.01)
+        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._max_saturation, from_=0.00, to=1.00, increment=0.01,
+                        font=self.main_gui.main_font)
         s.grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.2f}'.format(self.max_saturation))  # Set intial value to have the right format
 
-        ttk.Label(self.sat_frame, text='Average pixels:').grid(row=2, column=0, padx=self.pdx, pady=self.pdy,sticky='e')
-        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._saturation_pixels, from_=1, to=9999, increment=1)
+        lab = ttk.Label(self.sat_frame, text='Average pixels:', font=self.main_gui.main_font)
+        lab.grid(row=2, column=0, padx=self.pdx, pady=self.pdy,sticky='e')
+        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._saturation_pixels, from_=1, to=9999, increment=1,
+                        font=self.main_gui.main_font)
         s.grid(row=2, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
-        ttk.Label(self.sat_frame, text='Number of rows:').grid(row=3, column=0, padx=self.pdx, pady=self.pdy,sticky='e')
+        lab = ttk.Label(self.sat_frame, text='Number of rows:', font=self.main_gui.main_font)
+        lab.grid(row=3, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._saturation_rows,
-                        from_=0, to=self.pix_num_y, increment=1)
+                        from_=0, to=self.pix_num_y, increment=1, font=self.main_gui.main_font)
         s.grid(row=3, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
-        ttk.Label(self.sat_frame, text='Row direction:').grid(row=4, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        lab = ttk.Label(self.sat_frame, text='Row direction:', font=self.main_gui.main_font)
+        lab.grid(row=4, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         r = ttk.Radiobutton(self.sat_frame, text='Top-down', variable=self._saturation_rows_dir, value=1)
         r.grid(row=4, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
         r = ttk.Radiobutton(self.sat_frame, text='Bottom-up', variable=self._saturation_rows_dir, value=-1)
@@ -421,35 +432,40 @@ class CameraSettingsWidget(TkVariables):
         self.img_param_frame = ttk.LabelFrame(self.frame, text='Imaging Parameters', relief=tk.GROOVE)
         self.img_param_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
-        ttk.Label(self.img_param_frame, text='Image resolution:').grid(row=0, column=0, padx=5, pady=5, sticky='e')
-        ttk.Label(self.img_param_frame, text='x').grid(row=0, column=1, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._pix_num_x, width=4)
+        lab = ttk.Label(self.img_param_frame, text='Image resolution:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        ttk.Label(self.img_param_frame, text='x', font=self.main_gui.main_font).grid(row=0, column=1, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._pix_num_x, width=4, font=self.main_gui.main_font)
         e.grid(row=0, column=2, sticky='w')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='  y').grid(row=0, column=3, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._pix_num_y, width=4)
+        lab = ttk.Label(self.img_param_frame, text='  y', font=self.main_gui.main_font)
+        lab.grid(row=0, column=3, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._pix_num_y, width=4, font=self.main_gui.main_font)
         e.grid(row=0, column=4, sticky='e')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='Field of view [°]:').grid(row=1, column=0, padx=5, pady=5, sticky='e')
-        ttk.Label(self.img_param_frame, text='x').grid(row=1, column=1, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._fov_x, width=4)
+        lab = ttk.Label(self.img_param_frame, text='Field of view [°]:', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        ttk.Label(self.img_param_frame, text='x', font=self.main_gui.main_font).grid(row=1, column=1, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._fov_x, width=4, font=self.main_gui.main_font)
         e.grid(row=1, column=2, sticky='w')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='  y').grid(row=1, column=3, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._fov_y, width=4)
+        ttk.Label(self.img_param_frame, text='  y', font=self.main_gui.main_font).grid(row=1, column=3, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._fov_y, width=4, font=self.main_gui.main_font)
         e.grid(row=1, column=4, sticky='e')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='Focal Length [mm]:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._focal_length, width=4)
+        lab = ttk.Label(self.img_param_frame, text='Focal Length [mm]:', font=self.main_gui.main_font)
+        lab.grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._focal_length, width=4, font=self.main_gui.main_font)
         e.grid(row=2, column=2, sticky='w')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.img_param_frame, text='Bit depth:').grid(row=3, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.img_param_frame, textvariable=self._bit_depth, width=4)
+        lab = ttk.Label(self.img_param_frame, text='Bit depth:', font=self.main_gui.main_font)
+        lab.grid(row=3, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.img_param_frame, textvariable=self._bit_depth, width=4, font=self.main_gui.main_font)
         e.grid(row=3, column=1, columnspan=2, sticky='ew', pady=5)
         e.configure(state=tk.DISABLED)
 
@@ -465,9 +481,10 @@ class SpectrometerSettingsWidget(TkVariables):
     parent: tk.Frame, ttk.Frame
         Parent frame that widget will be placed into
     """
-    def __init__(self, parent):
+    def __init__(self, main_gui, parent):
         super().__init__()
 
+        self.main_gui = main_gui
         self.parent = parent  # Parent frame
         self.pdx = 2
         self.pdy = 2
@@ -494,14 +511,16 @@ class SpectrometerSettingsWidget(TkVariables):
         row = 0
 
         # Framerate
-        ttk.Label(self.frame, text='Framerate (Hz):').grid(row=row, column=0, padx=5, pady=5, sticky='e')
+        lab = ttk.Label(self.frame, text='Framerate (Hz):', font=self.main_gui.main_font)
+        lab.grid(row=row, column=0, padx=5, pady=5, sticky='e')
         option_menu = ttk.OptionMenu(self.frame, self._framerate, self.frame_opts[3], *self.frame_opts)
         option_menu.config(width=4)
         option_menu.grid(row=row, column=1, padx=5, pady=5, sticky='ew')
         row += 1
 
-        ttk.Label(self.frame, text='Coadd spectra:').grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
-        s = ttk.Spinbox(self.frame, width=4, textvariable=self._coadd, from_=0, to=20, increment=1)
+        ttk.Label(self.frame, text='Coadd spectra:', font=self.main_gui.main_font).grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        s = ttk.Spinbox(self.frame, width=4, textvariable=self._coadd, from_=0, to=20, increment=1
+                        , font=self.main_gui.main_font)
         s.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set(self.coadd)  # Set intial value
         row += 1
@@ -509,7 +528,8 @@ class SpectrometerSettingsWidget(TkVariables):
         # Shutter speed
         self.ss_frame = ttk.LabelFrame(self.frame, text='Shutter speed (ms):')
         self.ss_frame.grid(row=row, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='nsew')
-        self.ss = ttk.Entry(self.ss_frame, width=5, textvariable=self._ss_A).grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='ew')
+        self.ss = ttk.Entry(self.ss_frame, width=5, textvariable=self._ss_A,
+                            font=self.main_gui.main_font).grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='ew')
         ttk.Checkbutton(self.ss_frame, text='Auto', variable=self._auto_A).grid(row=0, column=1, padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -519,33 +539,36 @@ class SpectrometerSettingsWidget(TkVariables):
         self.sat_frame = ttk.LabelFrame(self.frame, text='Saturation levels', relief=tk.GROOVE)
         self.sat_frame.grid(row=row, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
 
-        ttk.Label(self.sat_frame, text='Minimum saturation:').grid(row=0, column=0, padx=self.pdx, pady=self.pdy,
-                                                                   sticky='e')
-        ttk.Label(self.sat_frame, text='Maximum saturation:').grid(row=1, column=0, padx=self.pdx, pady=self.pdy,
-                                                                   sticky='e')
+        ttk.Label(self.sat_frame, text='Minimum saturation:',
+                  font=self.main_gui.main_font).grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        ttk.Label(self.sat_frame, text='Maximum saturation:',
+                  font=self.main_gui.main_font).grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         s = ttk.Spinbox(self.sat_frame, width=4, format='%.2f', textvariable=self._min_saturation,
-                        from_=0, to=1, increment=0.01)
+                        from_=0, to=1, increment=0.01, font=self.main_gui.main_font)
         s.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.2f}'.format(self.min_saturation))  # Set intial value to have the right format
-        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._max_saturation, from_=0.00, to=1.00, increment=0.01)
+        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._max_saturation, from_=0.00, to=1.00, increment=0.01,
+                        font=self.main_gui.main_font)
         s.grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.2f}'.format(self.max_saturation))  # Set intial value to have the right format
 
-        ttk.Label(self.sat_frame, text='Min. wavelength [nm]:').grid(row=2, column=0, padx=self.pdx, pady=self.pdy,
-                                                                     sticky='e')
-        ttk.Label(self.sat_frame, text='Max. wavelength [nm]:').grid(row=3, column=0, padx=self.pdx, pady=self.pdy,
-                                                                     sticky='e')
+        ttk.Label(self.sat_frame, text='Min. wavelength [nm]:',
+                  font=self.main_gui.main_font).grid(row=2, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        ttk.Label(self.sat_frame, text='Max. wavelength [nm]:',
+                  font=self.main_gui.main_font).grid(row=3, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         s = ttk.Spinbox(self.sat_frame, width=5, format='%.1f', textvariable=self._wavelength_min,
-                        from_=300, to=350, increment=0.1)
+                        from_=300, to=350, increment=0.1, font=self.main_gui.main_font)
         s.grid(row=2, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.1f}'.format(self.wavelength_min))  # Set intial value to have the right format
-        s = ttk.Spinbox(self.sat_frame, width=5, textvariable=self._wavelength_max, from_=300, to=400, increment=0.1)
+        s = ttk.Spinbox(self.sat_frame, width=5, textvariable=self._wavelength_max, from_=300, to=400, increment=0.1,
+                        font=self.main_gui.main_font)
         s.grid(row=3, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         s.set('{:.1f}'.format(self.wavelength_max))  # Set intial value to have the right format
 
-        ttk.Label(self.sat_frame, text='Average pixels:').grid(row=4, column=0, padx=self.pdx, pady=self.pdy,
-                                                               sticky='e')
-        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._saturation_pixels, from_=1, to=9999, increment=1)
+        ttk.Label(self.sat_frame, text='Average pixels:',
+                  font=self.main_gui.main_font).grid(row=4, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        s = ttk.Spinbox(self.sat_frame, width=4, textvariable=self._saturation_pixels, from_=1, to=9999, increment=1,
+                        font=self.main_gui.main_font)
         s.grid(row=4, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         row += 1
@@ -556,23 +579,27 @@ class SpectrometerSettingsWidget(TkVariables):
         self.spec_param_frame = ttk.LabelFrame(self.frame, text='Spectrum Parameters', relief=tk.GROOVE)
         self.spec_param_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
-        ttk.Label(self.spec_param_frame, text='Detector pixels:').grid(row=0, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.spec_param_frame, textvariable=self._pix_num_x, width=4)
+        ttk.Label(self.spec_param_frame, text='Detector pixels:',
+                  font=self.main_gui.main_font).grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._pix_num_x, width=4, font=self.main_gui.main_font)
         e.grid(row=0, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.spec_param_frame, text='Field of view [°]:').grid(row=1, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.spec_param_frame, textvariable=self._fov_x, width=4)
+        ttk.Label(self.spec_param_frame, text='Field of view [°]:',
+                  font=self.main_gui.main_font).grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._fov_x, width=4, font=self.main_gui.main_font)
         e.grid(row=1, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.spec_param_frame, text='Focal Length [mm]:').grid(row=2, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.spec_param_frame, textvariable=self._focal_length, width=4)
+        ttk.Label(self.spec_param_frame, text='Focal Length [mm]:',
+                  font=self.main_gui.main_font).grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._focal_length, width=4, font=self.main_gui.main_font)
         e.grid(row=2, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 
-        ttk.Label(self.spec_param_frame, text='Bit depth:').grid(row=3, column=0, padx=5, pady=5, sticky='e')
-        e = ttk.Entry(self.spec_param_frame, textvariable=self._bit_depth, width=4)
+        ttk.Label(self.spec_param_frame, text='Bit depth:',
+                  font=self.main_gui.main_font).grid(row=3, column=0, padx=5, pady=5, sticky='e')
+        e = ttk.Entry(self.spec_param_frame, textvariable=self._bit_depth, width=4, font=self.main_gui.main_font)
         e.grid(row=3, column=1, sticky='ew')
         e.configure(state=tk.DISABLED)
 

@@ -30,9 +30,11 @@ class ImageFigure:
     Class for plotting an image and associated widgets, such as cross-sectinal DNs
     :param: img_reg     ImageRegistrationFrame
     """
-    def __init__(self, frame, img_reg, lock=threading.Lock(), name='Image', band='A',
+    def __init__(self, main_gui, frame, img_reg, lock=threading.Lock(), name='Image', band='A',
                  image=np.zeros([CameraSpecs().pix_num_y, CameraSpecs().pix_num_x]),
                  start_update_thread=False):
+
+        self.main_gui = main_gui
 
         # Get root - used for plotting using refresh after in _draw_canv_()
         parent_name = frame.winfo_parent()
@@ -230,19 +232,19 @@ class ImageFigure:
                                           borderwidth=2)
 
         # Row spinbox
-        row_label = ttk.Label(self.xsect_frame, text="Row:")
+        row_label = ttk.Label(self.xsect_frame, text="Row:", font=self.main_gui.main_font)
         row_label.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.row = self._init_img_row
         self.img_row = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_y-1, width=4,
-                                   textvariable=self._row)
+                                   textvariable=self._row, font=self.main_gui.main_font)
         self.img_row.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
 
         # Column spinbox
-        row_col = ttk.Label(self.xsect_frame, text="Column:")
+        row_col = ttk.Label(self.xsect_frame, text="Column:", font=self.main_gui.main_font)
         row_col.grid(row=0, column=2, padx=self.pdx, pady=self.pdy, sticky='w')
         self.col = self._init_img_col
         self.img_col = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_x-1, width=4,
-                                   textvariable=self._col)
+                                   textvariable=self._col, font=self.main_gui.main_font)
         self.img_col.grid(row=0, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
 
         self.x_sect_butt = ttk.Button(self.xsect_frame, text="Update plot", command=self.x_sect_plot)
@@ -413,7 +415,8 @@ class ImageRegistrationFrame:
     """
     Class for generating a widget for image registration control
     """
-    def __init__(self, parent, generate_frame=True, pyplis_work=pyplis_worker):
+    def __init__(self, main_gui, parent, generate_frame=True, pyplis_work=pyplis_worker):
+        self.main_gui = main_gui
         self.parent = parent
 
         self.pdx = 2
@@ -458,16 +461,16 @@ class ImageRegistrationFrame:
         self.reg_cv.grid(row=0, column=0, columnspan=2, pady=self.pdy, sticky='w')
 
         # OpenCV options
-        label = ttk.Label(self.cv_frame, text='No. Iterations:')
+        label = ttk.Label(self.cv_frame, text='No. Iterations:', font=self.main_gui.main_font)
         label.grid(row=1, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
-        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._num_it, width=5)
+        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._num_it, width=5, font=self.main_gui.main_font)
         self.num_it_ent.grid(row=1, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
 
-        label = ttk.Label(self.cv_frame, text='Termination EPS:')
+        label = ttk.Label(self.cv_frame, text='Termination EPS:', font=self.main_gui.main_font)
         label.grid(row=2, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
-        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._term_eps, width=5)
+        self.num_it_ent = ttk.Entry(self.cv_frame, textvariable=self._term_eps, width=5, font=self.main_gui.main_font)
         self.num_it_ent.grid(row=2, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
-        label = ttk.Label(self.cv_frame, text='e-10')
+        label = ttk.Label(self.cv_frame, text='e-10', font=self.main_gui.main_font)
         label.grid(row=2, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
 
     @property

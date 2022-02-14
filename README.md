@@ -45,6 +45,8 @@ of calling the draw() command on plots. Use the SpecScan technique of intermitte
 in the update_plot() calls from the processing thread. Can use this technique only when in the processing thread, and then 
 kill the intermittent plot updater when processing is stopped
 
+3. I NEED TO PUT EACH MAIN FRAME IN A SCROLLING WINDOW SO THAT SMALLER LAPTOPS CAN STILL DISPLAY EVERYTHING
+4. RELATED TO 3, I NEED TO WORKOUT HOW TO CHANGE FONTSIZE OF EVERYTHING - SEE LINE 60 PYCAM_GUI, SOMETHING ISN'T WORKING
 
 Requirements for GUI:
 > In pycam_gui.py must update os.environ[PROJ_LIB] to point to correct place. Only necessary if there are issues with importing basemap

@@ -164,7 +164,8 @@ class SettingsFrame:
     parent: tk.Frame or ttk.Frame
         Parent frame into which object will be placed
     """
-    def __init__(self, parent, name='GUI settings', settings=GUISettings()):
+    def __init__(self, main_gui, parent, name='GUI settings', settings=GUISettings()):
+        self.main_gui = main_gui
         self.frame = ttk.Frame(parent)     # Main frame
         self.name = name                        # Name for frame
         self.settings = settings                # Settings object
@@ -221,15 +222,16 @@ class SettingsFrame:
         row += 1
 
         # Font type
-        label = ttk.Label(self.font_frame, text='Font:')
+        label = ttk.Label(self.font_frame, text='Font:', font=self.main_gui.main_font)
         label.grid(row=0, column=0)
         self.font_opts = ttk.OptionMenu(self.font_frame, self._font, self.fonts[0], *self.fonts)
         self.font_opts.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         # Font size
-        label = ttk.Label(self.font_frame, text='Font size:')
+        label = ttk.Label(self.font_frame, text='Font size:', font=self.main_gui.main_font)
         label.grid(row=1, column=0)
-        self.font_opts = ttk.Spinbox(self.font_frame, textvariable=self._font_size, width=2, from_=1, to=30, increment=1)
+        self.font_opts = ttk.Spinbox(self.font_frame, textvariable=self._font_size, width=2, from_=1, to=30,
+                                     increment=1, font=self.main_gui.main_font)
         self.font_opts.grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         # ------------------------------
 
@@ -241,7 +243,7 @@ class SettingsFrame:
 
         # DPI
         row_sett = 0
-        label = ttk.Label(self.fig_frame, text='Resolution:')
+        label = ttk.Label(self.fig_frame, text='Resolution:', font=self.main_gui.main_font)
         label.grid(row=row_sett, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.dpi_spin = ttk.Spinbox(self.fig_frame, textvariable=self._dpi, width=4, from_=10, to=150, increment=1)
         self.dpi_spin.grid(row=row_sett, column=1, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='ew')
@@ -251,67 +253,73 @@ class SettingsFrame:
         # --------------------------------------------------------------------------------------------------------------
         # Figure settings
         # --------------------------------------------------------------------------------------------------------------
-        img_setts = FigureSizeSettings(self.fig_frame, 'Raw image:', self._img_x, self._img_y, row=row_sett,
-                                       pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        spec_setts = FigureSizeSettings(self.fig_frame, 'Raw spectrum:', self._spec_x, self._spec_y, row=row_sett,
-                                        pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS retrievals:', self._doas_x, self._doas_y, row=row_sett,
-                                        pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        ref_setts = FigureSizeSettings(self.fig_frame, 'Reference spectrum:', self._ref_x, self._ref_y, row=row_sett,
-                                       pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        SO2_setts = FigureSizeSettings(self.fig_frame, 'SO2 image:', self._SO2_x, self._SO2_y, row=row_sett,
-                                       pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        series_setts = FigureSizeSettings(self.fig_frame, 'Emissions time series:', self._series_x, self._series_y,
-                                          row=row_sett, pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        cal_doas_setts = FigureSizeSettings(self.fig_frame, 'DOAS calibration:', self._cal_doas_x, self._cal_doas_y,
-                                            row=row_sett, pdx=self.pdx, pdy=self.pdy)
-        row_sett += 1
-
-        ILS_setts = FigureSizeSettings(self.fig_frame, 'ILS figure:', self._ILS_x, self._ILS_y,
+        img_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Raw image:', self._img_x, self._img_y,
                                        row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        doas_calib_img_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration image:', self._doas_calib_img_x,
+        spec_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Raw spectrum:', self._spec_x,
+                                        self._spec_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        doas_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'DOAS retrievals:', self._doas_x,
+                                        self._doas_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        ref_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Reference spectrum:', self._ref_x,
+                                       self._ref_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        SO2_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'SO2 image:', self._SO2_x, self._SO2_y,
+                                       row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        series_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Emissions time series:',
+                                          self._series_x, self._series_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        cal_doas_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'DOAS calibration:',
+                                            self._cal_doas_x, self._cal_doas_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        ILS_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'ILS figure:', self._ILS_x, self._ILS_y,
+                                       row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        row_sett += 1
+
+        doas_calib_img_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame,
+                                                  'DOAS FOV calibration image:', self._doas_calib_img_x,
                                                   self._doas_calib_img_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        doas_calib_fit_setts = FigureSizeSettings(self.fig_frame, 'DOAS FOV calibration fit:', self._doas_calib_fit_x,
-                                                  self._doas_calib_fit_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        doas_calib_fit_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'DOAS FOV calibration fit:',
+                                                  self._doas_calib_fit_x, self._doas_calib_fit_y,
+                                                  row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        cell_fit_setts = FigureSizeSettings(self.fig_frame, 'Cell calibration fit:', self._cell_fit_x,
-                                            self._cell_fit_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        cell_fit_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Cell calibration fit:',
+                                            self._cell_fit_x, self._cell_fit_y, row=row_sett,
+                                            pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        cell_abs_setts = FigureSizeSettings(self.fig_frame, 'Cell absorbance image:', self._cell_abs_x,
-                                            self._cell_abs_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        cell_abs_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Cell absorbance image:',
+                                            self._cell_abs_x, self._cell_abs_y, row=row_sett,
+                                            pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        sens_mask_setts = FigureSizeSettings(self.fig_frame, 'Sensitivity mask:', self._sens_mask_x,
-                                             self._sens_mask_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        sens_mask_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Sensitivity mask:',
+                                             self._sens_mask_x, self._sens_mask_y, row=row_sett,
+                                             pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        bg_setts = FigureSizeSettings(self.fig_frame, 'Background model:', self._bg_x,
+        bg_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Background model:', self._bg_x,
                                       self._bg_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        x_corr_setts = FigureSizeSettings(self.fig_frame, 'Cross-correlation:', self._cross_corr_x,
-                                             self._cross_corr_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
+        x_corr_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Cross-correlation:',
+                                          self._cross_corr_x, self._cross_corr_y, row=row_sett,
+                                          pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
-        light_dil_setts = FigureSizeSettings(self.fig_frame, 'Light dilution:', self._dil_x,
+        light_dil_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Light dilution:', self._dil_x,
                                              self._dil_y, row=row_sett, pdx=self.pdx, pdy=self.pdy)
         row_sett += 1
 
@@ -545,7 +553,7 @@ class FigureSizeSettings:
     """
     Class to generate widgets for inputting figure size settings in a grid which is already setup
     """
-    def __init__(self, parent, name, xvar, yvar, row=0, pdx=2, pdy=2):
+    def __init__(self, font, parent, name, xvar, yvar, row=0, pdx=2, pdy=2):
         self.parent = parent
         self.name = name
         self.xvar = xvar
@@ -554,15 +562,15 @@ class FigureSizeSettings:
         self.pdx = pdx
         self.pdy = pdy
 
-        label = ttk.Label(self.parent, text=self.name)
+        label = ttk.Label(self.parent, text=self.name, font=font)
         label.grid(row=self.row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
-        label = ttk.Label(self.parent, text='x')
+        label = ttk.Label(self.parent, text='x', font=font)
         label.grid(row=self.row, column=1, pady=self.pdy, sticky='e')
         img_spin = ttk.Spinbox(self.parent, textvariable=self.xvar, width=4, format='%.1f',
-                               from_=1, to=20, increment=0.1)
+                               from_=1, to=20, increment=0.1, font=font)
         img_spin.grid(row=self.row, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
-        label = ttk.Label(self.parent, text='y')
+        label = ttk.Label(self.parent, text='y', font=font)
         label.grid(row=self.row, column=3, pady=self.pdy, sticky='e')
         img_spin = ttk.Spinbox(self.parent, textvariable=self.yvar, width=4, format='%.1f',
-                               from_=1, to=20, increment=0.1)
+                               from_=1, to=20, increment=0.1, font=font)
         img_spin.grid(row=self.row, column=4, padx=self.pdx, pady=self.pdy, sticky='ew')
