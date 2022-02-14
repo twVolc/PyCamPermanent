@@ -40,8 +40,17 @@ class PyCam(ttk.Frame):
         self.root.title('PyCam')
         self.root.protocol('WM_DELETE_WINDOW', self.exit_app)
 
+        # Font setup
+        # TODO Every widget other than TLabel updates with this code. label size must be overwritten somewhere??
+        # TODO Need to get rid of that but can't find where the issue is
+        font_size = int(self.root.winfo_screenwidth() * 0.005)
+        # font_size = 6
+        self.main_font = tk.font.Font(family='Helvetica', size=font_size)
+        self.bold_font = tk.font.Font(family='Helvetica', size=font_size, weight='bold')
+
         # Initiate indicator widget
         cfg.indicator.initiate_indicator()
+        cfg.indicator.add_font(self.bold_font)
 
         # Load in configuration file(s)
         self.config = read_file(FileLocator.CONFIG_WINDOWS)
@@ -53,17 +62,7 @@ class PyCam(ttk.Frame):
         self.style = ThemedStyle(self.root)
         # self.style.set_theme('equilux')
         self.style.set_theme('breeze')
-
-        # Font setup
-        # TODO Every widget other than TLabel updates with this code. label size must be overwritten somewhere??
-        # TODO Need to get rid of that but can't find where the issue is
-        font_size = int(self.root.winfo_screenwidth() * 0.005)
-        # font_size = 6
-        self.main_font = tk.font.Font(family='Helvetica', size=font_size)
         self.style.configure('.', font=('Helvetica', font_size))
-        # self.style.configure('bold.TLabel', font=('Helvetica', font_size, 'bold'))
-        # # self.style.configure('test.TLabel', font=('Helvetica', font_size))
-        # self.style.configure('test.TLabel', font=tk.font.Font(family='Helvetica', size=font_size))
 
         self.layout_old = self.style.layout('TNotebook.Tab')
         self.style.layout('TNotebook.Tab', [])          # Turns off notepad bar

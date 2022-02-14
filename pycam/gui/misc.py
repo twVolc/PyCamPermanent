@@ -43,10 +43,12 @@ class Indicator:
         if initiate:
             self.initiate_indicator()
 
+    def add_font(self, font):
+        """Add font to be used for connection display"""
+        self.font = font
+
     def initiate_indicator(self):
         """Initates class - only to be done after tk is running, otherwise an error is thrown"""
-        self.font = font.Font(family='Helvetica', size=10, weight='bold')
-
         self.img_on = ImageTk.PhotoImage(Image.open(FileLocator.GREEN_LED).resize(self.size, Image.ANTIALIAS))
         self.img_off = ImageTk.PhotoImage(Image.open(FileLocator.RED_LED).resize(self.size, Image.ANTIALIAS))
 
