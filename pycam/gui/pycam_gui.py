@@ -18,7 +18,7 @@ from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
     light_dilution, cross_correlation, basic_acq_handler, automated_acq_handler, instrument_cfg, calibration_wind,\
-    comm_recv_handler
+    comm_recv_handler, cell_calib
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -53,6 +53,18 @@ class PyCam(ttk.Frame):
         self.style = ThemedStyle(self.root)
         # self.style.set_theme('equilux')
         self.style.set_theme('breeze')
+
+        # Font setup
+        # TODO Every widget other than TLabel updates with this code. label size must be overwritten somewhere??
+        # TODO Need to get rid of that but can't find where the issue is
+        font_size = int(self.root.winfo_screenwidth() * 0.005)
+        # font_size = 6
+        self.main_font = tk.font.Font(family='Helvetica', size=font_size)
+        self.style.configure('.', font=('Helvetica', font_size))
+        # self.style.configure('bold.TLabel', font=('Helvetica', font_size, 'bold'))
+        # # self.style.configure('test.TLabel', font=('Helvetica', font_size))
+        # self.style.configure('test.TLabel', font=tk.font.Font(family='Helvetica', size=font_size))
+
         self.layout_old = self.style.layout('TNotebook.Tab')
         self.style.layout('TNotebook.Tab', [])          # Turns off notepad bar
 
@@ -66,9 +78,9 @@ class PyCam(ttk.Frame):
         self.windows.pack(fill='both', expand=1)
 
         # Create object of each window
-        self.cam_wind = CameraWind(self.windows)
+        self.cam_wind = CameraWind(self, self.windows)
         self.spec_wind = SpecWind(self, self.root, self.windows)
-        self.anal_wind = AnalysisWind(self.windows)
+        self.anal_wind = AnalysisWind(self, self.windows)
 
         # Add each window to Notebook
         self.windows.add(self.cam_wind.frame, text=self.cam_wind.name)
@@ -89,16 +101,17 @@ class PyCam(ttk.Frame):
         comm_recv_handler.add_widgets(cam_acq=self.cam_wind.acq_settings, spec_acq=self.spec_wind.acq_settings,
                                       message_wind=self.cam_wind.mess_wind)
         comm_recv_handler.run()
-        geom_settings.initiate_variables()
-        process_settings.initiate_variables()
+        geom_settings.initiate_variables(self)
+        process_settings.initiate_variables(self)
         calibration_wind.add_gui(self)
-        plume_bg.initiate_variables()
+        plume_bg.initiate_variables(self)
         plume_bg.start_draw(self.root)
         doas_fov.start_draw(self.root)      # start drawing of frame
-        doas_fov.initiate_variables()
+        doas_fov.initiate_variables(self)
+        cell_calib.initiate_variables(self)
         cross_correlation.start_draw(self.root)
-        cross_correlation.initiate_variables()
-        opti_flow.initiate_variables()
+        cross_correlation.initiate_variables(self)
+        opti_flow.initiate_variables(self)
         light_dilution.add_gui(self)
         light_dilution.initiate_variables()
         light_dilution.start_draw(self.root)

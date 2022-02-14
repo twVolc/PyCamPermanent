@@ -57,6 +57,7 @@ class Indicator:
         self.indicators[-1].create_image(0, 0, image=self.img_off, anchor='nw', tags='IMG')
         self.indicators[-1].grid(row=0, column=0, rowspan=2, sticky='nsew')
         self.labels.append(ttk.Label(self.frames[-1], text='No Instrument Connected', font=self.font))
+        # self.labels.append(ttk.Label(self.frames[-1], text='No Instrument Connected', style='bold.TLabel'))
         self.labels[-1].grid(row=0, column=1, padx=5)
         self.buttons.append(ttk.Button(self.frames[-1], text='Connect', command=self.connect_sock))
         self.buttons[-1].grid(row=1, column=1, padx=5, sticky='ew')
@@ -167,7 +168,8 @@ class MessageWindow:
         Master frame of widget
     """
 
-    def __init__(self, parent):
+    def __init__(self, main_gui, parent):
+        self.main_gui = main_gui
         self.frame = ttk.Frame(parent, relief=tk.GROOVE, borderwidth=2)
         self.mess_sep = '\n'
         self.mess_start = '>> '
@@ -176,7 +178,8 @@ class MessageWindow:
 
         self.text = tk.Text(self.frame)
 
-        self.title = ttk.Label(self.frame, text='Messages:', anchor="w").pack(side="top", fill='both')
+        self.title = ttk.Label(self.frame, text='Messages:', anchor="w", font=self.main_gui.main_font)
+        self.title.pack(side="top", fill='both')
         self.canvas = tk.Canvas(self.frame, borderwidth=0)
         self.mess_frame = ttk.Frame(self.canvas)
         self.vsb = tk.Scrollbar(self.frame, orient="vertical", command=self.canvas.yview)
@@ -198,16 +201,19 @@ class MessageWindow:
     def init_message(self):
         """Startup message"""
         self.row = 0
-        ttk.Label(self.mess_frame, text='Welcome to PyCamUV').grid(row=self.row, column=0, sticky='w')
+        lab = ttk.Label(self.mess_frame, text='Welcome to PyCamUV', font=self.main_gui.main_font)
+        lab.grid(row=self.row, column=0, sticky='w')
         self.row += 1
-        ttk.Label(self.mess_frame, text='PyCamUV v' + pycam_details['version']).grid(row=self.row, column=0, sticky='w')
+        lab = ttk.Label(self.mess_frame, text='PyCamUV v' + pycam_details['version'], font=self.main_gui.main_font)
+        lab.grid(row=self.row, column=0, sticky='w')
         self.row += 1
 
 
         for i in range(self.num_messages):
             self.message_holder += self.mess_start + self.mess_sep
 
-        self.mess_label = ttk.Label(self.mess_frame, text=self.message_holder, justify=tk.LEFT)
+        self.mess_label = ttk.Label(self.mess_frame, text=self.message_holder, justify=tk.LEFT,
+                                    font=self.main_gui.main_font)
         self.mess_label.grid(row=self.row, column=0, sticky='w')
 
     def add_message(self, message):
@@ -257,9 +263,9 @@ class SpinboxOpt:
     """
     Utility class to allow rapid building of spinbox options in tkinter frame
     """
-    def __init__(self, parent, name, var, limits=[0, 10, 1], row=0, pdx=2, pdy=2):
+    def __init__(self, main_gui, parent, name, var, limits=[0, 10, 1], row=0, pdx=2, pdy=2):
 
-        label = ttk.Label(parent, text='{}:'.format(name))
+        label = ttk.Label(parent, text='{}:'.format(name), font=main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=pdx, pady=pdy)
         self.spin_opt = ttk.Spinbox(parent, textvariable=var, from_=limits[0], to=limits[1], increment=limits[2])
         self.spin_opt.grid(row=row, column=1, sticky='ew', padx=pdx, pady=pdy)

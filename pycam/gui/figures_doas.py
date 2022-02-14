@@ -31,7 +31,8 @@ class SpectraPlot:
     Generates a widget containing 3 subplots of spectra -> dark, clear (Fraunhofer), in-plume
     """
 
-    def __init__(self, root, frame, doas_plot=None):
+    def __init__(self, main_gui, root, frame, doas_plot=None):
+        self.main_gui = main_gui
         self.root = root
         self.doas_worker = doas_worker
         self.doas_plot = doas_plot
@@ -64,35 +65,39 @@ class SpectraPlot:
         self.stray_start = tk.DoubleVar()
         self.stray_start.set(self.doas_worker.start_stray_wave)
         self.stray_box_start = ttk.Spinbox(self.frame2, from_=0, to=400, increment=0.1, width=5, format='%.1f',
-                                             textvariable=self.stray_start, command=self.update_stray_start)
+                                           textvariable=self.stray_start, command=self.update_stray_start,
+                                           font=self.main_gui.main_font)
         self.stray_box_start.set('{:.1f}'.format(self.doas_worker.start_stray_wave))
         self.stray_end = tk.DoubleVar()
         self.stray_end.set(self.doas_worker.end_stray_wave)
         self.stray_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
-                                           textvariable=self.stray_end, command=self.update_stray_end)
+                                         textvariable=self.stray_end, command=self.update_stray_end,
+                                         font=self.main_gui.main_font)
         self.stray_box_end.set('{:.1f}'.format(self.doas_worker.end_stray_wave))
 
-        label = tk.Label(self.frame2, text='Stray light correction (min.):').pack(side=tk.LEFT)
+        label = tk.Label(self.frame2, text='Stray light correction (min.):', font=self.main_gui.main_font).pack(side=tk.LEFT)
         self.stray_box_start.pack(side=tk.LEFT)
-        label = tk.Label(self.frame2, text='Stray light correction (max.):').pack(side=tk.LEFT)
+        label = tk.Label(self.frame2, text='Stray light correction (max.):', font=self.main_gui.main_font).pack(side=tk.LEFT)
         self.stray_box_end.pack(side=tk.LEFT)
 
         # FIT WINDOW
         self.fit_wind_start = tk.DoubleVar()
         self.fit_wind_start.set(self.doas_worker.start_fit_wave)
         self.fit_wind_box_start = ttk.Spinbox(self.frame2, from_=0, to=400, increment=0.1, width=5, format='%.1f',
-                                             textvariable=self.fit_wind_start, command=self.update_fit_wind_start)
+                                              textvariable=self.fit_wind_start, command=self.update_fit_wind_start,
+                                              font=self.main_gui.main_font)
         self.fit_wind_box_start.set('{:.1f}'.format(self.doas_worker.start_fit_wave))
         self.fit_wind_end = tk.DoubleVar()
         self.fit_wind_end.set(self.doas_worker.end_fit_wave)
         self.fit_wind_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
-                                           textvariable=self.fit_wind_end, command=self.update_fit_wind_end)
+                                           textvariable=self.fit_wind_end, command=self.update_fit_wind_end,
+                                            font=self.main_gui.main_font)
         self.fit_wind_box_end.set('{:.1f}'.format(self.doas_worker.end_fit_wave))
 
         self.fit_wind_box_end.pack(side=tk.RIGHT)
-        label = tk.Label(self.frame2, text='Fit wavelength (max.):').pack(side=tk.RIGHT)
+        label = tk.Label(self.frame2, text='Fit wavelength (max.):', font=self.main_gui.main_font).pack(side=tk.RIGHT)
         self.fit_wind_box_start.pack(side=tk.RIGHT)
-        label = tk.Label(self.frame2, text='Fit wavelength (min.):').pack(side=tk.RIGHT)
+        label = tk.Label(self.frame2, text='Fit wavelength (min.):', font=self.main_gui.main_font).pack(side=tk.RIGHT)
 
         # ------------------------------------------------
         # FIGURE SETUP
@@ -304,29 +309,29 @@ class DOASPlot:
         self.frame2.pack(side=tk.TOP, fill=tk.X, expand=1)
 
         # Shift widgets
-        label = tk.Label(self.frame2, text='Shift spectrum:').pack(side=tk.LEFT)
+        label = tk.Label(self.frame2, text='Shift spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label.grid(row=0, column=0)
         self.shift = tk.IntVar()
         self.shift.set(self.doas_worker.shift)
         self.shift_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3,
-                                             textvariable=self.shift, command=self.update_shift)
+                                     textvariable=self.shift, command=self.update_shift, font=self.gui.main_font)
         # self.fit_wind_box_start.grid(row=0, column=1)
         self.shift_box.pack(side=tk.LEFT)
 
         # Shift tolerance widgets
-        label = ttk.Label(self.frame2, text='Shift tolerance').pack(side=tk.LEFT)
+        label = ttk.Label(self.frame2, text='Shift tolerance', font=self.gui.main_font).pack(side=tk.LEFT)
         self._shift_tol = tk.IntVar()
         self.shift_tol = self.doas_worker.shift_tol
-        self.shift_tol_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3,
-                                     textvariable=self._shift_tol, command=self.update_shift_tol)
+        self.shift_tol_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3, font=self.gui.main_font,
+                                         textvariable=self._shift_tol, command=self.update_shift_tol)
         self.shift_tol_box.pack(side=tk.LEFT)
 
-        label2 = tk.Label(self.frame2, text='Stretch spectrum:').pack(side=tk.LEFT)
+        label2 = tk.Label(self.frame2, text='Stretch spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label2.grid(row=0, column=2)
         self.stretch = tk.IntVar()
         self.stretch.set(self.doas_worker.stretch)
-        self.stretch_box = ttk.Spinbox(self.frame2, from_=-999, to=999, increment=1, width=4,
-                                           textvariable=self.stretch, command=self.update_stretch)
+        self.stretch_box = ttk.Spinbox(self.frame2, from_=-999, to=999, increment=1, width=4, font=self.gui.main_font,
+                                       textvariable=self.stretch, command=self.update_stretch)
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
 
