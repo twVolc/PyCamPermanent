@@ -37,31 +37,39 @@ class CameraWind:
         # self.frame.columnconfigure(0, weight=1)
         # self.frame.rowconfigure(0, weight=1)
 
+        # ========================================================
+        # Scroll window
+        self.plt_canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.plt_canvas_scroll = ScrollWindow(self.frame, self.plt_canvas)
+        self.scroll_frame = ttk.Frame(self.plt_canvas_scroll.frame, borderwidth=2)
+        self.scroll_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
+        # ==========================================================
+
         # Get indicator and place it in the top of the frame
-        cfg.indicator.generate_indicator(self.frame)
+        cfg.indicator.generate_indicator(self.scroll_frame)
         cfg.indicator.frames[-1].grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Get acquisition settings frame and add it to window
-        self.acq_settings = CameraSettingsWidget(self.main_gui, self.frame)
+        self.acq_settings = CameraSettingsWidget(self.main_gui, self.scroll_frame)
         self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image registration
-        self.img_reg_frame = ImageRegistrationFrame(self.main_gui, self.frame)
+        self.img_reg_frame = ImageRegistrationFrame(self.main_gui, self.scroll_frame)
         self.img_reg_frame.frame.grid(row=0, column=3, rowspan=2, sticky='new', padx=self.padx, pady=self.pady)
 
         # Image A widget setup
         draw_lock = threading.Lock()
-        self.img_A = ImageFigure(self.main_gui, self.frame, self.img_reg_frame, lock=draw_lock,
+        self.img_A = ImageFigure(self.main_gui, self.scroll_frame, self.img_reg_frame, lock=draw_lock,
                                  name='Image A', band='A')
         self.img_A.frame.grid(row=0, column=1, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Image B widget setup
-        self.img_B = ImageFigure(self.main_gui, self.frame, self.img_reg_frame, lock=draw_lock,
+        self.img_B = ImageFigure(self.main_gui, self.scroll_frame, self.img_reg_frame, lock=draw_lock,
                                  name='Image B', band='B')
         self.img_B.frame.grid(row=0, column=2, rowspan=2, sticky='nw', padx=self.padx, pady=self.pady)
 
         # Message window
-        self.mess_wind = MessageWindow(self.main_gui, self.frame)
+        self.mess_wind = MessageWindow(self.main_gui, self.scroll_frame)
         self.mess_wind.frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=2, pady=2)
 
 
@@ -108,6 +116,7 @@ class SpecWind:
         self.series = CDSeries(self.plt_frame, doas_work=doas_worker)
         self.series.frame.pack(side='top', expand=1, anchor='n', fill=tk.X)
 
+
 class AnalysisWind:
     """Window for viewing analysis of data - absorbance images and emission rates etc"""
     def __init__(self, main_gui, parent, name='Analysis'):
@@ -116,9 +125,17 @@ class AnalysisWind:
         self.name = name
         self.frame = ttk.Frame(self.parent)
 
-        col_1 = ttk.Frame(self.frame)
+        # ========================================================
+        # Scroll window
+        self.plt_canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.plt_canvas_scroll = ScrollWindow(self.frame, self.plt_canvas)
+        self.scroll_frame = ttk.Frame(self.plt_canvas_scroll.frame, borderwidth=2)
+        self.scroll_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
+        # ==========================================================
+
+        col_1 = ttk.Frame(self.scroll_frame)
         col_1.pack(side=tk.LEFT, anchor='nw')
-        col_2 = ttk.Frame(self.frame)
+        col_2 = ttk.Frame(self.scroll_frame)
         col_2.pack(side=tk.LEFT, anchor='nw', expand=True, fill=tk.Y)
 
         # Sequence info

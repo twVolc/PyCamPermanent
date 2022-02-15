@@ -13,6 +13,7 @@ To add a new setting to the GUI you must:
 
 from pycam.utils import check_filename
 from pycam.setupclasses import FileLocator
+from pycam.gui.misc import ScrollWindow
 
 import tkinter.ttk as ttk
 import tkinter as tk
@@ -214,10 +215,18 @@ class SettingsFrame:
         # Gather settings currently being used in Settings object
         self.collect_settings()
 
+        # ========================================================
+        # Scroll window
+        self.plt_canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.plt_canvas_scroll = ScrollWindow(self.frame, self.plt_canvas)
+        self.scroll_frame = ttk.Frame(self.plt_canvas_scroll.frame, borderwidth=2)
+        self.scroll_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
+        # ==========================================================
+
         row = 0
         # --------------------------
         # TEXT STYLE
-        self.font_frame = ttk.LabelFrame(self.frame, text='Text style')
+        self.font_frame = ttk.LabelFrame(self.scroll_frame, text='Text style')
         self.font_frame.grid(row=row, column=0, padx=5, pady=5, sticky='nsew')
         row += 1
 
@@ -237,7 +246,7 @@ class SettingsFrame:
 
         # ------------------------------
         # FIGURE FORMAT
-        self.fig_frame = ttk.LabelFrame(self.frame, text='Figure settings')
+        self.fig_frame = ttk.LabelFrame(self.scroll_frame, text='Figure settings')
         self.fig_frame.grid(row=row, column=0, padx=5, pady=5, sticky='nsew')
         row += 1
 
@@ -325,11 +334,11 @@ class SettingsFrame:
 
         # --------------------------------------------------------------------------------------------------------------
 
-        update_button = ttk.Button(self.frame, text='Update Settings', command=self.update_settings)
+        update_button = ttk.Button(self.scroll_frame, text='Update Settings', command=self.update_settings)
         update_button.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        default_button = ttk.Button(self.frame, text='Restore Defaults', command=self.restore_defaults)
+        default_button = ttk.Button(self.scroll_frame, text='Restore Defaults', command=self.restore_defaults)
         default_button.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         row += 1
 
