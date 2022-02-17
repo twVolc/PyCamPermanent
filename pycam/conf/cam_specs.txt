@@ -1,17 +1,31 @@
 # -*- coding: utf-8 -*-
 # File holding camera specifications
-
-# PiCam triplet settings
-pix_size_x=5.6e-6
-pix_size_y=5.6e-6
+pix_size_x=5.6e-06
+pix_size_y=5.6e-06
 pix_num_x=648
 pix_num_y=486
-fov_x=28
-fov_y=24
-
-shutter_speed=100000
+fov_x=28.0
+fov_y=24.0
+save_path=/home/pi/pycam/Images/
+file_ext=.png
+file_datestr=%Y-%m-%dT%H%M%S
+DICT=file_filterids
+on=fltrA
+off=fltrB
+DICT_END
+file_ss={}ss
+file_ss_units=1e-06
+DICT=file_type
+meas=Plume
+dark=Dark
+cal=ppmm
+clear=Clear
+test=Test
+dark_corr=darkcorr
+DICT_END
 framerate=0.25
-analog_gain=1
-auto_ss=1
-
+analog_gain=1.0
+auto_ss=True
+min_saturation=0.7
+max_saturation=0.9
 band=on

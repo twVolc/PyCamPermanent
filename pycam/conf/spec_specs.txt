@@ -1,4 +1,21 @@
 # -*- coding: utf-8 -*-
 # File holding spectrometer specifications
-
-auto_ss=1
+fov=1
+pix_num=2048
+coadd=1
+save_path=/home/pi/pycam/Images/
+file_ext=.npy
+file_ss={}ss
+DICT=file_type
+meas=Plume
+dark=Dark
+cal=ppmm
+clear=Clear
+test=Test
+DICT_END
+file_datestr=%Y-%m-%dT%H%M%S
+framerate=0.25
+auto_int=True
+min_saturation=0.6
+max_saturation=0.9
+saturation_pixels=2

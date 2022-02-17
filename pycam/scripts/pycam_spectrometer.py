@@ -19,17 +19,21 @@ from pycam.utils import read_file
 import threading
 import queue
 import time
+import atexit
 
-# Read config file
-config = read_file(FileLocator.CONFIG_SPEC)
+# # Read config file
+# config = read_file(FileLocator.CONFIG_SPEC)
 
 try:
     # Setup camera object
     # TODO Only using ignore device True for debugging
-    spec = Spectrometer(ignore_device=True)
+    spec = Spectrometer(ignore_device=True, filename=FileLocator.CONFIG_SPEC)
 except SpectrometerConnectionError:
     print('No spectrometer detected, please connect spectrometer and restart program')
     sys.exit()
+
+# On program shutdown we always must save the current spectrometer settings
+atexit.register(spec.save_specs)
 
 if spec.spec is not None:
     # Setup thread for controlling spectrometer capture

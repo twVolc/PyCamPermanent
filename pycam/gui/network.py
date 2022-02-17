@@ -50,7 +50,7 @@ def run_pycam(ip, auto_capt=1):
 
 def instrument_cmd(cmd):
     """Checks if you wanted to shutdown the camera and then sends EXT command to instrument"""
-    timeout = 5  # Timeout for instrument shutting down on 'EXT' request
+    timeout = 10  # Timeout for instrument shutting down on 'EXT' request
 
     # Generate message depending on command
     if cmd == 'EXT':

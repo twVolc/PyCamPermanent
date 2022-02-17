@@ -30,6 +30,7 @@ Need to deal with broken pipe in some way - set up server and client to reconnec
 6. Acquiring test images eventually throws an error related to attempting to perform calibration FOV search on image stack
    - Need to get rid of this when just taking Test images. Or work out why it's failing anyway, as it may fail at other
    times in the same way too.
+7. SETTINGS DON'T SEEM TO UPDATE - ADJUSTING CAMERA AND SPECTROMETER SETTING REMOTELY SEEM TO SEND THE INFO BUT IF YOU THEN RETRIEVE THE CURRENT SETTINGS FROM THE INSTRUMENT THE OLD SETTINGS ARE RETURNED!!! 
 
 Dev notes:
 1. If I have an issue with sockets not performing properly, i have recently changed SocketServer.close_socket() to include a 
@@ -38,15 +39,8 @@ will change functionality anywhere, but the error was preventing tests from pass
 socket is no longer connected is not a useful functionality
 
 TODO ideas:
-1. A comm command should be introduced to cause the camera to send all of its current settings, e.g. framerates and shutter speeds.
-The external comm can then use this message to update its GUI with the correct current settings
-2. I am going to have to make the processing a thread, to stop the GUI from freezing up. This means that thread can't be in charge 
-of calling the draw() command on plots. Use the SpecScan technique of intermittently updating the plots, and flag draw=False
-in the update_plot() calls from the processing thread. Can use this technique only when in the processing thread, and then 
-kill the intermittent plot updater when processing is stopped
 
-3. I NEED TO PUT EACH MAIN FRAME IN A SCROLLING WINDOW SO THAT SMALLER LAPTOPS CAN STILL DISPLAY EVERYTHING
-4. RELATED TO 3, I NEED TO WORKOUT HOW TO CHANGE FONTSIZE OF EVERYTHING - SEE LINE 60 PYCAM_GUI, SOMETHING ISN'T WORKING
+
 
 Requirements for GUI:
 > In pycam_gui.py must update os.environ[PROJ_LIB] to point to correct place. Only necessary if there are issues with importing basemap

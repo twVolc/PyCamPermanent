@@ -26,8 +26,14 @@ config = read_file(FileLocator.CONFIG_CAM)
 
 # -----------------------------------------------------------------
 # Setup camera object
-cam = Camera(band=config['band'])
+cam = Camera(band=config['band'], filename=FileLocator.CONFIG_CAM)
+
+# -----------------------------------------------------------------
+# Setup shutdown procedure
 atexit.register(cam.close_camera)
+# We always must save the current camera settings (this runs before cam.close_camera as it is added to register second
+atexit.register(cam.save_specs)
+# ------------------------------------------------------------------
 
 # Initialise camera (may need to set shutter speed first?)
 cam.initialise_camera()

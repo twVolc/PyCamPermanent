@@ -307,7 +307,7 @@ class TkVariables:
         self.pix_size_x = spec.fiber_diameter
         self.pix_size_y = self.pix_size_x       # Assuming a circular entrance optic for DOAS
         self.bit_depth = spec.bit_depth
-        self.coadd = spec.start_coadd
+        self.coadd = spec.coadd
         self.focal_length = spec.estimate_focal_length() * 1000
 
     def update_acquisition_parameters(self, cmd_dict):

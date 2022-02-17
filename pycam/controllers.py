@@ -34,7 +34,7 @@ class Camera(CameraSpecs):
     subclass of: class: CameraSpecs
     """
     def __init__(self, band='on', filename=None):
-        self.band = band                    # 'on' or 'off' band camera
+        self.band = band                    # 'on' or 'off' band camera (band can be overwritten by file load)
         self.capture_q = queue.Queue()      # Queue for requesting images
         self.img_q = queue.Queue()          # Queue where images are put for extraction
         self.capture_thread = None          # Thread for running interactive capture
@@ -498,16 +498,6 @@ class Spectrometer(SpecSpecs):
         self.devices = None  # List of detected spectrometers
         self.spec = None  # Holds spectrometer for interfacing via seabreeze
 
-        # Set integration time (ALL IN MICROSECONDS)
-        self._int_limit_lower = 1000  # Lower integration time limit
-        self._int_limit_upper = 20000000  # Upper integration time limit
-        self._int_time = None  # Integration time attribute
-
-        self.min_coadd = 1
-        self.max_coadd = 100
-        self._coadd = None  # Controls coadding of spectra
-        self.coadd = self.start_coadd
-
         self.in_interactive_capture = False
         self.continuous_capture = False     # Bool set to true when camera is in continuous capture mode
         self.in_dark_capture = False        # Bool to flag when in dark capture mode
@@ -532,7 +522,7 @@ class Spectrometer(SpecSpecs):
             self.get_wavelengths()
 
             # Set integration time of device
-            self.int_time = self.start_int_time
+            self.int_time = self.int_time      # Now that we have spectrometer we can update its integration time
 
         except IndexError:
             self.devices = None
@@ -576,9 +566,11 @@ class Spectrometer(SpecSpecs):
 
         # Check requested integration time is acceptable
         if int_time < self._int_limit_lower:
-            raise ValueError('Integration time below %i us is not possible' % self._int_limit_lower)
+            raise ValueError('Integration time below {}}us is not possible. '
+                             'Attempted {}us'.format(self._int_limit_lower, int_time))
         elif int_time > self._int_limit_upper:
-            raise ValueError('Integration time above %i us is not possible' % self._int_limit_upper)
+            raise ValueError('Integration time above {}us is not possible. '
+                             'Attempted: {}us'.format(self._int_limit_upper, int_time))
 
         self._int_time = int_time
 
@@ -586,7 +578,10 @@ class Spectrometer(SpecSpecs):
         self._int_time_idx = np.argmin(np.abs(self.int_list - self.int_time))
 
         # Set spectrometer integration time
-        self.spec.integration_time_micros(int_time)
+        try:
+            self.spec.integration_time_micros(int_time)
+        except AttributeError:
+            print('No spectrometer yet, unable to set integration time')
 
     @property
     def int_time_idx(self):
