@@ -766,7 +766,8 @@ class PiSocketCamComms(SocketClient):
                     else:
                         self.camera.set_shutter_speed(value)
                     comm = self.encode_comms({'SSA': value})
-                except:
+                except Exception as e:
+                    print('pycam_camera.py: Error setting shutter speed: {}'.format(e))
                     comm = self.encode_comms({'ERR': 'SSA'})
             else:
                 comm = self.encode_comms({'ERR': 'SSA'})
@@ -809,10 +810,10 @@ class PiSocketCamComms(SocketClient):
             Value to set camera shutter speed to
         """
         try:
-            if self.camera.in_interactive_capture:
+            if self.camera.continuous_capture:
                 self.camera.capture_q.put({'framerate': value})
             else:
-                self.camera.set_cam_framerate(value)
+                self.camera.framerate = value
             comm = self.encode_comms({'FRC': value})
         except:
             comm = self.encode_comms({'ERR': 'FRC'})
@@ -872,7 +873,7 @@ class PiSocketCamComms(SocketClient):
             self.camera.max_saturation = value
             comm = self.encode_comms({'SMX': value})
         else:
-            comm = self.encode_comms({'EER': 'SMX'})
+            comm = self.encode_comms({'ERR': 'SMX'})
 
         # Send response
         self.send_comms(self.sock, comm)
@@ -1063,7 +1064,7 @@ class PiSocketSpecComms(SocketClient):
         """
         if not self.spectrometer.auto_int:
             try:
-                if self.spectrometer.in_interactive_capture:
+                if self.spectrometer.continuous_capture:
                     self.spectrometer.capture_q.put({'int_time': value})
                 else:
                     self.spectrometer.int_time = value
@@ -1084,7 +1085,7 @@ class PiSocketSpecComms(SocketClient):
             Value to set spectrometer framerate to
         """
         try:
-            if self.spectrometer.in_interactive_capture:
+            if self.spectrometer.continuous_capture:
                 self.spectrometer.capture_q.put({'framerate': value})
             else:
                 self.spectrometer.framerate = value

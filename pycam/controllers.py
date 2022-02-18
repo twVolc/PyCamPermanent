@@ -408,6 +408,7 @@ class Camera(CameraSpecs):
 
                 if 'framerate' in mess:
                     # We readjust to requested framerate regardless of if auto_ss is True or False
+                    self.framerate = mess['framerate']
                     frame_rep = round(1 / mess['framerate'])
 
             except queue.Empty:
@@ -807,6 +808,7 @@ class Spectrometer(SpecSpecs):
 
                 if 'framerate' in mess:
                     # We readjust to requested framerate regardless of if auto_int is True or False
+                    self.framerate = mess['framerate']
                     frame_rep = round(1 / mess['framerate'])
 
             except queue.Empty:
