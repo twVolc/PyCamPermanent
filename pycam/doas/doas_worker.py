@@ -161,6 +161,8 @@ class DOASWorker:
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        self.save_date_fmt = '%Y-%m-%dT%H%M%S'
+        self.save_freq = [0]
 
     def reset_self(self):
         """Some resetting of object, before processing occurs"""
@@ -833,6 +835,29 @@ class DOASWorker:
         doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 
+    def save_results(self, pathname=None, start_time=None, end_time=None):
+        """Saves doas results"""
+        # Extract data from specific index if we are given a start time
+        if start_time is not None:
+            idx_start = np.argmin(self.results.index - start_time)
+        else:
+            idx_start = 0
+
+        if end_time is not None:
+            idx_end = np.argmin(self.results.index - end_time)
+        else:
+            idx_end = -1
+
+        # Generate pathname
+        if pathname is None:
+            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
+            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt)
+            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
+            pathname = os.path.join(self.spec_dir, filename)
+
+        self.results[idx_start:idx_end].to_csv(pathname)
+        print('DOAS results saved: {}'.format(pathname))
+
     def start_processing_threadless(self):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop
@@ -896,7 +921,7 @@ class DOASWorker:
 
             # Extract filename and create datetime object of spectrum time
             filename = pathname.split('\\')[-1].split('/')[-1]
-            spec_time = self.get_spec_time(filename)
+            self.spec_time = self.get_spec_time(filename)
 
             # Extract shutter speed
             ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
@@ -913,7 +938,7 @@ class DOASWorker:
                 self.clear_spec_raw = spectrum
 
                 processed_dict = {'processed': False,
-                                  'time': spec_time,
+                                  'time': self.spec_time,
                                   'filename': pathname,
                                   'dark': self.dark_spec,
                                   'clear': self.clear_spec_raw}
@@ -925,7 +950,7 @@ class DOASWorker:
 
                 # Gather all relevant information and spectra and pass it to PyplisWorker
                 processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
-                                  'time': spec_time,
+                                  'time': self.spec_time,
                                   'filename': pathname,             # Filename of processed spectrum
                                   'dark': self.dark_spec,           # Dark spectrum used (raw)
                                   'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
@@ -953,6 +978,10 @@ class DOASWorker:
 
                 # Update doas plot
                 self.fig_doas.update_plot()
+
+            # Save all results if we are on the 0 or 30th minute of the hour
+            if self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
+                self.save_results(start_time=self.spec_time - datetime.timedelta(minutes=30), end_time=self.spec_time)
 
             if first_spec:
                 # Now that we have processed first_spec, set flag to False

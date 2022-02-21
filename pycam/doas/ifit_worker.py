@@ -173,6 +173,8 @@ class IFitWorker:
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
         self.results.ldfs = []
+        self.save_date_fmt = '%Y-%m-%dT%H%M%S'
+        self.save_freq = [0]
 
         # ==============================================================================================================
         # iFit setup
@@ -390,7 +392,7 @@ class IFitWorker:
         if not self.stray_corrected_clear and self.clear_spec_corr is not None:
             self.clear_spec_corr = self.clear_spec_corr - np.mean(self.clear_spec_corr[stray_range])
             self.clear_spec_corr[self.clear_spec_corr < 0] = 0
-            self.dark_corrected_clear = True
+            self.stray_corrected_clear = True
 
         # Correct plume spectra (assumed to already be dark subtracted)
         if not self.stray_corrected_plume:
@@ -701,13 +703,12 @@ class IFitWorker:
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
         self.applied_ld_correction = False
 
-
-
         # Update wavelengths
         self.wavelengths_cut = fit_0.grid
 
         # If we have light dilution correction we run it here
         if self.corr_light_dilution:
+            print('Performing iFit light dilution correction...')
             if False in [isinstance(x, np.ndarray) for x in
                          [self.ifit_so2_0, self.ifit_err_1, self.ifit_so2_1, self.ifit_err_1]]:
                 print('{} SO2 grids not found for light dilution correction. '
@@ -792,6 +793,9 @@ class IFitWorker:
 
         for cd in cds:
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
+
+        # Save results
+        self.save_results()
 
     def reset_doas_results(self):
         """Makes empty doas results object"""
@@ -879,6 +883,35 @@ class IFitWorker:
             doas_results.ldfs = [np.nan] * len(stds)
         return doas_results
 
+    def save_results(self, pathname=None, start_time=None, end_time=None, save_all=False):
+        """Saves doas results"""
+        # Extract data from specific index if we are given a start time
+        if start_time is not None:
+            idx_start = np.argmin(self.results.index - start_time)
+        else:
+            if save_all:
+                idx_start = 0
+            else:
+                # Go back to the last hour (as data will already be saved up to there)
+                current_time = self.results[-1]
+                start_time = current_time.replace(minute=0, second=0)
+                idx_start = np.argmin(self.results.index - start_time)
+
+        if end_time is not None:
+            idx_end = np.argmin(self.results.index - end_time)
+        else:
+            idx_end = -1
+
+        # Generate pathname
+        if pathname is None:
+            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
+            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt)
+            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
+            pathname = os.path.join(self.spec_dir, filename)
+
+        self.results[idx_start:idx_end].to_csv(pathname)
+        print('DOAS results saved: {}'.format(pathname))
+
     def start_processing_threadless(self, spec_dir=None):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop
@@ -944,8 +977,7 @@ class IFitWorker:
             print('IFitWorker: processing spectrum: {}'.format(pathname))
             # Extract filename and create datetime object of spectrum time
             filename = os.path.split(pathname)[-1]
-            spec_time = self.get_spec_time(filename)
-            self.spec_time = spec_time
+            self.spec_time = self.get_spec_time(filename)
 
             # Extract shutter speed
             ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
@@ -964,12 +996,11 @@ class IFitWorker:
 
             time_1 = time.time()
             self.process_doas()
-            print('Processed: {}'.format(pathname))
-            print('Time taken: {}'.format(time.time() - time_1))
+            print('Time taken to process {}: {}'.format(pathname, time.time() - time_1))
 
             # Gather all relevant information and spectra and pass it to PyplisWorker
             processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
-                              'time': spec_time,
+                              'time': self.spec_time,
                               'filename': pathname,             # Filename of processed spectrum
                               'dark': self.dark_spec,           # Dark spectrum used (raw)
                               'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
@@ -987,13 +1018,15 @@ class IFitWorker:
             if self.processing_in_thread:
                 self.q_doas.put(processed_dict)
 
-
-
             # Update doas plot
             if self.fig_doas is not None:
                 self.fig_doas.update_plot()
             if self.fig_series is not None:
                 self.fig_series.update_plot()
+
+            # Save all results if we are on the 0 or 30th minute of the hour
+            if self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
+                self.save_results(start_time=self.spec_time - datetime.timedelta(minutes=30), end_time=self.spec_time)
 
             print('Processed file: {}'.format(filename))
 
@@ -1039,7 +1072,7 @@ class IFitWorker:
         while os.path.exists(pathname_lock):
             pass
 
-        print('Directory Watcher ifit: New file found {}'.format(pathname))
+        # print('Directory Watcher ifit: New file found {}'.format(pathname))
         # Pass path to queue
         self.q_spec.put(pathname)
 

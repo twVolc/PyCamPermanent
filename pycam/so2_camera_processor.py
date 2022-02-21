@@ -252,6 +252,7 @@ class PyplisWorker:
         self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
                           'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
                           'img_SO2': {'save': False, 'compression': 0}}    # Arbitrary SO2 png image
+        self.save_freq = [0, 30]     # Frequency of saving data
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -445,7 +446,7 @@ class PyplisWorker:
         except AttributeError:  # First time this is run it will not have PCS_lines_all instantiated, so just catch here
             pass
 
-    def reset_self(self):
+    def reset_self(self, reset_plot=True):
         """
         Resets aspects of self to ensure we start processing in the correct manner
         :return:
@@ -473,8 +474,9 @@ class PyplisWorker:
         # Initiate results
         self.init_results()
 
-        # Reset time series figure
-        self.fig_series.update_plot()
+        if reset_plot:
+            # Reset time series figure
+            self.fig_series.update_plot()
 
     def init_results(self):
         """Initiates results dictionary"""
@@ -1904,8 +1906,8 @@ class PyplisWorker:
                 stack = self.make_img_stack(time_start=oldest_time)
                 # TODO =========================================
                 # TODO For testing!!!
-                self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
-                                                                              stds=self.test_doas_stds)
+                # self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                #                                                               stds=self.test_doas_stds)
                 # TODO ==========================================
                 self.doas_fov_search(stack, self.doas_worker.results)
 
@@ -2731,10 +2733,18 @@ class PyplisWorker:
 
         self.fig_series.update_plot()
 
-    def finalise_processing(self):
+    def finalise_processing(self, save_doas=True):
         """Finishes all processing requirements (mainly saving info)"""
+        # TODO need an option to save every 30 minutes or something - this is already setup in self._processing, but
+        # TODO we need to clip self.results so that it isn't all saved every 30 minutes and only the last 30 minutes
+        # TODO of data are saved each time
         # Save the final emission rates
         save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
+        if save_doas:
+            self.doas_worker.save_results()
+
+        self.doas_worker.reset_self()
+        self.reset_self(reset_plot=False)       # Reset self but don't reset plot as may want to keep it visible
 
         # TODO perhaps do things like calculate average emission rate (this will be a daily average when used in
         # TODO the continuous monitoring mode) save to a file, etc
@@ -2835,6 +2845,7 @@ class PyplisWorker:
             print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
 
             if img_path_A == self.STOP_FLAG:
+                self.finalise_processing()      # Save data to this point
                 print('Stopping processing')
                 return
 
@@ -2846,9 +2857,15 @@ class PyplisWorker:
 
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
             # So we finalise processing and then continue (TODO check this is ok)
-            if not self.first_image and self.img_A.meta['start_acq'].day != self.get_img_time(img_path_A).day:
+            img_time = self.get_img_time(img_path_A)
+            if not self.first_image and self.img_A.meta['start_acq'].day != img_time.day:
                 print('New image comes from a different day. Finalising previous day of processing.')
-                self.finalise_processing()
+                self.finalise_processing(save_doas=True)
+            # Every 30 minutes (defined by self.save_freq) we dave emission rate data, but don't save doas results here,
+            # Let doas_worker define when doas_results are saved, since DOAS times may not be exactly in time with
+            # image times but we want to save doas data exactly on the hour and 30 minute marks
+            elif img_time.minute == 0 and img_time.second == 0:
+                save_emission_rates_as_txt(self.processed_dir, self.results, save_all=False)
 
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)

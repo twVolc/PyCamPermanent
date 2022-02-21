@@ -365,8 +365,6 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
             f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off, num_mins_off))
 
     else:
-        # TODO create shcedule with 2 on and off times per day (we assume checks for validity of 2 schedules have already
-        # TODO been confirmed
         # Arrange time ons and time offs to be in consecutive order, starting with the earliest time on. The final time
         # off might be later in the day or at the start of the next day (before the time on) so to account for this we
         # need to find the time off that follows the first time on - this becomes time_stop_1 regardless of if it was

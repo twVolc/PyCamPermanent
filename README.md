@@ -30,13 +30,16 @@ Need to deal with broken pipe in some way - set up server and client to reconnec
 6. Acquiring test images eventually throws an error related to attempting to perform calibration FOV search on image stack
    - Need to get rid of this when just taking Test images. Or work out why it's failing anyway, as it may fail at other
    times in the same way too.
-7. SETTINGS DON'T SEEM TO UPDATE - ADJUSTING CAMERA AND SPECTROMETER SETTING REMOTELY SEEM TO SEND THE INFO BUT IF YOU THEN RETRIEVE THE CURRENT SETTINGS FROM THE INSTRUMENT THE OLD SETTINGS ARE RETURNED!!! 
 
 Dev notes:
 1. If I have an issue with sockets not performing properly, i have recently changed SocketServer.close_socket() to include a 
 try/except clause for shutdown. Previously this contained the shutdown with the clauses. I'm not sure if catching this error
 will change functionality anywhere, but the error was preventing tests from passing and I think throwing an OSError saying the
 socket is no longer connected is not a useful functionality
+
+NOTE SSA, SSB, SSS will not change if Auto shutter speed is enabled. May need to send 2 rounds of commands, one to shut 
+off Auto SS and the second to set shutter speed - if done in one round, if the SSA command is applied first, it will 
+fail as AutoSS still won't have been turned off yet.
 
 TODO ideas:
 
