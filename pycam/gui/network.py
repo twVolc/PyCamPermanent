@@ -88,7 +88,8 @@ def instrument_cmd(cmd):
 
 class ConnectionGUI:
     """Frame containing code to generate a GUI allowing definition of connection parameters to the instrument"""
-    def __init__(self, parent, name='Connection'):
+    def __init__(self, main_gui, parent, name='Connection'):
+        self.main_gui = main_gui
         self.parent = parent
         self.name = name
 
@@ -103,16 +104,19 @@ class ConnectionGUI:
         self.port_list = None
         self.get_ports('ext_ports')
 
-        ttk.Label(self.frame, text='IP address:').grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
-        ttk.Label(self.frame, text='Port:').grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
-        ttk.Entry(self.frame, width=15, textvariable=self._host_ip).grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        lab = ttk.Label(self.frame, text='IP address:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        lab = ttk.Label(self.frame, text='Port:', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        entry = ttk.Entry(self.frame, width=15, textvariable=self._host_ip, font=self.main_gui.main_font)
+        entry.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         ttk.OptionMenu(self.frame, self._port, self.port_list[0], *self.port_list).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
         # ttk.Entry(self.frame, width=6, textvariable=self._port).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         self.test_butt = ttk.Button(self.frame, text='Test Connection', command=self.test_connection)
         self.test_butt.grid(row=0, column=2, padx=self.pdx, pady=self.pdy)
 
-        self.connection_label = ttk.Label(self.frame, text='')
+        self.connection_label = ttk.Label(self.frame, text='', font=self.main_gui.main_font)
         self.connection_label.grid(row=0, column=3, padx=self.pdx, pady=self.pdy)
 
         self.update_butt = ttk.Button(self.frame, text='Update connection', command=self.update_connection)
@@ -253,19 +257,22 @@ class InstrumentConfiguration:
     7. Update messagebox to display settings after they have been updated
     8. Add line to script_schedule.txt so that it can be read by this class on first startup
     """
-    def __init__(self, ftp, cfg):
+    def __init__(self, ftp, cfg, main_gui=None):
         self.ftp = ftp
         self.time_fmt = '{}:{}'
         self.frame = None
         self.in_frame = False
+        self.main_gui = main_gui
         self.start_script = cfg[ConfigInfo.start_script]
         self.stop_script = cfg[ConfigInfo.stop_script]
         self.dark_script = cfg[ConfigInfo.dark_script]
         self.temp_script = cfg[ConfigInfo.temp_log]
         self.disk_space_script = cfg[ConfigInfo.disk_space_script]
 
-    def initiate_variable(self):
+    def initiate_variable(self, main_gui):
         """Initiate tkinter variables"""
+        self.main_gui = main_gui
+
         self._on_hour = tk.IntVar()  # Hour to turn on pi
         self._on_min = tk.IntVar()
 
@@ -326,25 +333,27 @@ class InstrumentConfiguration:
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
         self.in_frame = True
 
-        frame_on = tk.LabelFrame(self.frame, text='Start-up/Shut-down times', relief=tk.RAISED, borderwidth=2)
+        frame_on = tk.LabelFrame(self.frame, text='Start-up/Shut-down times', relief=tk.RAISED, borderwidth=2, font=self.main_gui.main_font)
         frame_on.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
 
-        ttk.Label(frame_on, text='Start-up (hour:minutes):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_on, text='Shut-down (hour:minutes):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(frame_on, text='Start-up (hour:minutes):', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(frame_on, text='Shut-down (hour:minutes):', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, sticky='w', padx=2, pady=2)
 
-        hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2)
+        hour_start = ttk.Spinbox(frame_on, textvariable=self._on_hour, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         # hour_start.set("{:02d}".format(self.on_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
-        ttk.Label(frame_on, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_on, text=':', font=self.main_gui.main_font).grid(row=0, column=2, padx=2, pady=2)
+        min_start = ttk.Spinbox(frame_on, textvariable=self._on_min, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         # min_start.set("{:02d}".format(self.on_min))
         min_start.grid(row=0, column=3, padx=2, pady=2)
 
-        hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2)
+        hour_stop = ttk.Spinbox(frame_on, textvariable=self._off_hour, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         # hour_stop.set("{:02d}".format(self.off_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
-        ttk.Label(frame_on, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_on, text=':', font=self.main_gui.main_font).grid(row=1, column=2, padx=2, pady=2)
+        min_stop = ttk.Spinbox(frame_on, textvariable=self._off_min, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         # min_stop.set("{:02d}".format(self.off_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2)
 
@@ -352,19 +361,21 @@ class InstrumentConfiguration:
         check_shut = ttk.Checkbutton(frame_on, text='Use start-up/shut-down sequence 2',
                                      variable=self._use_second_shutdown, command=self.second_shutdown_config)
         check_shut.grid(row=2, column=0, columnspan=4, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_on, text='Start-up 2 (hour:minutes):').grid(row=3, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_on, text='Shut-down 2 (hour:minutes):').grid(row=4, column=0, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(frame_on, text='Start-up 2 (hour:minutes):', font=self.main_gui.main_font)
+        lab.grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(frame_on, text='Shut-down 2 (hour:minutes):', font=self.main_gui.main_font)
+        lab.grid(row=4, column=0, sticky='w', padx=2, pady=2)
 
-        self.hour_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_hour_2, from_=00, to=23, increment=1, width=2)
+        self.hour_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_hour_2, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         self.hour_start_2.grid(row=3, column=1, padx=2, pady=2)
-        ttk.Label(frame_on, text=':').grid(row=3, column=2, padx=2, pady=2)
-        self.min_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_min_2, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_on, text=':', font=self.main_gui.main_font).grid(row=3, column=2, padx=2, pady=2)
+        self.min_start_2 = ttk.Spinbox(frame_on, textvariable=self._on_min_2, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         self.min_start_2.grid(row=3, column=3, padx=2, pady=2)
 
-        self.hour_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_hour_2, from_=00, to=23, increment=1, width=2)
+        self.hour_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_hour_2, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         self.hour_stop_2.grid(row=4, column=1, padx=2, pady=2)
-        ttk.Label(frame_on, text=':').grid(row=4, column=2, padx=2, pady=2)
-        self.min_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_min_2, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_on, text=':', font=self.main_gui.main_font).grid(row=4, column=2, padx=2, pady=2)
+        self.min_stop_2 = ttk.Spinbox(frame_on, textvariable=self._off_min_2, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         self.min_stop_2.grid(row=4, column=3, padx=2, pady=2)
         self.second_shutdown_config()   # Set current state of widgets based on start-up variable values
 
@@ -375,25 +386,25 @@ class InstrumentConfiguration:
         # ---------------------------------------
         # Start/stop control of acquisition times
         # ---------------------------------------
-        frame_cron = tk.LabelFrame(self.frame, text='Scheduled scripts', relief=tk.RAISED, borderwidth=2)
+        frame_cron = tk.LabelFrame(self.frame, text='Scheduled scripts', relief=tk.RAISED, borderwidth=2, font=self.main_gui.main_font)
         frame_cron.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
-        ttk.Label(frame_cron, text='Start pycam (hr:min):').grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='Stop pycam (hr:min):').grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Start pycam (hr:min):', font=self.main_gui.main_font).grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='Stop pycam (hr:min):', font=self.main_gui.main_font).grid(row=1, column=0, sticky='w', padx=2, pady=2)
 
-        hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2)
+        hour_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_hour, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         # hour_start.set("{:02d}".format(self.capt_start_hour))
         hour_start.grid(row=0, column=1, padx=2, pady=2)
-        ttk.Label(frame_cron, text=':').grid(row=0, column=2, padx=2, pady=2)
-        min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_cron, text=':', font=self.main_gui.main_font).grid(row=0, column=2, padx=2, pady=2)
+        min_start = ttk.Spinbox(frame_cron, textvariable=self._capt_start_min, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         # min_start.set("{:02d}".format(self.capt_start_min))
         min_start.grid(row=0, column=3, padx=2, pady=2, sticky='w')
 
-        hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2)
+        hour_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_hour, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         # hour_stop.set("{:02d}".format(self.capt_stop_hour))
         hour_stop.grid(row=1, column=1, padx=2, pady=2)
-        ttk.Label(frame_cron, text=':').grid(row=1, column=2, padx=2, pady=2)
-        min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_cron, text=':', font=self.main_gui.main_font).grid(row=1, column=2, padx=2, pady=2)
+        min_stop = ttk.Spinbox(frame_cron, textvariable=self._capt_stop_min, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         # min_stop.set("{:02d}".format(self.capt_stop_min))
         min_stop.grid(row=1, column=3, padx=2, pady=2, sticky='w')
 
@@ -401,31 +412,31 @@ class InstrumentConfiguration:
         # Start dark capture
         # ------------------
         row = 2
-        lab = ttk.Label(frame_cron, text='Start dark capture (hr:min):')
+        lab = ttk.Label(frame_cron, text='Start dark capture (hr:min):', font=self.main_gui.main_font)
         lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        hour_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_hour, from_=00, to=23, increment=1, width=2)
+        hour_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_hour, from_=00, to=23, increment=1, width=2, font=self.main_gui.main_font)
         hour_dark.grid(row=row, column=1, padx=2, pady=2)
-        ttk.Label(frame_cron, text=':').grid(row=row, column=2, padx=2, pady=2)
-        min_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_min, from_=00, to=59, increment=1, width=2)
+        ttk.Label(frame_cron, text=':', font=self.main_gui.main_font).grid(row=row, column=2, padx=2, pady=2)
+        min_dark = ttk.Spinbox(frame_cron, textvariable=self._dark_capt_min, from_=00, to=59, increment=1, width=2, font=self.main_gui.main_font)
         min_dark.grid(row=row, column=3, padx=2, pady=2, sticky='w')
 
         # -------------------
         # Temperature logging
         # -------------------
         row += 1
-        ttk.Label(frame_cron, text='Temperature log [minutes]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        temp_log = ttk.Spinbox(frame_cron, textvariable=self._temp_logging, from_=0, to=60, increment=1, width=3)
+        ttk.Label(frame_cron, text='Temperature log [minutes]:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        temp_log = ttk.Spinbox(frame_cron, textvariable=self._temp_logging, from_=0, to=60, increment=1, width=3, font=self.main_gui.main_font)
         temp_log.grid(row=row, column=1, columnspan=2, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='0=no log').grid(row=row, column=3, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log', font=self.main_gui.main_font).grid(row=row, column=3, sticky='w', padx=2, pady=2)
 
         # ----------------------------
         # Temperature check disk space
         # ----------------------------
         row += 1
-        ttk.Label(frame_cron, text='Check disk storage [minutes]:').grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        disk_stor = ttk.Spinbox(frame_cron, textvariable=self._check_disk_space, from_=0, to=60, increment=1, width=3)
+        ttk.Label(frame_cron, text='Check disk storage [minutes]:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        disk_stor = ttk.Spinbox(frame_cron, textvariable=self._check_disk_space, from_=0, to=60, increment=1, width=3, font=self.main_gui.main_font)
         disk_stor.grid(row=row, column=1, columnspan=2, sticky='w', padx=2, pady=2)
-        ttk.Label(frame_cron, text='0=no log').grid(row=row, column=3, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_cron, text='0=no log', font=self.main_gui.main_font).grid(row=row, column=3, sticky='w', padx=2, pady=2)
 
         # -------------
         # Update button

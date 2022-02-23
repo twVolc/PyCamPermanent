@@ -745,7 +745,8 @@ class BasicAcqHandler:
         self.in_img_seq = False
         self.plot_iter_current = None
 
-    def initiate_variables(self):
+    def initiate_variables(self, main_gui):
+        self.main_gui = main_gui
         self._ss_A = tk.IntVar()
         self._ss_B = tk.IntVar()
         self._ss_spec = tk.IntVar()
@@ -790,17 +791,20 @@ class BasicAcqHandler:
         self.frame.title('Manual acquisition')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
-        self.frame_cam = tk.LabelFrame(self.frame, text='Camera', relief=tk.RAISED, borderwidth=3)
+        self.frame_cam = tk.LabelFrame(self.frame, text='Camera', relief=tk.RAISED, borderwidth=3,
+                                       font=self.main_gui.main_font)
         self.frame_cam.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
         # Shutter speed frame
         frame_ss = ttk.LabelFrame(self.frame_cam, text=u'Shutter Speed (\u03bcs)')
         frame_ss.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        ttk.Label(frame_ss, text='Filter A:').grid(row=0, column=0, padx=2, pady=2)
-        ttk.Label(frame_ss, text='Filter B:').grid(row=1, column=0, padx=2, pady=2)
-        ttk.Entry(frame_ss, width=7, textvariable=self._ss_A).grid(row=0, column=1, padx=2, pady=2)
-        ttk.Entry(frame_ss, width=7, textvariable=self._ss_B).grid(row=1, column=1, padx=2, pady=2)
+        ttk.Label(frame_ss, text='Filter A:', font=self.main_gui.main_font).grid(row=0, column=0, padx=2, pady=2)
+        ttk.Label(frame_ss, text='Filter B:', font=self.main_gui.main_font).grid(row=1, column=0, padx=2, pady=2)
+        ttk.Entry(frame_ss, width=7, textvariable=self._ss_A,
+                  font=self.main_gui.main_font).grid(row=0, column=1, padx=2, pady=2)
+        ttk.Entry(frame_ss, width=7, textvariable=self._ss_B,
+                  font=self.main_gui.main_font).grid(row=1, column=1, padx=2, pady=2)
         self.ss_A = 100000
         self.ss_B = 100000
         row += 1
@@ -812,14 +816,14 @@ class BasicAcqHandler:
         frame_norm.grid_columnconfigure(1, weight=1)
         row += 1
 
-        test_butt = tk.Button(frame_norm, text='Test', width=10,
+        test_butt = tk.Button(frame_norm, text='Test', width=10, font=self.main_gui.main_font,
                               command=lambda: self.acq_cam(self.cam_specs.file_type['test']))
         test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
         if self.in_img_seq:
             text = 'Stop sequence'
         else:
             text = 'Sequence'
-        self.cam_seq_butt = tk.Button(frame_norm, text=text, width=10,
+        self.cam_seq_butt = tk.Button(frame_norm, text=text, width=10, font=self.main_gui.main_font,
                              command=lambda: self.acq_cam(self.cam_specs.file_type['meas']))
         self.cam_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
 
@@ -833,41 +837,48 @@ class BasicAcqHandler:
         # Cell ppmm value UI
         frame_ent = ttk.Frame(frame_cal)
         frame_ent.grid(row=row, column=0, columnspan=2, sticky='nsew')
-        ttk.Label(frame_ent, text='Cell column density [ppm.m]:').grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        ttk.Label(frame_ent, text='Cell column density [ppm.m]:',
+                  font=self.main_gui.main_font).grid(row=0, column=0, sticky='w', padx=2, pady=2)
         ttk.Entry(frame_ent, width=6, textvariable=self._cell_ppmm).grid(row=0, column=1, sticky='ew', padx=2, pady=2)
         row += 1
 
-        self.dark_butt = tk.Button(frame_cal, text='Dark', bg='black', fg='white',
+        self.dark_butt = tk.Button(frame_cal, text='Dark', bg='black', fg='white', font=self.main_gui.main_font,
                                     command=lambda: self.acq_cam(self.cam_specs.file_type['dark']))
         self.dark_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
         self.dark_butt.configure(state=tk.DISABLED)
-        self.clear_butt = tk.Button(frame_cal, text='Clear', bg='blue', fg='white',
+        self.clear_butt = tk.Button(frame_cal, text='Clear', bg='blue', fg='white', font=self.main_gui.main_font,
                                      command=lambda: self.acq_cam(self.cam_specs.file_type['clear']))
         self.clear_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         self.clear_butt.configure(state=tk.DISABLED)
         row += 1
 
-        self.fltr_a_butt = tk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'))
+        self.fltr_a_butt = tk.Button(frame_cal, text='Filter A', command=lambda: self.acq_cal_img('a'),
+                                     font=self.main_gui.main_font)
         self.fltr_a_butt.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
         self.fltr_a_butt.configure(state=tk.DISABLED)
-        self.fltr_b_butt = tk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'))
+        self.fltr_b_butt = tk.Button(frame_cal, text='Filter B', command=lambda: self.acq_cal_img('b'),
+                                     font=self.main_gui.main_font)
         self.fltr_b_butt.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         self.fltr_b_butt.configure(state=tk.DISABLED)
         row += 1
 
         # New calibration
-        self.cal_butt = tk.Button(frame_cal, text='New Calibration', command=self.new_cal, bg='green', fg='white')
+        self.cal_butt = tk.Button(frame_cal, text='New Calibration', command=self.new_cal, bg='green', fg='white',
+                                  font=self.main_gui.main_font)
         self.cal_butt.grid(row=row, column=0, columnspan=2, stick='nsew', padx=2, pady=2)
         row += 1
 
         # Spectrometer acquisition
-        self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3)
+        self.frame_spec = tk.LabelFrame(self.frame, text='Spectrometer', relief=tk.RAISED, borderwidth=3,
+                                        font=self.main_gui.main_font)
         self.frame_spec.grid(row=0, column=1, sticky='new', padx=5, pady=5)
 
         # Integration time
         row = 0
-        ttk.Label(self.frame_spec, text='Integration time [ms]:').grid(row=row, column=0, padx=2, pady=2)
-        ttk.Entry(self.frame_spec, width=7, textvariable=self._ss_spec).grid(row=row, column=1, padx=2, pady=2)
+        ttk.Label(self.frame_spec, text='Integration time [ms]:',
+                  font=self.main_gui.main_font).grid(row=row, column=0, padx=2, pady=2)
+        ttk.Entry(self.frame_spec, width=7, textvariable=self._ss_spec,
+                  font=self.main_gui.main_font).grid(row=row, column=1, padx=2, pady=2)
         self.ss_spec = 100
         row += 1
 
@@ -875,21 +886,21 @@ class BasicAcqHandler:
         butt_frame.grid(row=row, column=0, columnspan=2, sticky='nsew')
         butt_frame.grid_columnconfigure(0, weight=1)
         butt_frame.grid_columnconfigure(1, weight=1)
-        test_butt = tk.Button(butt_frame, text='Test', width=10,
+        test_butt = tk.Button(butt_frame, text='Test', width=10, font=self.main_gui.main_font,
                               command=lambda: self.acq_spec(self.spec_specs.file_type['test']))
         test_butt.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
         if self.in_spec_seq:
             text = 'Stop sequence'
         else:
             text = 'Sequence'
-        self.spec_seq_butt = tk.Button(butt_frame, text=text, width=10,
+        self.spec_seq_butt = tk.Button(butt_frame, text=text, width=10, font=self.main_gui.main_font,
                              command=lambda: self.acq_spec(self.spec_specs.file_type['meas']))
         self.spec_seq_butt.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
         # Dark button
-        dark_butt = tk.Button(butt_frame, text='Dark', width=10, bg='black', fg='white',
+        dark_butt = tk.Button(butt_frame, text='Dark', width=10, bg='black', fg='white', font=self.main_gui.main_font,
                               command=lambda: self.acq_spec(self.spec_specs.file_type['dark']))
         dark_butt.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
-        clear_butt = tk.Button(butt_frame, text='Clear', width=10, bg='blue', fg='white',
+        clear_butt = tk.Button(butt_frame, text='Clear', width=10, bg='blue', fg='white', font=self.main_gui.main_font,
                               command=lambda: self.acq_spec(self.spec_specs.file_type['clear']))
         clear_butt.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
 

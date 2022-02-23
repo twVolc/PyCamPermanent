@@ -40,20 +40,23 @@ class PyCam(ttk.Frame):
         self.root.title('PyCam')
         self.root.protocol('WM_DELETE_WINDOW', self.exit_app)
 
+        # Load in configuration file(s)
+        self.config = cfg.config
+
         # Font setup
         # TODO Every widget other than TLabel updates with this code. label size must be overwritten somewhere??
         # TODO Need to get rid of that but can't find where the issue is
-        font_size = int(self.root.winfo_screenwidth() * 0.005)
+        self.gui_setts = cfg.gui_setts
+        font_size = self.gui_setts.font_size
+        font_type = self.gui_setts.font
+        # font_size = int(self.root.winfo_screenwidth() * 0.005)
         # font_size = 6
-        self.main_font = tk.font.Font(family='Helvetica', size=font_size)
-        self.bold_font = tk.font.Font(family='Helvetica', size=font_size, weight='bold')
+        self.main_font = tk.font.Font(family=font_type, size=font_size)
+        self.bold_font = tk.font.Font(family=font_type, size=font_size, weight='bold')
 
         # Initiate indicator widget
         cfg.indicator.initiate_indicator()
         cfg.indicator.add_font(self.bold_font)
-
-        # Load in configuration file(s)
-        self.config = read_file(FileLocator.CONFIG_WINDOWS)
 
         # Setup socket
         self.sock = SocketClient(host_ip=self.config[ConfigInfo.host_ip], port=int(self.config[ConfigInfo.port_ext]))
@@ -92,8 +95,8 @@ class PyCam(ttk.Frame):
 
     def info_load(self):
         """Instantiates all frames which require some kind of start-up instantiation"""
-        instrument_cfg.initiate_variable()
-        basic_acq_handler.initiate_variables()
+        instrument_cfg.initiate_variable(self)
+        basic_acq_handler.initiate_variables(self)
         automated_acq_handler.add_settings_objs(self.cam_wind.acq_settings, self.spec_wind.acq_settings)
         automated_acq_handler.add_connection(cfg.indicator)
         # TODO add message_wind to add_widgets() and make it so that comm_recv_handler writes received comms to there

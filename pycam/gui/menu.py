@@ -60,7 +60,7 @@ class PyMenu:
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
         # Load options
-        self.load_frame = LoadFrame(pyplis_work=pyplis_worker, doas_work=doas_worker)
+        self.load_frame = LoadFrame(self.parent, pyplis_work=pyplis_worker, doas_work=doas_worker)
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
@@ -70,7 +70,7 @@ class PyMenu:
         self.submenu_load.add_command(label='Configure start-up', command=self.load_frame.generate_frame)
 
         # Save
-        self.save_frame = SaveFrame(pyplis_work=pyplis_worker)
+        self.save_frame = SaveFrame(self.parent, pyplis_work=pyplis_worker)
         self.submenu_save = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
@@ -338,7 +338,7 @@ class Settings:
         self.windows.pack(fill='both', expand=1, padx=5, pady=5)
 
         # Generate the frames for each tab
-        self.connection_gui = ConnectionGUI(self.windows)
+        self.connection_gui = ConnectionGUI(parent, self.windows)
         self.gui_settings = settings.SettingsFrame(parent, self.windows, settings=cfg.gui_setts)
 
         # Add the frames for each tab to the notebook
@@ -350,9 +350,10 @@ class LoadFrame(LoadSaveProcessingSettings):
     """
     Class giving options to load a range of variables, either during immediately or on startup
     """
-    def __init__(self, pyplis_work=pyplis_worker, doas_work=doas_worker, generate_frame=False,
+    def __init__(self, main_gui, pyplis_work=pyplis_worker, doas_work=doas_worker, generate_frame=False,
                  init_dir=FileLocator.SAVED_OBJECTS):
         super().__init__()
+        self.main_gui = main_gui
         self.pyplis_worker = pyplis_work
         self.doas_worker = doas_work
         self.init_dir = init_dir
@@ -409,16 +410,18 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.load_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         row = 0
-        pcs_frame = tk.LabelFrame(self.load_frame, text='ICA lines', relief=tk.RAISED, borderwidth=2)
+        pcs_frame = tk.LabelFrame(self.load_frame, text='ICA lines', relief=tk.RAISED, borderwidth=2,
+                                  font=self.main_gui.main_font)
         pcs_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
         self.pcs_lines_labs = [None] * self.num_pcs_lines
         self.pcs_add_butt = [None] * self.num_pcs_lines
         self.pcs_rem_butt = [None] * self.num_pcs_lines
         row_line = 0
         for i in range(self.num_pcs_lines):
-            lab = ttk.Label(pcs_frame, text='File:')
+            lab = ttk.Label(pcs_frame, text='File:', font=self.main_gui.main_font)
             lab.grid(row=row_line, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.pcs_lines_labs[i] = ttk.Label(pcs_frame, text=self.pcs_lines_short[i], width=self.max_len_str)
+            self.pcs_lines_labs[i] = ttk.Label(pcs_frame, text=self.pcs_lines_short[i], width=self.max_len_str,
+                                               font=self.main_gui.main_font)
             self.pcs_lines_labs[i].grid(row=row_line, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
             self.pcs_add_butt[i] = ttk.Button(pcs_frame, text='Change line',
                                               command=lambda i=i: self.add_pcs_startup(i))
@@ -430,11 +433,13 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         # Image registration load
         row += 1
-        img_reg_frame = tk.LabelFrame(self.load_frame, text='Image registration', relief=tk.RAISED, borderwidth=2)
+        img_reg_frame = tk.LabelFrame(self.load_frame, text='Image registration', relief=tk.RAISED, borderwidth=2,
+                                      font=self.main_gui.main_font)
         img_reg_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        lab = ttk.Label(img_reg_frame, text='File:')
+        lab = ttk.Label(img_reg_frame, text='File:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.img_reg_lab = ttk.Label(img_reg_frame, text=self.img_reg_short, width=self.max_len_str)
+        self.img_reg_lab = ttk.Label(img_reg_frame, text=self.img_reg_short, width=self.max_len_str,
+                                     font=self.main_gui.main_font)
         self.img_reg_lab.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         self.reg_add_butt = ttk.Button(img_reg_frame, text='Change', command=self.add_reg_startup)
         self.reg_add_butt.grid(row=0, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
@@ -443,15 +448,17 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         # Light dilution lines
         row += 1
-        dil_frame = tk.LabelFrame(self.load_frame, text='Light dilution lines', relief=tk.RAISED, borderwidth=2)
+        dil_frame = tk.LabelFrame(self.load_frame, text='Light dilution lines', relief=tk.RAISED, borderwidth=2,
+                                  font=self.main_gui.main_font)
         dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
         self.dil_lines_labs = [None] * self.num_dil_lines
         self.dil_add_butt = [None] * self.num_dil_lines
         self.dil_rem_butt = [None] * self.num_dil_lines
         for i in range(self.num_dil_lines):
-            lab = ttk.Label(dil_frame, text='File:')
+            lab = ttk.Label(dil_frame, text='File:', font=self.main_gui.main_font)
             lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.dil_lines_labs[i] = ttk.Label(dil_frame, text=self.dil_lines_short[i], width=self.max_len_str)
+            self.dil_lines_labs[i] = ttk.Label(dil_frame, text=self.dil_lines_short[i], width=self.max_len_str,
+                                               font=self.main_gui.main_font)
             self.dil_lines_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
             self.dil_add_butt[i] = ttk.Button(dil_frame, text='Change line',
                                               command=lambda i=i: self.add_dil_startup(i))
@@ -463,14 +470,15 @@ class LoadFrame(LoadSaveProcessingSettings):
         # Light dilution spectrometer lookup
         row += 1
         spec_dil_frame = tk.LabelFrame(self.load_frame, text='Spectrometer light dilution lookup',
-                                       relief=tk.RAISED, borderwidth=2)
+                                       relief=tk.RAISED, borderwidth=2, font=self.main_gui.main_font)
         spec_dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
         self.spec_dil_labs = [None, None]
         self.spec_dil_butt = [None, None]
         for i in range(2):
-            lab = ttk.Label(spec_dil_frame, text='Fit window {}:'.format(i+1))
+            lab = ttk.Label(spec_dil_frame, text='Fit window {}:'.format(i+1), font=self.main_gui.main_font)
             lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.spec_dil_labs[i] = ttk.Label(spec_dil_frame, text=self.ld_lookup_short[i], width=self.max_len_str)
+            self.spec_dil_labs[i] = ttk.Label(spec_dil_frame, text=self.ld_lookup_short[i], width=self.max_len_str,
+                                              font=self.main_gui.main_font)
             self.spec_dil_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
             self.spec_dil_butt[i] = ttk.Button(spec_dil_frame, text='Change grid',
                                                command=lambda i=i: self.add_lookup_startup(i))
@@ -712,7 +720,8 @@ class SaveFrame(LoadSaveProcessingSettings):
     """
     Class giving options to save a range of variables, either during processing or upon click
     """
-    def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, init_dir=FileLocator.SAVED_OBJECTS):
+    def __init__(self, main_gui, pyplis_work=pyplis_worker, generate_frame=False, init_dir=FileLocator.SAVED_OBJECTS):
+        self.main_gui = main_gui
         self.pyplis_worker = pyplis_work
         self.init_dir = init_dir
         self.pdx, self.pdy = 2, 2
@@ -849,7 +858,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         row = 0
         # pcs line saving
         self.pcs_lines = [int(x) for x in self.pyplis_worker.fig_series.lines]
-        label = ttk.Label(self.save_now_frame, text='Save ICA line:')
+        label = ttk.Label(self.save_now_frame, text='Save ICA line:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         spin_pcs = ttk.OptionMenu(self.save_now_frame, self._pcs_line, self.pyplis_worker.fig_tau.current_ica, *self.pcs_lines)
         spin_pcs.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
@@ -860,7 +869,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         row += 1
         self.dil_lines = [i+1 for i, x in enumerate(self.pyplis_worker.fig_dilution.lines_pyplis)
                           if isinstance(x, LineOnImage)]
-        label = ttk.Label(self.save_now_frame, text='Save light dilution line:')
+        label = ttk.Label(self.save_now_frame, text='Save light dilution line:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         spin_dil = ttk.OptionMenu(self.save_now_frame, self._dil_line, self.pyplis_worker.fig_dilution.current_line,
                                   *self.dil_lines)
@@ -874,7 +883,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         for tform in self.reg_ext:
             if getattr(self.pyplis_worker.img_reg, 'got_{}_transform'.format(tform)):
                 self.img_reg_opts.append(tform)
-        label = ttk.Label(self.save_now_frame, text='Save image registration:')
+        label = ttk.Label(self.save_now_frame, text='Save image registration:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         spin_reg = ttk.OptionMenu(self.save_now_frame, self._img_reg, self.img_reg_opts[0] if self.img_reg_opts else '',
                                   *self.img_reg_opts if self.img_reg_opts else '')
@@ -893,7 +902,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
         type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        lab = ttk.Label(type_frame, text='File type:')
+        lab = ttk.Label(type_frame, text='File type:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='w')
         img_types = ttk.OptionMenu(type_frame, self._type_img_aa, self.type_img_aa, *self.img_types)
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
@@ -904,7 +913,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
         type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        lab = ttk.Label(type_frame, text='File type:')
+        lab = ttk.Label(type_frame, text='File type:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='w')
         img_types = ttk.OptionMenu(type_frame, self._type_img_cal, self.type_img_cal, *self.img_types)
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
@@ -915,9 +924,10 @@ class SaveFrame(LoadSaveProcessingSettings):
         check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
         type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        lab = ttk.Label(type_frame, text='Compression:')
+        lab = ttk.Label(type_frame, text='Compression:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, sticky='w')
-        img_types = ttk.Spinbox(type_frame, textvariable=self._png_compression, width=3, from_=0, to=9, increment=1)
+        img_types = ttk.Spinbox(type_frame, textvariable=self._png_compression, width=3, from_=0, to=9, increment=1,
+                                font=self.main_gui.main_font)
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
         row += 1
 

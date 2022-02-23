@@ -22,7 +22,7 @@ Bug report:
 3. Every now and then I get a Socket already in use error when starting masterpi, this makes it fail and then the camera continually tries to
 connect. Need to add a loop to the SocketServer somewhere, so that if I get this error I just keep trying to make the socket until it isn't in use. 
    - I've added a loop to opening sockets in pycam_masterpi.py. This didn't solve the issue
-   - I need to work out how to free up the socket again, or change socket (perhaps jump to another port?)
+   - I need to work out how to free up the socket again, or change socket (perhaps jump to another port?) FIXED 
 4. Get broken pipe error on port 12345 after starting manual acquisition then disconnecting from the insturment and trying to reconnect.
 Need to deal with broken pipe in some way - set up server and client to reconnect rather than needing to restart entire system.
    - FIXED generally. But still don't have a clever way of reconnecting if pipes ever do break
