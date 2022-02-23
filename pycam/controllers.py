@@ -210,7 +210,7 @@ class Camera(CameraSpecs):
             Type of image. Value should be retrieved from one of dictionary options in <self.file_type>"""
         return time_str + '_' + \
                self.file_filterids[self.band] + '_' + \
-               self.file_ag.format(str(self.analog_gain)) + '_' + \
+               self.file_ag.format(str(int(self.analog_gain))) + '_' + \
                self.file_ss.format(self.exposure_speed) + '_' + \
                img_type + self.file_ext
 

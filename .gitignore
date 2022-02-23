@@ -156,3 +156,5 @@ pycam/Data/Images/Villarrica/Seq_1/Processed_13/
 pycam/Data/Images/Villarrica/Seq_1/Processed_1/
 
 pycam/Data/Images/
+
+pycam/tests/test_data/test_spectra/doas_results_2019-05-29T124401_2019-05-29T124412.csv

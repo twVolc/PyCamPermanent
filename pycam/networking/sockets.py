@@ -1489,8 +1489,13 @@ class SocketServer(SocketMeths):
                     except OSError:
                         print('Connection already closed, removing it from list')
 
-                    # Remove connection from list
-                    del self.connections[conn_num]
+                    # SOMETIMES GET AN INDEX ERROR HERE - I THINK WE JUST WANT TO IGNORE IT
+                    # TODO this try clause is quite new so if issues are experienced, maybe get rid?
+                    try:
+                        # Remove connection from list
+                        del self.connections[conn_num]
+                    except IndexError:
+                        pass
 
                     # Update the number of connections we have
                     self.num_conns -= 1

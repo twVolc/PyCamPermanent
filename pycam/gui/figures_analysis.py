@@ -5115,6 +5115,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.tau_thresh = self.tau_thresh
         self.pyplis_worker.dil_recal_time = self.dil_recal_time
         self.doas_worker.recal_ld_mins = self.spec_recal_time
+        self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""

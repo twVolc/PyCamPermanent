@@ -699,8 +699,10 @@ class IFitWorker:
             self.stray_corr_spectra()
 
         # Run processing
+        print('IFit worker: Running fit')
         fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
+        print('IFit worker: Finished fit')
         self.applied_ld_correction = False
 
         # Update wavelengths
@@ -795,7 +797,7 @@ class IFitWorker:
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
         # Save results
-        self.save_results()
+        self.save_results(save_all=True)
 
     def reset_doas_results(self):
         """Makes empty doas results object"""
@@ -887,18 +889,22 @@ class IFitWorker:
         """Saves doas results"""
         # Extract data from specific index if we are given a start time
         if start_time is not None:
-            idx_start = np.argmin(self.results.index - start_time)
+            idx_start = np.argmin(np.abs(self.results.index - start_time))
         else:
             if save_all:
                 idx_start = 0
             else:
                 # Go back to the last hour (as data will already be saved up to there)
                 current_time = self.results[-1]
-                start_time = current_time.replace(minute=0, second=0)
-                idx_start = np.argmin(self.results.index - start_time)
+                if current_time.minute == 0 and current_time.second == 0:
+                    new_hour = current_time.hour - 1
+                    start_time == current_time.replace(hour=new_hour)
+                else:
+                    start_time = current_time.replace(minute=0, second=0)
+                idx_start = np.argmin(np.abs(self.results.index - start_time))
 
         if end_time is not None:
-            idx_end = np.argmin(self.results.index - end_time)
+            idx_end = np.argmin(np.abs(self.results.index - end_time))
         else:
             idx_end = -1
 
@@ -909,7 +915,15 @@ class IFitWorker:
             filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
             pathname = os.path.join(self.spec_dir, filename)
 
-        self.results[idx_start:idx_end].to_csv(pathname)
+        # Create full database to save
+        frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
+                 'Column density': pd.Series(self.results.values[idx_start:idx_end]),
+                 'CD error': pd.Series(self.results.fit_errs[idx_start:idx_end]),
+                 'LDF': pd.Series(self.results.ldfs[idx_start:idx_end])}
+        df = pd.DataFrame(frame)
+
+        # self.results[idx_start:idx_end].to_csv(pathname)
+        df.to_csv(pathname)
         print('DOAS results saved: {}'.format(pathname))
 
     def start_processing_threadless(self, spec_dir=None):
@@ -946,7 +960,7 @@ class IFitWorker:
         self.q_spec.put(self.STOP_FLAG)
 
         # Begin processing
-        self._process_loop()
+        self._process_loop(continuous_save=False)
 
     def start_processing_thread(self):
         """Public access thread starter for _processing"""
@@ -958,9 +972,12 @@ class IFitWorker:
         self.process_thread.daemon = True
         self.process_thread.start()
 
-    def _process_loop(self):
+    def _process_loop(self, continuous_save=True):
         """
         Main process loop for doas
+        :param continuous_save: bool    If True, data is saved every hour, otherwise all data is saved at the end of
+            processing. Continuous save is set to False when post-processing DOAS in a non-continuous manner, just
+            processing a single directory. May always want continuous save though, so think about if I want this...
         :return:
         """
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
@@ -972,11 +989,16 @@ class IFitWorker:
 
             # Close thread if requested with 'exit' command
             if pathname == self.STOP_FLAG:
+                if continuous_save:
+                    self.save_results(end_time=self.spec_time)
+                else:
+                    self.save_results(save_all=True)
                 break
 
             print('IFitWorker: processing spectrum: {}'.format(pathname))
             # Extract filename and create datetime object of spectrum time
-            filename = os.path.split(pathname)[-1]
+            working_dir, filename = os.path.split(pathname)
+            self.spec_dir = working_dir     # Update wokring directory to where most recent file has come from
             self.spec_time = self.get_spec_time(filename)
 
             # Extract shutter speed
@@ -996,7 +1018,7 @@ class IFitWorker:
 
             time_1 = time.time()
             self.process_doas()
-            print('Time taken to process {}: {}'.format(pathname, time.time() - time_1))
+            print('IFit Worker: Time taken to process {}: {}'.format(pathname, time.time() - time_1))
 
             # Gather all relevant information and spectra and pass it to PyplisWorker
             processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
@@ -1025,8 +1047,8 @@ class IFitWorker:
                 self.fig_series.update_plot()
 
             # Save all results if we are on the 0 or 30th minute of the hour
-            if self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
-                self.save_results(start_time=self.spec_time - datetime.timedelta(minutes=30), end_time=self.spec_time)
+            if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
+                self.save_results(end_time=self.spec_time)
 
             print('Processed file: {}'.format(filename))
 
