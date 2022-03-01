@@ -3,7 +3,7 @@
 # Configuration file for GUI settings
 
 font=Helvetica
-font_size=6
+font_size=10
 dpi=96
 fig_img=7.0,6.0
 fig_spec=10.0,3.0

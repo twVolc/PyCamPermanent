@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 import os
 import datetime
+from tkinter import filedialog
 try:
     from pyplis import LineOnImage
     from pyplis.fluxcalc import EmissionRates

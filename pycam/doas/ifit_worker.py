@@ -926,6 +926,37 @@ class IFitWorker:
         df.to_csv(pathname)
         print('DOAS results saved: {}'.format(pathname))
 
+    def load_results(self, filename=None, plot=True):
+        """
+        Loads DOAS results from csv file
+        :param filename:    str     Full path to file to be loaded. If None, a prompt is given to select file
+        :param plot:        bool    If True, attempt to update time series plot of results
+        """
+        if filename is None:
+            filename = filedialog.askopenfilename(title='Select DOAS results file',
+                                                  initialdir=self.spec_dir, filetypes=(('csv', '*.csv'),
+                                                                                       ('All files', '*.*')))
+            if not filename:
+                return
+
+        # Load results
+        df = pd.read_csv(filename)
+
+        # Reset results
+        self.reset_self()
+
+        # Unpack results into DoasResults object
+        res = df['Column density'].squeeze()
+        res.index = [datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S') for x in df['Time']]
+        self.results = DoasResults(res, species_id='SO2')
+        self.results.fit_errs = df['CD error']
+        self.results.ldfs = df['LDF']
+
+        # Plot results if requested
+        if plot:
+            if self.fig_series is not None:
+                self.fig_series.update_plot()
+
     def start_processing_threadless(self, spec_dir=None):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop

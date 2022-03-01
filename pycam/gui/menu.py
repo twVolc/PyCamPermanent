@@ -154,6 +154,7 @@ class PyMenu:
         self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
         self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.submenu_proc.add_separator()
+        self.submenu_proc.add_command(label='Load DOAS results', command=doas_worker.load_results)
         self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
         self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.submenu_proc.add_separator()
