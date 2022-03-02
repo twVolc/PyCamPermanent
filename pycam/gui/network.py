@@ -25,7 +25,7 @@ def run_pycam(ip, auto_capt=1):
         print('Running pycam_masterpi on {}'.format(ip))
 
         # Path to executable
-        pycam_path = FileLocator.SCRIPTS + 'pycam_masterpi.py'
+        # pycam_path = FileLocator.SCRIPTS + 'pycam_masterpi.py'
         pycam_path = FileLocator.SCRIPTS + 'start_pycam.sh'
 
         try:

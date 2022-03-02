@@ -233,8 +233,12 @@ class IFitWorker:
         self.fit_1_uncorr = None
         self.ldf_best = np.nan      # Best estimate of light dilution factor
 
-    def reset_self(self):
+    def reset_self(self, reset_dark=True):
         """Some resetting of object, before processing occurs"""
+        # Reset dark dictionary
+        if reset_dark:
+            self.dark_dict = {}
+
         # Reset results object
         self.reset_doas_results()
 
@@ -371,6 +375,20 @@ class IFitWorker:
         spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
 
         return spec_time
+
+    def get_spec_type(self, filename):
+        """
+        Gets type from filename
+        :param filename:
+        :return spec_type:
+        """
+        # Make sure filename only contains file and not larger pathname, and remove file extension
+        filename = filename.split('\\')[-1].split('/')[-1].split('.')[0]
+
+        # Extract time string from filename
+        spec_type = filename.split('_')[self.spec_specs.file_type_loc]
+
+        return spec_type
 
     def dark_corr_spectra(self):
         """Subtract dark spectrum from spectra"""
@@ -513,6 +531,16 @@ class IFitWorker:
         self.wavelengths = wavelengths
         self.dark_spec = spectrum
 
+        # Add dark spectrum to current dark_list
+        filename = os.path.split(filename)[-1].split('.')[0]
+        ss_str = filename.split('_')[self.spec_specs.file_ss_loc]
+        ss = int(ss_str.replace(self.spec_specs.file_ss.replace('{}', ''), ''))
+
+        # Update dark dictionary
+        if ss in self.dark_dict.keys():
+            print('New dark spectrum for integration time {} overwriting previous in dictionary'.format(ss))
+        self.dark_dict[ss] = self.dark_spec
+
     def load_dark_coadd(self, dark_spec_path):
         """Load drk images -> co-add to generate single dark image"""
         pass
@@ -532,7 +560,7 @@ class IFitWorker:
 
     def load_dir(self, spec_dir=None, prompt=True, plot=True):
         """Load spectrum directory
-        :param spec_dir str     If provided this is the path to the spectra directory. propmt is ignored if spec_dir is
+        :param spec_dir str     If provided this is the path to the spectra directory. prompt is ignored if spec_dir is
                                 specified.
         :param: prompt  bool    If true, a dialogue box is opened to request directory load. Else, self.spec_dir is used
         :param: plot    bool    If true, the first spectra are plotted in the GUI"""
@@ -567,7 +595,13 @@ class IFitWorker:
         if len(self.spec_dict['dark']) > 0:
             ss_id = self.spec_specs.file_ss.replace('{}', '')
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
-            self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
+
+            # Try to find dark spectrum in current directory - if we can't, we revert to set dark directory
+            self.dark_spec = self.find_dark_spectrum(self.spec_dir, ss)
+            if self.dark_spec is None:
+                self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
+                if self.dark_spec is None:
+                    print('No dark spectrum could be found in the current spectrum directory or current dark directory')
 
         # Update plots if requested
         if plot:
@@ -887,6 +921,10 @@ class IFitWorker:
 
     def save_results(self, pathname=None, start_time=None, end_time=None, save_all=False):
         """Saves doas results"""
+        if len(self.results) < 1:
+            print('No DOAS results to save')
+            return
+
         # Extract data from specific index if we are given a start time
         if start_time is not None:
             idx_start = np.argmin(np.abs(self.results.index - start_time))
@@ -895,7 +933,7 @@ class IFitWorker:
                 idx_start = 0
             else:
                 # Go back to the last hour (as data will already be saved up to there)
-                current_time = self.results[-1]
+                current_time = self.results.index[-1]
                 if current_time.minute == 0 and current_time.second == 0:
                     new_hour = current_time.hour - 1
                     start_time == current_time.replace(hour=new_hour)
@@ -1026,62 +1064,82 @@ class IFitWorker:
                     self.save_results(save_all=True)
                 break
 
-            print('IFitWorker: processing spectrum: {}'.format(pathname))
-            # Extract filename and create datetime object of spectrum time
-            working_dir, filename = os.path.split(pathname)
-            self.spec_dir = working_dir     # Update wokring directory to where most recent file has come from
-            self.spec_time = self.get_spec_time(filename)
+            # TODO GEt file type, and set it correctly dependent on file type - if it's dark or clear we don't want to
+            # TODO process the spectrum, we just want to set it as our dark/clear spectrum and update that plot
+            spec_type = self.get_spec_type(pathname)
 
-            # Extract shutter speed
-            ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
-            ss = int(ss_full_str.replace(ss_str, ''))
+            if spec_type == self.spec_specs.file_type['meas'] or spec_type == self.spec_specs.file_type['test'] or \
+                    self.spec_specs.file_type['cal'] in spec_type:
+                print('IFitWorker: processing spectrum: {}'.format(pathname))
+                # Extract filename and create datetime object of spectrum time
+                working_dir, filename = os.path.split(pathname)
+                self.spec_dir = working_dir     # Update working directory to where most recent file has come from
+                self.spec_time = self.get_spec_time(filename)
 
-            # Find dark spectrum with same shutter speed
-            self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
+                # Extract shutter speed
+                ss_full_str = filename.split('_')[self.spec_specs.file_ss_loc]
+                ss = int(ss_full_str.replace(ss_str, ''))
 
-            # Load spectrum
-            self.wavelengths, self.plume_spec_raw = load_spectrum(pathname)
+                # Find dark spectrum with same shutter speed
+                self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
-            # Update spectra as soon as we have acquired them (don't wait to process as this may take time)
-            if self.fig_spec is not None:
+                # Load spectrum
+                self.wavelengths, self.plume_spec_raw = load_spectrum(pathname)
+
+                # Update spectra as soon as we have acquired them (don't wait to process as this may take time)
+                if self.fig_spec is not None:
+                    self.fig_spec.update_dark()
+                    self.fig_spec.update_plume()
+
+                time_1 = time.time()
+                self.process_doas()
+                print('IFit Worker: Time taken to process {}: {}'.format(pathname, time.time() - time_1))
+
+                # Gather all relevant information and spectra and pass it to PyplisWorker
+                processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
+                                  'time': self.spec_time,
+                                  'filename': pathname,             # Filename of processed spectrum
+                                  'dark': self.dark_spec,           # Dark spectrum used (raw)
+                                  'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
+                                  'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
+                                  'abs': self.abs_spec_species,     # Absorption spectrum
+                                  'ref': self.ref_spec_fit,         # Reference spectra (scaled)
+                                  'std_err': self.std_err,          # Standard error of fit
+                                  'LDF': self.ldf_best,              # Light dilution factor
+                                  'column_density': self.column_density}    # Column density
+
+                # Update results object
+                self.add_doas_results(processed_dict)
+
+                # Pass data dictionary to PyplisWorker queue (might not need to do this if I hold all the data here
+                if self.processing_in_thread:
+                    self.q_doas.put(processed_dict)
+
+                # Update doas plot
+                if self.fig_doas is not None:
+                    self.fig_doas.update_plot()
+                if self.fig_series is not None:
+                    self.fig_series.update_plot()
+
+                # Save all results if we are on the 0 or 30th minute of the hour
+                if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
+                    self.save_results(end_time=self.spec_time)
+
+                print('Processed file: {}'.format(filename))
+
+            elif spec_type == self.spec_specs.file_type['dark']:
+                print('IFitWorker: got dark spectrum: {}'.format(pathname))
+                # If dark spectrum, we load it into
+                self.load_dark_spec(pathname)
                 self.fig_spec.update_dark()
-                self.fig_spec.update_plume()
+            elif spec_type == self.spec_specs.file_type['clear']:
+                print('IFitWorker: got dark spectrum: {}'.format(pathname))
+                # If dark spectrum, we load it into
+                self.load_clear_spec(pathname)
+                self.fig_spec.update_clear()
+            else:
+                print('IFitWorker: spectrum type not recognised: {}'.format(pathname))
 
-            time_1 = time.time()
-            self.process_doas()
-            print('IFit Worker: Time taken to process {}: {}'.format(pathname, time.time() - time_1))
-
-            # Gather all relevant information and spectra and pass it to PyplisWorker
-            processed_dict = {'processed': True,             # Flag whether this is a complete, processed dictionary
-                              'time': self.spec_time,
-                              'filename': pathname,             # Filename of processed spectrum
-                              'dark': self.dark_spec,           # Dark spectrum used (raw)
-                              'clear': self.clear_spec_raw,     # Clear spectrum used (raw)
-                              'plume': self.plume_spec_raw,     # Plume spectrum used (raw)
-                              'abs': self.abs_spec_species,     # Absorption spectrum
-                              'ref': self.ref_spec_fit,         # Reference spectra (scaled)
-                              'std_err': self.std_err,          # Standard error of fit
-                              'LDF': self.ldf_best,              # Light dilution factor
-                              'column_density': self.column_density}    # Column density
-
-            # Update results object
-            self.add_doas_results(processed_dict)
-
-            # Pass data dictionary to PyplisWorker queue (might not need to do this if I hold all the data here
-            if self.processing_in_thread:
-                self.q_doas.put(processed_dict)
-
-            # Update doas plot
-            if self.fig_doas is not None:
-                self.fig_doas.update_plot()
-            if self.fig_series is not None:
-                self.fig_series.update_plot()
-
-            # Save all results if we are on the 0 or 30th minute of the hour
-            if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
-                self.save_results(end_time=self.spec_time)
-
-            print('Processed file: {}'.format(filename))
 
     def start_watching(self, directory, recursive=True):
         """

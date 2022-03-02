@@ -916,6 +916,10 @@ class BasicAcqHandler:
             except ConnectionError:
                 print('FTP client failed. Will not be able to transfer acquired data back to host machine')
 
+        # Bring frame to front
+        self.frame.attributes('-topmost', 1)
+        self.frame.attributes('-topmost', 0)
+
     @property
     def ss_A(self):
         return self._ss_A.get()
@@ -999,8 +1003,8 @@ class BasicAcqHandler:
         # Setup directories depending on the acquisition type
         if acq_type == self.spec_specs.file_type['test']:
             self.spec_dir.set_test_dir()
-        elif acq_type == self.spec_specs.file_type['dark']:
-            self.spec_dir.set_dark_dir()
+        elif acq_type == self.spec_specs.file_type['dark'] or acq_type == self.spec_specs.file_type['clear']:
+            self.spec_dir.set_cal_dir(new=False)
 
         elif acq_type == self.spec_specs.file_type['meas']:
             if self.in_spec_seq:

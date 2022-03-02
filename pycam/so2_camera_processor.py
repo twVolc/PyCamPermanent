@@ -367,6 +367,20 @@ class PyplisWorker:
 
         return img_time
 
+    def get_img_type(self, filename):
+        """
+        Gets image type from filename
+        :param filename:
+        :return img_time:
+        """
+        # Make sure filename only contains file and not larger pathname, and remove extension
+        filename = filename.split('\\')[-1].split('/')[-1].split('.')[0]
+
+        # Extract time string from filename
+        type_str = filename.split('_')[self.cam_specs.file_type_loc]
+
+        return type_str
+
     def get_img_list(self):
         """
         Gets image list and splits it into image pairs (on/off), it flags if there are missing pairs
@@ -2858,14 +2872,16 @@ class PyplisWorker:
             # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
             # So we finalise processing and then continue (TODO check this is ok)
             img_time = self.get_img_time(img_path_A)
-            if not self.first_image and self.img_A.meta['start_acq'].day != img_time.day:
-                print('New image comes from a different day. Finalising previous day of processing.')
-                self.finalise_processing(save_doas=True)
-            # Every 30 minutes (defined by self.save_freq) we dave emission rate data, but don't save doas results here,
-            # Let doas_worker define when doas_results are saved, since DOAS times may not be exactly in time with
-            # image times but we want to save doas data exactly on the hour and 30 minute marks
-            elif img_time.minute == 0 and img_time.second == 0:
-                save_emission_rates_as_txt(self.processed_dir, self.results, save_all=False)
+            img_type = self.get_img_type(img_path_A)
+            if img_type == self.cam_specs.file_type['meas']:
+                if not self.first_image and self.img_A.meta['start_acq'].day != img_time.day:
+                    print('New image comes from a different day. Finalising previous day of processing.')
+                    self.finalise_processing(save_doas=True)
+                # Every 30 minutes (defined by self.save_freq) we dave emission rate data, but don't save doas results here,
+                # Let doas_worker define when doas_results are saved, since DOAS times may not be exactly in time with
+                # image times but we want to save doas data exactly on the hour and 30 minute marks
+                elif img_time.minute == 0 and img_time.second == 0:
+                    save_emission_rates_as_txt(self.processed_dir, self.results, save_all=False)
 
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
