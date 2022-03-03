@@ -445,6 +445,7 @@ class FTPClient:
 
     def watch_dir(self, lock='.lock', new_only=False):
         """Public access thread starter for _watch_dir"""
+        print('FTP: Start watching directory')
         if not self.test_connection():
             raise ConnectionError
 
@@ -533,6 +534,7 @@ class FTPClient:
 
     def stop_watch(self):
         """Stops FTP file transfer"""
+        print('FTP: Stop watching directory')
         if self.watching_dir:
             self.watch_q.put(1)
 

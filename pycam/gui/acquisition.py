@@ -907,10 +907,8 @@ class BasicAcqHandler:
         # Start FTP client watching
         if cfg.indicator.connected:
             if cfg.ftp_client.watching_dir:
-                print('Stop watching directory')
                 cfg.ftp_client.stop_watch()
             time.sleep(5)
-            print('Start watching directory')
             try:
                 cfg.ftp_client.watch_dir(new_only=True)
             except ConnectionError:

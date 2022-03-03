@@ -1049,12 +1049,14 @@ class IFitWorker:
             processing a single directory. May always want continuous save though, so think about if I want this...
         :return:
         """
+        print('IFit worker: Entering new processing loop')
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
         ss_str = self.spec_specs.file_ss.replace('{}', '')
 
         while True:
             # Blocking wait for new file
             pathname = self.q_spec.get(block=True)
+            print('IFit worker processing thread: got new file: {}'.format(pathname))
 
             # Close thread if requested with 'exit' command
             if pathname == self.STOP_FLAG:
@@ -1064,8 +1066,6 @@ class IFitWorker:
                     self.save_results(save_all=True)
                 break
 
-            # TODO GEt file type, and set it correctly dependent on file type - if it's dark or clear we don't want to
-            # TODO process the spectrum, we just want to set it as our dark/clear spectrum and update that plot
             spec_type = self.get_spec_type(pathname)
 
             if spec_type == self.spec_specs.file_type['meas'] or spec_type == self.spec_specs.file_type['test'] or \
@@ -1125,7 +1125,7 @@ class IFitWorker:
                 if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
                     self.save_results(end_time=self.spec_time)
 
-                print('Processed file: {}'.format(filename))
+                print('IFit worker: Processed file: {}'.format(filename))
 
             elif spec_type == self.spec_specs.file_type['dark']:
                 print('IFitWorker: got dark spectrum: {}'.format(pathname))
@@ -1140,37 +1140,39 @@ class IFitWorker:
             else:
                 print('IFitWorker: spectrum type not recognised: {}'.format(pathname))
 
-
     def start_watching(self, directory, recursive=True):
         """
         Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
         Also starts a processing thread, so that the images which arrive can be processed
         """
         if self.watching:
-            print('Already watching for spectra: {}'.format(self.watching_dir))
-            print('Please stop watcher before attempting to start new watch. '
+            print('IFit worker: Already watching for spectra: {}'.format(self.watching_dir))
+            print('IFit worker: Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
         self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
         self.watcher.start()
         self.watching_dir = directory
         self.watching = True
-        print('Watching {} for new spectra'.format(self.watching_dir[-30:]))
+        print('IFit worker: Watching {} for new spectra'.format(self.watching_dir[-30:]))
 
         # Start the processing thread
         self.start_processing_thread()
 
     def stop_watching(self):
         """Stop directory watcher and end processing thread"""
-        if self.watcher is not None:
-            self.watcher.stop()
-            print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
-            self.watching = False
+        if self.watching:
+            if self.watcher is not None:
+                self.watcher.stop()
+                print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+                self.watching = False
 
-            # Stop processing thread when we stop watching the directory
-            self.q_spec.put(self.STOP_FLAG)
+                # Stop processing thread when we stop watching the directory
+                self.q_spec.put(self.STOP_FLAG)
+            else:
+                print('No directory watcher to stop')
         else:
-            print('No directory watcher to stop')
+            print('IFit worker: Watching was already stopped')
 
     def directory_watch_handler(self, pathname, t):
         """Handles new spectra passed from watcher"""
@@ -1183,7 +1185,7 @@ class IFitWorker:
         while os.path.exists(pathname_lock):
             pass
 
-        # print('Directory Watcher ifit: New file found {}'.format(pathname))
+        print('IFit worker: New file found {}'.format(pathname))
         # Pass path to queue
         self.q_spec.put(pathname)
 
