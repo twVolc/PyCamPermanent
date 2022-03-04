@@ -638,8 +638,8 @@ class IFitWorker:
         passed to function.
         :return: dark_spec
         """
-        # Ensure ss is a string
-        ss = str(ss)
+        # Ensure ss is an integer
+        ss = int(ss)
 
         # Fast dictionary look up for preloaded dark spectra
         if ss in self.dark_dict.keys():
@@ -654,7 +654,7 @@ class IFitWorker:
         ss_str = self.spec_specs.file_ss.replace('{}', '')
         ss_list = [int(f.split('_')[self.spec_specs.file_ss_loc].replace(ss_str, '')) for f in dark_list]
 
-        ss_idx = [i for i, x in enumerate(ss_list) if x == int(ss)]
+        ss_idx = [i for i, x in enumerate(ss_list) if x == ss]
         ss_spectra = [dark_list[i] for i in ss_idx]
 
         if len(ss_spectra) < 1:
