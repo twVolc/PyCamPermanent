@@ -1,6 +1,6 @@
 # Crontab schedule file written by pycam
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-28 11 * * * python3 /home/pi/pycam/scripts/start_instrument.py
+28 08 * * * python3 /home/pi/pycam/scripts/start_instrument.py
 10 17 * * * python3 /home/pi/pycam/scripts/stop_instrument.py
 00 20 * * * python3 /home/pi/pycam/scripts/pycam_dark_capture.py
 */30 * * * * /home/pi/pycam/scripts/log_temperature.sh

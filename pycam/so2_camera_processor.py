@@ -1694,7 +1694,7 @@ class PyplisWorker:
 
         return tau_A, tau_B, tau_B_warped
 
-    def generate_optical_depth(self, plot=True, plot_bg=True, run_cal=False, img_path_A=None):
+    def generate_optical_depth(self, plot=True, plot_bg=True, run_cal=False, img_path_A=None, overwrite=False):
         """
         Performs the full catalogue of image procesing on a single image pair to generate optical depth image and
         calibrate it if a calibration is present or calibration is requested
@@ -1714,8 +1714,9 @@ class PyplisWorker:
         # TODO I think the above discussion doesn't actually matter - we shouldn't ever change processing settings half
         # TODO way through processing, so we can probably always make this update and when in a proper processing loop
         # TODO it will work as expected
-        self.img_tau_prev = self.img_tau
-        self.img_cal_prev = self.img_cal
+        if not overwrite:
+            self.img_tau_prev = self.img_tau
+            self.img_cal_prev = self.img_cal
 
         # Model sky backgrounds and sets self.tau_A and self.tau_B attributes
         self.tau_A, self.tau_B, self.tau_B_warped = self.model_background(plot=plot_bg)
@@ -2601,7 +2602,7 @@ class PyplisWorker:
         return self.results
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False,
-                     cross_corr=False):
+                     cross_corr=False, overwrite=False):
         """
         Processes full image pair when passed images
 
@@ -2614,6 +2615,8 @@ class PyplisWorker:
                                 buffer size to perform a DOAS calibration
         :param cross_corr: bool If True, cross-correlation plume speed estimation is forced - if flow_glob in
                                 velo_modes is True.
+        :param overwrite:  bool If True, this process will overwrite the previousoptical depth image rather than making
+                                a new one. This is just used if image registration is being changed.
         :return:
         """
 
@@ -2644,7 +2647,8 @@ class PyplisWorker:
                 plot_img = True
         else:
             plot_img = False
-        self.generate_optical_depth(plot=plot_img, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A)
+        self.generate_optical_depth(plot=plot_img, plot_bg=plot_bg, run_cal=force_cal, img_path_A=img_path_A,
+                                    overwrite=overwrite)
 
         # Wind speed and subsequent flux calculation if we aren't in the first image of a sequence
         if not self.first_image:

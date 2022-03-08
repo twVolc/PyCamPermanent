@@ -8,6 +8,7 @@ from pycam.cfg import pyplis_worker
 
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -518,7 +519,8 @@ class ImageRegistrationFrame:
                 kwargs['coord_A'] = np.array(self.saved_coordinates_A)
                 kwargs['coord_B'] = np.array(self.saved_coordinates_B)
             else:
-                print('To update image registration select the same number of control points for each image, and save.')
+                messagebox.showinfo('Control point registration.',
+                    'To update image registration select the same number of control points for each image, and save.')
 
         # CV warp
         elif meth == 2:
@@ -533,12 +535,24 @@ class ImageRegistrationFrame:
         self.pyplis_worker.register_image(**kwargs)
 
         # # Now update off-band image
-        # pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
+        # self.pyplis_worker.fig_B.update_plot(np.array(pyplis_worker.img_B.img_warped, dtype=np.uint16),
         #                                 pyplis_worker.img_B.pathname)
-        #
-        # # Run processing with the new image warp - this will generate the absorbance image and update it
-        # pyplis_worker.process_pair(img_path_A=None, img_path_B=None, plot=True, plot_bg=None)
+        self.pyplis_worker.fig_B.update_plot()
+
+        if not self.pyplis_worker.watching:
+            # # Run processing with the new image warp - this will generate the absorbance image and update it
+            self.pyplis_worker.process_pair(img_path_A=None, img_path_B=None, plot=True, plot_bg=None, overwrite=True)
+            messagebox.showinfo("Image registration changed",
+                                'Note that the newly processed pair will not include changes to optical flow '
+                                'since previous images have not been updated. Please reload the processing directory to'
+                                'see changes to all images.')
+        else:
+            messagebox.showinfo("Image registration changed",
+                                'The current image pair have undergone a change of registration. However,'
+                                'since a processing thread is currently operating, this image pair has not been '
+                                'reprocessed with the new registration. Subsequent images will be fully processed with'
+                                ' this registration applied.')
 
         # Just rerun loading of sequence, which will mean that optical flow is run too (this requires updating
         # img_tau_prev as well as img_tau, which register_img() won't do on its own)
-        self.pyplis_worker.load_sequence(img_dir=self.pyplis_worker.img_dir, plot_bg=False)
+        # self.pyplis_worker.load_sequence(img_dir=self.pyplis_worker.img_dir, plot_bg=False)

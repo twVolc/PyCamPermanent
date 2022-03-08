@@ -1059,6 +1059,7 @@ class BasicAcqHandler:
 
             # Run calibration on directory - changing the directory automatically runs calibration
             self.pyplis_worker.cell_cal_dir = self.img_dir.cal_dir
+            self.pyplis_worker.fig_cell_cal.generate_frame(update_plot=True)
 
         # If we aren't in a calibration we are just entering into on
         else:
