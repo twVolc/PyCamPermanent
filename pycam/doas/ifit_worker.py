@@ -942,14 +942,14 @@ class IFitWorker:
                 idx_start = np.argmin(np.abs(self.results.index - start_time))
 
         if end_time is not None:
-            idx_end = np.argmin(np.abs(self.results.index - end_time))
+            idx_end = np.argmin(np.abs(self.results.index - end_time)) + 1
         else:
-            idx_end = -1
+            idx_end = None      # -1 doesn't work as it cuts the last item out - use None to go right to end of list
 
         # Generate pathname
         if pathname is None:
             start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
-            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt)
+            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
             filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
             pathname = os.path.join(self.spec_dir, filename)
 

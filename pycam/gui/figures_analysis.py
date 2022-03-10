@@ -2395,8 +2395,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Background img B directory
         label = ttk.Label(path_frame, text='Off-band background:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.bg_A_label = ttk.Label(path_frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
-        self.bg_A_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        self.bg_B_label = ttk.Label(path_frame, text=self.bg_B_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.bg_B_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose file', command=lambda: self.get_bg_file('B'))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1

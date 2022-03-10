@@ -180,6 +180,8 @@ class PyplisWorker:
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
         self.remove_doas_mins = 120
+        self.min_doas_points = 15               # Minimum number of doas points before FOV calibration will be performed
+        self.min_num_imgs = 15                  # Minimum number of images before FOV calibration will be performed
         self.doas_fov_recal = True              # If True DOAS FOV is recalibrated every doas_recal_num images
         self.doas_fov_recal_mins = 120
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
@@ -433,7 +435,7 @@ class PyplisWorker:
         self.img_buff = [{'directory': '',
                           'file_A': '',
                           'file_B': '',
-                          'time': '',
+                          'time': datetime.datetime.now() + datetime.timedelta(hours=72),   # Make sure time is always a time object, as we need to compare this to other time objects. So just set this way in the future
                           'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
                                                           self.cam_specs.pix_num_x], dtype=np.float32)),
                           'opt_flow': None  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
@@ -1917,18 +1919,32 @@ class PyplisWorker:
             dt = datetime.timedelta(minutes=self.doas_fov_recal_mins)
             oldest_time = img_time - dt
             if oldest_time >= self.doas_last_fov_cal or force_fov_cal:
-                last_cal = copy.deepcopy(self.doas_last_fov_cal)    # For knowing when to update buffer from
-                stack = self.make_img_stack(time_start=oldest_time)
-                # TODO =========================================
-                # TODO For testing!!!
-                # self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
-                #                                                               stds=self.test_doas_stds)
-                # TODO ==========================================
-                self.doas_fov_search(stack, self.doas_worker.results)
+                # Check we have some DOAS points
+                if len(self.doas_worker.results) < self.min_doas_points:
+                    print('Require at least {} DOAS points to perform FOV CD-tau calibration. '
+                          'Got only {}'.format(self.min_doas_points, len(self.doas_worker.results)))
+                    return
 
-                # Once we have a calibration we need to go back through buffer and get emission rates
-                # Overwrite any emission rates since last calibration, as they require new FOV calibration
-                self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+                try:
+                    last_cal = copy.deepcopy(self.doas_last_fov_cal)    # For knowing when to update buffer from
+                    stack = self.make_img_stack(time_start=oldest_time)
+                    if stack.num_of_imgs < self.min_num_imgs:
+                        print('Require at least {} images to perform FOV CD-tau calibration. '
+                              'Got only {}'.format(self.min_num_imgs, stack.num_of_imgs))
+                        return
+                    # TODO =========================================
+                    # TODO For testing!!!
+                    # self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                    #                                                               stds=self.test_doas_stds)
+                    # TODO ==========================================
+
+                    self.doas_fov_search(stack, self.doas_worker.results)
+
+                    # Once we have a calibration we need to go back through buffer and get emission rates
+                    # Overwrite any emission rates since last calibration, as they require new FOV calibration
+                    self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+                except Exception as e:
+                    print('Error when attempting to update DOAS calibration: {}'.format(e))
 
         # If we don't update fov search then we just update current cal object with new image (as long as we have
         # a doas calibration)
@@ -2751,18 +2767,21 @@ class PyplisWorker:
 
         self.fig_series.update_plot()
 
-    def finalise_processing(self, save_doas=True):
+    def finalise_processing(self, save_doas=True, reset=True):
         """Finishes all processing requirements (mainly saving info)"""
         # TODO need an option to save every 30 minutes or something - this is already setup in self._processing, but
         # TODO we need to clip self.results so that it isn't all saved every 30 minutes and only the last 30 minutes
         # TODO of data are saved each time
+        print('Finalising processing...')
         # Save the final emission rates
         save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
         if save_doas:
             self.doas_worker.save_results()
 
-        self.doas_worker.reset_self()
-        self.reset_self(reset_plot=False)       # Reset self but don't reset plot as may want to keep it visible
+        # After processing a loaded sequence we don't want to lose data and reset everything
+        if reset:
+            self.doas_worker.reset_self()
+            self.reset_self(reset_plot=False)       # Reset self but don't reset plot as may want to keep it visible
 
         # TODO perhaps do things like calculate average emission rate (this will be a daily average when used in
         # TODO the continuous monitoring mode) save to a file, etc
@@ -2831,8 +2850,8 @@ class PyplisWorker:
             # Wait for defined amount of time to allow plotting of data without freezing up
             # time.sleep(self.wait_time)
 
-        # Run final processing work
-        self.finalise_processing()
+        # Run final processing work - but don't save DOAS as this will have already been saved when it was processed
+        self.finalise_processing(save_doas=False, reset=False)
 
         proc_time = time.time() - time_proc
         print('Processing time: {:.1f}'.format(proc_time))
