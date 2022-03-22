@@ -453,9 +453,7 @@ class SpecSpecs:
         self.saturation_pixels = 2  # Number of pixels to check
 
         # Predefined list of integration times for automatic exposure adjustment
-        self.int_list = np.concatenate((np.arange(0.1, 0.5, 0.05),
-                                        np.arange(0.5, 1, 0.1),
-                                        np.arange(1, 5, 0.5),
+        self.int_list = np.concatenate((np.arange(1, 5, 0.5),
                                         np.arange(5, 10, 1),
                                         np.arange(10, 50, 5),
                                         np.arange(50, 100, 10),

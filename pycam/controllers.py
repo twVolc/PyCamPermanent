@@ -141,6 +141,9 @@ class Camera(CameraSpecs):
         # Wait for camera exposure speed to settle on new value
         self.exposure_speed = self.check_exposure_speed()
 
+        # Set ss_idx
+        self.ss_idx = np.argmin(np.absolute(ss - self.ss_list))
+
     def set_cam_framerate(self):
         """Determines appropriate framerate based on current shutter speed (framerate limits shutter speed so must be
         set appropriately)"""

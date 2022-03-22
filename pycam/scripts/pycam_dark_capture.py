@@ -82,10 +82,10 @@ for ip in pi_ip:
     time.sleep(5)
 
     # Run core camera script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script])
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script] + ' 0' + ' > pycam_camera.out 2>&1')
 
     # Run core spectrometer script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script])
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script] + ' 0' + ' > pycam_spectrometer.out 2>&1')
 
     # Close session
     # If other changes are needed later this line can be removed and clients should still be accessible in list
@@ -105,7 +105,7 @@ for script in local_scripts:
 time.sleep(5)
 
 # Run camera script on local machine in the background
-subprocess.Popen(['python3', config[ConfigInfo.cam_script], '&'])
+subprocess.Popen(['python3', config[ConfigInfo.cam_script], '0', '&'])
 # ======================================================================================================================
 
 # ======================================================================================================================
@@ -122,7 +122,9 @@ sock_serv_comm.open_socket(bind=False)
 # ------------------
 # Get first 3 connections for transfer which should be the 2 cameras and 1 spectrometer
 for i in range(3):
+    print('Getting data transfer connection: {}'.format(i))
     connection = sock_serv_transfer.acc_connection()
+    print('Got data transfer connection: {}'.format(i))
 
 # Use recv_save_imgs() in sockets to automate receiving and saving images from 2 cameras
 save_connections = dict()
@@ -175,7 +177,7 @@ for idn in ['CM2', 'SPC']:
     comms_connections[pi_ip[0] + '_{}'.format(idn)] = CommConnection(sock_serv_comm, acc_conn=False)
 
     # Set connection to be one of the camera IP connections
-    comms_connections[pi_ip[0] + '_{}'.format(idn)].connection = sock_serv_comm.conn_dict[(ip, idn)][0]
+    comms_connections[pi_ip[0] + '_{}'.format(idn)].connection = sock_serv_comm.conn_dict[(pi_ip[0], idn)][0]
 
     # Start communications thread
     comms_connections[pi_ip[0] + '_{}'.format(idn)].thread_func()
@@ -204,7 +206,7 @@ sock_serv_comm.send_to_all(dark_capt_cmd)
 # Loop through each q and receive the decoded message which should represent a finished dark sequence
 for conn in comms_connections:
     while True:
-        resp = conn.q.get(block=True)
+        resp = comms_connections[conn].q.get(block=True)
         # Either camera of spectrometer finish must be in the command, then we break to go to next conn.
         if 'DFC' in resp:
             if resp['DFC']:
@@ -223,9 +225,21 @@ for server in sock_dict:
     sock_dict[server].close_socket()
 
 # Wait for connections to finish, then we can close all
+timeout = 10
+time_start = time.time()
 for conn in save_connections:
     while save_connections[conn].working or save_connections[conn].accepting:
-        pass
+        # Add a timeout so if we are waiting for too long we just close things without waiting
+        time_wait = time.time() - time_start
+        if time_wait > timeout:
+            print(' Reached timeout limit waiting for shutdown')
+            break
+
+time_start = time.time()
 for conn in comms_connections:
     while comms_connections[conn].working or comms_connections[conn].accepting:
-        pass
+        # Add a timeout so if we are waiting for too long we just close things without waiting
+        time_wait = time.time() - time_start
+        if time_wait > timeout:
+            print(' Reached timeout limit waiting for shutdown')
+            break

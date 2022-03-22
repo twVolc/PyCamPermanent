@@ -11,7 +11,7 @@ from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_doas import CalibrationWindow
-from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec, ftp_client, config, recv_comms
+from pycam.gui.cfg import gui_setts, current_dir_img, current_dir_spec, ftp_client,ftp_client_2, config, recv_comms
 from pycam.gui.acquisition import BasicAcqHandler, CommHandler
 from pycam.gui.network import InstrumentConfiguration, GUICommRecvHandler
 from pycam.gui.logs import LogTemperature
@@ -49,7 +49,7 @@ basic_acq_handler = BasicAcqHandler(pyplis_worker, doas_worker, img_dir=current_
                                     cell_cal_frame=cell_calib, automated_acq_handler=automated_acq_handler)
 
 # Instrument configuration
-instrument_cfg = InstrumentConfiguration(ftp_client, config)
+instrument_cfg = InstrumentConfiguration(ftp_client, config, ftp_2=ftp_client_2)
 
 # Communication receiver handling
 comm_recv_handler = GUICommRecvHandler(recv_comm=recv_comms)

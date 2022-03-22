@@ -257,8 +257,9 @@ class InstrumentConfiguration:
     7. Update messagebox to display settings after they have been updated
     8. Add line to script_schedule.txt so that it can be read by this class on first startup
     """
-    def __init__(self, ftp, cfg, main_gui=None):
+    def __init__(self, ftp, cfg, main_gui=None, ftp_2=None):
         self.ftp = ftp
+        self.ftp_2 = ftp_2
         self.time_fmt = '{}:{}'
         self.frame = None
         self.in_frame = False
@@ -560,6 +561,19 @@ class InstrumentConfiguration:
         print(std_out.readlines())
         # print(std_err.readlines())
         close_ssh(ssh_cli)
+
+        # Update second pi if witty pi is used for second Pi
+        if self.ftp_2 is not None:
+            # Transfer file to instrument
+            self.ftp_2.move_file_to_instrument(FileLocator.SCHEDULE_FILE, FileLocator.SCHEDULE_FILE_PI)
+
+            # Open ssh and run wittypi update script
+            ssh_cli_2 = open_ssh(self.ftp_2.host_ip)
+
+            std_in, std_out, std_err = ssh_cmd(ssh_cli_2, '(cd /home/pi/wittypi; sudo ./runScript.sh)', background=False)
+            print(std_out.readlines())
+            # print(std_err.readlines())
+            close_ssh(ssh_cli_2)
 
         if not self.use_second_shutdown:
             a = tk.messagebox.showinfo('Instrument update',

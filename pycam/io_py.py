@@ -429,7 +429,7 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
             f.write('# on_time={}\n'.format(time_on.strftime('%H:%M')))
             f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
             f.write('# on_time_2={}\n'.format(time_on_2.strftime('%H:%M')))
-            f.write('# off_time_2={}\n'.format(time_on_2.strftime('%H:%M')))
+            f.write('# off_time_2={}\n'.format(time_off_2.strftime('%H:%M')))
             f.write('BEGIN 2020-01-01 {}\n'.format(time_start_1.strftime(time_fmt)))
             f.write('END 2038-01-01 12:00:00\n')
             f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on_1, num_mins_on_1))

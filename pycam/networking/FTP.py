@@ -344,6 +344,7 @@ class FTPClient:
         # Test FTP connection
         if not self.test_connection():
             print('Cannot establish FTP connection. File cannot be transferred')
+            return
 
         # Move file to location
         with open(local_file, 'rb') as f:
