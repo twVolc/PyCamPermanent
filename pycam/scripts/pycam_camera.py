@@ -31,8 +31,14 @@ cam = Camera(band=config['band'], filename=FileLocator.CONFIG_CAM)
 # -----------------------------------------------------------------
 # Setup shutdown procedure
 atexit.register(cam.close_camera)
-# We always must save the current camera settings (this runs before cam.close_camera as it is added to register second
-atexit.register(cam.save_specs)
+
+# If second flag is a 0 we don't add the save specs to the register - pycam_dark_capture.py doesn't want specs saved
+if len(sys.argv) > 2:
+    if sys.argv[2] != '0':
+        # We always must save the current camera settings (this runs before cam.close_camera as it is added to register second
+        atexit.register(cam.save_specs)
+else:
+    atexit.register(cam.save_specs)
 # ------------------------------------------------------------------
 
 # Initialise camera (may need to set shutter speed first?)
@@ -53,6 +59,8 @@ if len(sys.argv) > 1:
         print('pycam_camera.py: Continuous capture not started')
     else:
         print('pycam_camera.py: Unrecognised command line argument passed to script on execution')
+
+
 
 # ------------------------------------------------------------------
 

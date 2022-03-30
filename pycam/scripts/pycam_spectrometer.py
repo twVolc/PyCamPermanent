@@ -32,15 +32,21 @@ except SpectrometerConnectionError:
     print('No spectrometer detected, please connect spectrometer and restart program')
     sys.exit()
 
-# On program shutdown we always must save the current spectrometer settings
-atexit.register(spec.save_specs)
+# If second flag is a 0 we don't add the save specs to the register - pycam_dark_capture.py doesn't want specs saved
+if len(sys.argv) > 2:
+    if sys.argv[2] != '0':
+        # On program shutdown we always must save the current spectrometer settings
+        atexit.register(spec.save_specs)
+else:
+    atexit.register(spec.save_specs)
 
 if spec.spec is not None:
     # Setup thread for controlling spectrometer capture
     spec.interactive_capture()
 
-    if len(sys.argv) - 1 == 1:
-        if sys.argv[-1] == '1':
+    # if len(sys.argv) - 1 == 1:
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '1':
             # Start up continuous capture straight away
             # spec.int_time = 100         # Always start with a standard integration time and auto_int
             # spec.auto_int = True

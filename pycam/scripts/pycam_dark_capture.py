@@ -81,11 +81,11 @@ for ip in pi_ip:
     # Sleep so the kill_process.py has time to finish, as we don't want to kill the new camera script
     time.sleep(5)
 
-    # Run core camera script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script] + ' 0' + ' > pycam_camera.out 2>&1')
+    # Run core camera script - second 0 is so settings aren't saved by instrument on closing
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.cam_script] + ' 0 0' + ' > pycam_camera.out 2>&1')
 
     # Run core spectrometer script
-    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script] + ' 0' + ' > pycam_spectrometer.out 2>&1')
+    ssh_cmd(ssh_clients[-1], 'python3 ' + config[ConfigInfo.spec_script] + ' 0 0' + ' > pycam_spectrometer.out 2>&1')
 
     # Close session
     # If other changes are needed later this line can be removed and clients should still be accessible in list
@@ -105,7 +105,7 @@ for script in local_scripts:
 time.sleep(5)
 
 # Run camera script on local machine in the background
-subprocess.Popen(['python3', config[ConfigInfo.cam_script], '0', '&'])
+subprocess.Popen(['python3', config[ConfigInfo.cam_script], '0', '0', '&'])
 # ======================================================================================================================
 
 # ======================================================================================================================

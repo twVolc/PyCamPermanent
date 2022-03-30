@@ -11,7 +11,7 @@ sys.path.append('/home/pi/')
 
 from pycam.utils import read_file
 from pycam.setupclasses import FileLocator, ConfigInfo
-from pycam.networking.sockets import SocketClient
+from pycam.networking.sockets import SocketClient, read_network_file
 import subprocess
 import os
 import socket
@@ -51,9 +51,8 @@ def close_pycam(ip, port):
 
 
 # Read configuration file which contains important information for various things
+host_ip, port = read_network_file(FileLocator.NET_EXT_FILE)
 config = read_file(FileLocator.CONFIG)
-host_ip = config[ConfigInfo.host_ip]
-port = int(config[ConfigInfo.port_ext])
 
 # Start_script
 start_script = config[ConfigInfo.master_script]

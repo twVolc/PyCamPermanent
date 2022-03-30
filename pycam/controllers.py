@@ -623,6 +623,8 @@ class Spectrometer(SpecSpecs):
 
     def get_spec(self):
         """Acquire spectrum from spectrometer"""
+        # TODO I realise I'm currently not discarding the first spectrum - this may mean integration time doesn't always
+        # TODO work perfectly
         # Set array for coadding spectra
         coadded_spectrum = np.zeros(len(self.wavelengths))
 

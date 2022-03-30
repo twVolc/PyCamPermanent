@@ -327,6 +327,8 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
     """
     time_fmt = '%H:%M:%S'
     time_on_str = time_on.strftime(time_fmt)
+    date_now = datetime.datetime.now()
+    date_now_str = date_now.strftime('%Y-%m-%d')
 
     if time_off_2 is None or time_on_2 is None:
         if time_off - time_on > datetime.timedelta(0):
@@ -360,7 +362,7 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
             f.write('# on_time={}\n'.format(time_on.strftime('%H:%M')))
             f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
 
-            f.write('BEGIN 2020-01-01 {}\n'.format(time_on_str))
+            f.write('BEGIN {} {}\n'.format(date_now_str, time_on_str))
             f.write('END 2038-01-01 12:00:00\n')
             f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on, num_mins_on))
             f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off, num_mins_off))
@@ -430,7 +432,7 @@ def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_
             f.write('# off_time={}\n'.format(time_off.strftime('%H:%M')))
             f.write('# on_time_2={}\n'.format(time_on_2.strftime('%H:%M')))
             f.write('# off_time_2={}\n'.format(time_off_2.strftime('%H:%M')))
-            f.write('BEGIN 2020-01-01 {}\n'.format(time_start_1.strftime(time_fmt)))
+            f.write('BEGIN {} {}\n'.format(date_now_str, time_start_1.strftime(time_fmt)))
             f.write('END 2038-01-01 12:00:00\n')
             f.write('ON H{:.0f} M{:.0f}\n'.format(num_hours_on_1, num_mins_on_1))
             f.write('OFF H{:.0f} M{:.0f}\n'.format(num_hours_off_1, num_mins_off_1))
