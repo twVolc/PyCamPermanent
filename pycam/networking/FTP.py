@@ -14,6 +14,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
 import pathlib
+import copy
 
 
 class CurrentDirectories:
@@ -283,7 +284,8 @@ class FTPClient:
             self.host_ip = self.config['host_ip']
             self.user = self.config['uname']
             self.pwd = self.config['pwd']
-            self.dir_data_remote = self.config['data_dir']
+            self.dir_data_remote = copy.deepcopy(self.config['data_dir'])
+            print('Directory data remote: {}'.format(self.dir_data_remote))
             self.local_dir = self.config[ConfigInfo.local_data_dir]
             self.dir_img_local = os.path.join(self.local_dir, 'Images/')
             if not os.path.exists(self.dir_img_local):
@@ -555,15 +557,16 @@ class FTPClient:
             self.connection.cwd(self.storage_mount.data_path)
         except BaseException as e:
             messagebox.showerror('Error in data download',
-                                 'The following error was thrown when attempting to find data on SSD: {}\n'
+                                 'The following error was thrown when attempting to find data on SSD ({}): {}\n'
                                  'Please ensure that the device is mounted '
-                                 'on the R-Pi.'.format(e))
+                                 'on the R-Pi.'.format(self.storage_mount.data_path, e))
             return
 
         # List directories
         try:
             dir_list = self.connection.nlst()
             dir_list.sort()
+            print('Getting files from dates: {}'.format(dir_list))
         except ftplib.error_perm as e:
             print(e)
 
@@ -574,6 +577,7 @@ class FTPClient:
                 dir_list.remove(i)
             except ValueError:
                 pass
+        dir_list.sort()
 
         # Create frame tracking download
         frame = tk.Toplevel()
@@ -582,9 +586,15 @@ class FTPClient:
         lab = ttk.Label(frame, text='0% complete')
         lab.grid(row=1, column=0, sticky='nsew')
 
+        frame.update()
+
         # Loop through each directory and download the data
         num_files = 0
         for dir_num, date_dir in enumerate(dir_list):
+            # Set directory
+            current_dir = self.storage_mount.data_path + '/' + date_dir
+            print('Getting data from date: {}'.format(date_dir))
+
             # Change working directory to date directory with data in
             self.connection.cwd(date_dir)
             file_list = self.connection.nlst()
@@ -605,11 +615,12 @@ class FTPClient:
                     continue
                 else:
                     print('Getting file: {}'.format(file))
-                    local_file, local_date_dir = self.get_data(os.path.join(self.dir_data_remote, file))
+                    local_file, local_date_dir = self.get_data(current_dir + '/' + file, rm=False)
                     num_files += 1
 
             perc_complete = int((dir_num / len(dir_list)) * 100)
             lab.configure(text='{}% complete'.format(perc_complete))
+            frame.update()
 
             # Change working directory back to starting point
             self.connection.cwd(self.storage_mount.data_path)

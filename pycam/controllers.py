@@ -15,7 +15,7 @@ import numpy as np
 import cv2
 import threading
 
-from .setupclasses import CameraSpecs, SpecSpecs
+from .setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from .utils import format_time
 
 try:
@@ -807,7 +807,11 @@ class Spectrometer(SpecSpecs):
                     # If we aren't using auto_int, check for ss in message to set shutter speed
                 if not self.auto_int:
                     if 'int_time' in mess:
-                        self.int_time = mess['int_time']
+                        try:
+                            self.int_time = mess['int_time']
+                        except Exception as e:
+                            with open(FileLocator.LOG_PATH_PI + 'spectrometer_log.log', 'a') as f:
+                                f.write('{}\n'.format(e))
 
                 if 'framerate' in mess:
                     # We readjust to requested framerate regardless of if auto_int is True or False
@@ -821,35 +825,39 @@ class Spectrometer(SpecSpecs):
             # Get current time
             time_obj = datetime.datetime.now()
 
-            # Only capture an image if we are at the right time
-            if time_obj.second % frame_rep == 0 and time_obj.second != prev_sec:
+            try:
+                # Only capture an image if we are at the right time
+                if time_obj.second % frame_rep == 0 and time_obj.second != prev_sec:
 
-                # Generate time string
-                time_str = format_time(time_obj, self.file_datestr)
+                    # Generate time string
+                    time_str = format_time(time_obj, self.file_datestr)
 
-                # Acquire spectra
-                self.get_spec()
+                    # Acquire spectra
+                    self.get_spec()
 
-                # Generate filename
-                filename = self.generate_filename(time_str, self.file_type['meas'])
+                    # Generate filename
+                    filename = self.generate_filename(time_str, self.file_type['meas'])
 
-                # Add spectrum and filename to queue
-                spec_q.put([filename, self.spectrum])
+                    # Add spectrum and filename to queue
+                    spec_q.put([filename, self.spectrum])
 
-                # Check image saturation and adjust shutter speed if required
-                if self.auto_int:
-                    adj_saturation = self.check_saturation()
-                    if adj_saturation:
-                        # Adjust ss_idx, but if we have gone beyond the indices available in ss_list it will throw an
-                        # idx error, so we catch this and continue with same int if there are no higher/lower options
-                        try:
-                            self.int_time_idx += adj_saturation # Adjusting this property automatically updates self.int_time
-                            # self.int_time = self.int_list[self.int_time_idx]
-                        except IndexError:
-                            pass
+                    # Check image saturation and adjust shutter speed if required
+                    if self.auto_int:
+                        adj_saturation = self.check_saturation()
+                        if adj_saturation:
+                            # Adjust ss_idx, but if we have gone beyond the indices available in ss_list it will throw an
+                            # idx error, so we catch this and continue with same int if there are no higher/lower options
+                            try:
+                                self.int_time_idx += adj_saturation # Adjusting this property automatically updates self.int_time
+                                # self.int_time = self.int_list[self.int_time_idx]
+                            except IndexError:
+                                pass
 
-                # Set seconds value (used as check to prevent 2 images being acquired in same second)
-                prev_sec = time_obj.second
+                    # Set seconds value (used as check to prevent 2 images being acquired in same second)
+                    prev_sec = time_obj.second
+            except Exception as e:
+                with open(FileLocator.LOG_PATH_PI + 'spectrometer_log.log', 'a') as f:
+                    f.write('{}\n'.format(e))
 
     def capture_darks(self):
         """Capture dark images from all shutter speeds in <self.ss_list>"""

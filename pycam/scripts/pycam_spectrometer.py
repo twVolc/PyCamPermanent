@@ -42,8 +42,8 @@ if spec.spec is not None:
     if len(sys.argv) - 1 == 1:
         if sys.argv[-1] == '1':
             # Start up continuous capture straight away
-            spec.int_time = 100         # Always start with a standard integration time and auto_int
-            spec.auto_int = True
+            # spec.int_time = 100         # Always start with a standard integration time and auto_int
+            # spec.auto_int = True
             spec.capture_q.put({'start_cont': True})
             print('pycam_spectrometer.py: Continuous capture started')
         else:
