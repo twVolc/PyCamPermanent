@@ -45,8 +45,9 @@ while stat_dict != stat_dict_on:
             date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             ret = os.system("ping -w 1 {}".format(ip))
             if ret == 0:
-                with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
-                    f.write("{} remote_pi_on.py: {} now turned on\n".format(date_str, ip))
+                pass
+                # with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                #     f.write("{} remote_pi_on.py: {} now turned on\n".format(date_str, ip))
                 stat_dict[ip] = True
             else:
                 with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:

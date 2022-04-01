@@ -35,6 +35,8 @@ def get_storage_usage(img_path):
 
 # Get storage
 storage_kb = get_storage_usage(img_path)
+print('Disk usage: {}'.format(storage_kb))
+print('Disk threshold: {}'.format(threshold_kb))
 
 while storage_kb > threshold_kb:
     file_list = os.listdir(img_path)
@@ -48,7 +50,8 @@ while storage_kb > threshold_kb:
         with open(FileLocator.REMOVED_FILES_LOG_PI, 'a') as f:
             f.write('Data exceeding threshold disk space: {}MB. Removing file: {}\n'.format(threshold, file_path))
     except BaseException as e:
-        f.write('{}\n'.format(e))
+        with open(FileLocator.REMOVED_FILES_LOG_PI, 'a') as f:
+            f.write('{}\n'.format(e))
 
     # Update storage
     storage_kb = get_storage_usage(img_path)
