@@ -425,6 +425,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Main frame for figure and all associated widgets
         self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
 
+        # Next and previous buttons
+        self.prev_butt = tk.Button(self.frame_fig, text='<', command=pyplis_worker.previous_image)
+        self.next_butt = tk.Button(self.frame_fig, text='>', command=pyplis_worker.next_image)
+        self.prev_butt.grid(row=0, column=0, sticky='nsew')
+        self.next_butt.grid(row=0, column=1, sticky='nsew')
+
         # Create figure
         self.fig, self.axes = plt.subplots(2, 2, figsize=self.fig_size, dpi=self.dpi,
                                     gridspec_kw={'height_ratios': [self.h_ratio, 1], 'width_ratios': [self.w_ratio, 1]})
@@ -473,7 +479,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Finalise canvas and gridding
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
         self.img_canvas.draw()
-        self.img_canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
+        self.img_canvas.get_tk_widget().grid(row=1, column=0, columnspan=2, sticky='nsew')
 
         # Bind click event to figure
         self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)

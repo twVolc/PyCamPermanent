@@ -142,6 +142,11 @@ class ImageFigure:
         """Builds image figure using matplotlib"""
         self.fig_frame = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
 
+        self.prev_butt = tk.Button(self.fig_frame, text='<', command=pyplis_worker.previous_image)
+        self.next_butt = tk.Button(self.fig_frame, text='>', command=pyplis_worker.next_image)
+        self.prev_butt.grid(row=0, column=0, sticky='nsew')
+        self.next_butt.grid(row=0, column=1, sticky='nsew')
+
         # Generate figure and axes
         self.fig = plt.Figure(figsize=self.img_fig_size, dpi=self.dpi)
         gs = gridspec.GridSpec(2, 2, width_ratios=[648, 200], height_ratios=[486, 200])
@@ -216,7 +221,7 @@ class ImageFigure:
         self.img_canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
         with self.lock:
             self.img_canvas.draw()
-        self.img_canvas.get_tk_widget().grid(row=0, column=0, sticky='nsew')
+        self.img_canvas.get_tk_widget().grid(row=1, column=0, columnspan=2, sticky='nsew')
 
         # Control point selection binding for GUI start-up state
         self.cp_event_A = self.fig.canvas.mpl_connect('button_press_event', self.cp_select)

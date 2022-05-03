@@ -227,7 +227,7 @@ class FileTransferGUI:
     def disp_images(self, value):
         self._disp_images.set(value)
 
-    def start_transfer(self):
+    def start_transfer(self, new_only=False):
         """Starts automatic image transfer from instrument"""
         if self.disp_images:
             if not self.pyplis_worker.plot_iter and not self.pyplis_worker.display_only:
@@ -237,7 +237,7 @@ class FileTransferGUI:
             self.doas_worker.start_watching(self.spec_dir.root_dir, recursive=True)
 
         try:
-            self.ftp_client.watch_dir()
+            self.ftp_client.watch_dir(new_only=new_only)
         except ConnectionError:
             print('FTP client failed. Cannot transfer data back to host machine')
             self.pyplis_worker.stop_watching()

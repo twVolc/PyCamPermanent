@@ -594,6 +594,52 @@ class PyplisWorker:
                                   self.img_dir + '\\' + self.img_list[1][1],
                                   plot=plot, plot_bg=plot_bg)
 
+    def next_image(self):
+        """Move to loading in next image of a sequence (used when stepping through a sequence for display purposes)"""
+        self.idx_current += 1
+        try:
+            # First check if the buffer already contains this image
+            if self.img_list[self.idx_current+1][0] == self.img_buff[self.idx_current+1]['file_A']:
+                img_A = self.img_buff[self.idx_current+1]['file_A']
+                img_B = self.img_buff[self.idx_current+1]['file_B']
+                img_tau = self.img_buff[self.idx_current+1]['img_tau']
+                opt_flow = self.img_buff[self.idx_current+1]['opt_flow']
+
+                # Going to previous image, so we get data from buffer
+                for img_name in [img_A, img_B]:
+                    self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
+                self.fig_tau.update_plot(img_tau)
+                # TODO plot image
+                if opt_flow is not None:
+                    pass
+
+            # If we don't already have this image loaded in then we process it
+            else:
+                # Process images too
+                self.process_pair(self.img_dir + '\\' + self.img_list[self.idx_current+1][0],
+                                  self.img_dir + '\\' + self.img_list[self.idx_current+1][1])
+        except IndexError:
+            self.idx_current -= 1
+
+    def previous_image(self):
+        """Move to loading in next image of a sequence (used when stepping through a sequence for display purposes)"""
+
+        # If we don't have any earlier images we just return
+        img_A = self.img_buff[self.idx_current]['file_A']
+        img_B = self.img_buff[self.idx_current]['file_B']
+        img_tau = self.img_buff[self.idx_current]['img_tau']
+        opt_flow = self.img_buff[self.idx_current]['opt_flow']
+
+        # Going to previous image, so we get data from buffer
+        for img_name in [img_A, img_B]:
+            self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
+        self.fig_tau.update_plot(img_tau)
+        # TODO plot image
+        if opt_flow is not None:
+            pass
+
+        self.idx_current -= 1
+
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
 
@@ -650,20 +696,25 @@ class PyplisWorker:
                     save_so2_img(self.processed_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
 
-    def load_img(self, img_path, band=None, plot=True):
+    def load_img(self, img_path, band=None, plot=True, temporary=False):
         """
         Loads in new image and dark corrects if a dark file is provided
 
         :param img_path: str    Path to image
         :param band: str    If band is not provided, it will be found from the pathname
         :param plot: bool   If true, the image is added to the img_q so that it will be displayed in the gui
+        :param temporary   bool     If True, the previous image isn't set to the last image - this is just to be used
+                                    if going backwards through data, loading it in - we don't want to reset previous
+                                    image as we aren't doing a full processing of the new data and don't want to mess
+                                    up the current state
         """
         # Extract band if it isn't already provided
         if band is None:
             band = [f for f in img_path.split('_') if 'fltr' in f][0].replace('fltr', '')
 
         # Set previous image from current img
-        setattr(self, 'img_{}_prev'.format(band), getattr(self, 'img_{}'.format(band)))
+        if not temporary:
+            setattr(self, 'img_{}_prev'.format(band), getattr(self, 'img_{}'.format(band)))
 
         # Get new image
         img = pyplis.image.Img(img_path, self.load_img_func)
