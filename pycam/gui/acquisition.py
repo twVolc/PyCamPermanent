@@ -10,7 +10,7 @@ import pycam.gui.cfg as cfg
 
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter.messagebox import askyesno, showerror
+from tkinter.messagebox import askyesno, showerror, showinfo
 import numpy as np
 import os
 import datetime
@@ -642,7 +642,8 @@ class CommHandler:
     def check_connection(self):
         """Checks if there is a connection"""
         if not self.connection.connected:
-            showerror('No instrument connected', 'No instrument is connected, cannot update settings.')
+            showerror('No instrument connected', 'No instrument is connected - cannot perform requested action.\n'
+                                                 'Please check connection and then try again.')
         return self.connection.connected
 
     def stop_cont(self):
@@ -714,6 +715,15 @@ class CommHandler:
 
         # Add dictionary command to queue to be sent
         cfg.send_comms.q.put(cmd_dict)
+
+    def acq_darks(self):
+        """Acquires set of dark images and spectra"""
+        if not self.check_connection():
+            return
+        cfg.send_comms.q.put({'DKC': 1, 'DKS': 1})
+        showinfo('Dark set acquisition',
+                 'Dark images/spectra are being acquired, this will take some time (5-10 minutes).\n'
+                 'DFC/DFS flags will be sent when this has finished - check the messages box for this.')
 
     def get_instrument_settings(self):
         """Gets current acquisition settings from instrument"""

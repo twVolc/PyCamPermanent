@@ -140,6 +140,8 @@ class PyMenu:
         self.submenu_acq.add_command(label='Update camera settings', command=automated_acq_handler.acq_cam_full)
         self.submenu_acq.add_command(label='Retrieve current settings',
                                      command=automated_acq_handler.get_instrument_settings)
+        self.submenu_acq.add_separator()
+        self.submenu_acq.add_command(label='Acquire dark set', command=automated_acq_handler.acq_darks)
         self.menus[tab].add_separator()
 
         # Geometry setup

@@ -596,6 +596,9 @@ class PyplisWorker:
 
     def next_image(self):
         """Move to loading in next image of a sequence (used when stepping through a sequence for display purposes)"""
+        # TODO because this doesn't update everything properly, clicking vignette correction corrects the wrong image.
+        # TODO Maybe we need to do full processing of the image if we step to the next image?
+
         self.idx_current += 1
         try:
             # First check if the buffer already contains this image
@@ -623,22 +626,24 @@ class PyplisWorker:
 
     def previous_image(self):
         """Move to loading in next image of a sequence (used when stepping through a sequence for display purposes)"""
+        try:
+            # If we don't have any earlier images we just return
+            img_A = self.img_buff[self.idx_current]['file_A']
+            img_B = self.img_buff[self.idx_current]['file_B']
+            img_tau = self.img_buff[self.idx_current]['img_tau']
+            opt_flow = self.img_buff[self.idx_current]['opt_flow']
 
-        # If we don't have any earlier images we just return
-        img_A = self.img_buff[self.idx_current]['file_A']
-        img_B = self.img_buff[self.idx_current]['file_B']
-        img_tau = self.img_buff[self.idx_current]['img_tau']
-        opt_flow = self.img_buff[self.idx_current]['opt_flow']
+            # Going to previous image, so we get data from buffer
+            for img_name in [img_A, img_B]:
+                self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
+            self.fig_tau.update_plot(img_tau)
+            # TODO plot image
+            if opt_flow is not None:
+                pass
 
-        # Going to previous image, so we get data from buffer
-        for img_name in [img_A, img_B]:
-            self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
-        self.fig_tau.update_plot(img_tau)
-        # TODO plot image
-        if opt_flow is not None:
+            self.idx_current -= 1
+        except IndexError:
             pass
-
-        self.idx_current -= 1
 
     def load_BG_img(self, bg_path, band='A'):
         """Loads in background file
