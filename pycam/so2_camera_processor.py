@@ -91,9 +91,12 @@ class PyplisWorker:
         self.img_reg = ImageRegistration()              # Image registration object
         self.cell_calib = pyplis.cellcalib.CellCalibEngine(self.cam)
         self.bg_pycam = False       # BG pycam is a basic BG correction using a rectangle for I0,it is not part of the pyplis package of BG modes
-        self.plume_bg = pyplis.plumebackground.PlumeBackgroundModel()
-        self.plume_bg.surface_fit_pyrlevel = 0
-        self.plume_bg.mode = 4      # Plume background mode - default (4) is linear in x and y
+        self.plume_bg_A = pyplis.plumebackground.PlumeBackgroundModel()
+        self.plume_bg_B = pyplis.plumebackground.PlumeBackgroundModel()
+        self.plume_bg_A.surface_fit_pyrlevel = 0
+        self.plume_bg_B.surface_fit_pyrlevel = 0
+        self.plume_bg_A.mode = 4      # Plume background mode - default (4) is linear in x and y
+        self.plume_bg_B.mode = 4      # Plume background mode - default (4) is linear in x and y
 
         self.BG_CORR_MODES = [0,    # 2D poly surface fit (without sky radiance image)
                               1,    # Scaling of sky radiance image
@@ -258,6 +261,7 @@ class PyplisWorker:
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
+        self.stop_q = queue.Queue()
 
         self.plot_iter = True   # Bool defining if plotting iteratively is active. If it is, all images are passed to qs
 
@@ -1529,15 +1533,16 @@ class PyplisWorker:
         new_image.meta['pix_height'] = meta_image.meta['pix_height']
         new_image.edit_log['darkcorr'] = meta_image.edit_log['darkcorr']
 
-    def model_background(self, imgs={'A': None, 'B': None, 'B_warped': None}, set_vign=True, mode=None, params=None,
-                         plot=True):
+    def model_background(self, imgs={'A': None, 'B': None, 'B_warped': None}, set_vign=True, mode=None,
+                         params_A=None, params_B=None, plot=True):
         """
         Models plume background for image provided.
         :param imgs:        dict    Dictionary of images - if images aren't None, they are used, instead of self.img_A
                                     and self.img_B
         :param set_vign:   bool    If True, we generate vignette corrected images (else it assumes they already exist)
         :param mode:        bool    Background model mode
-        :param params:      dict    Background sky reference parameters
+        :param params_A:      dict    Background sky reference parameters for filter A
+        :param params_B:      dict    Background sky reference parameters for filter B
         :param plot:        bool    If True, modelled background is plotted afterwards
         """
         # If we are passed images (probably from light dilution correction) we set them to img_A and B
@@ -1584,16 +1589,20 @@ class PyplisWorker:
             self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
             self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
-        if self.auto_param_bg and params is None:
+        if self.auto_param_bg and params_A is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
-            self.background_params = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
-            params = self.background_params
-        self.plume_bg.update(**params)
+            self.background_params_A = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
+            self.background_params_B = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_B)
+            params_A = self.background_params_A
+            params_B = self.background_params_B
+        self.plume_bg_A.update(**params_A)
+        self.plume_bg_B.update(**params_B)
 
         if mode == 7:
             self.bg_pycam = True
         elif mode in self.BG_CORR_MODES:
-            self.plume_bg.mode = mode
+            self.plume_bg_A.mode = mode
+            self.plume_bg_B.mode = mode
             self.bg_pycam = False
 
         # Get PCS line if we have one
@@ -1637,7 +1646,7 @@ class PyplisWorker:
         else:
             try:
                 # Get tau_A and tau_B
-                if self.plume_bg.mode == 0:
+                if self.plume_bg_A.mode == 0:
                     # mask for corr mode 0 (i.e. 2D polyfit)
                     mask_A = np.ones(vigncorr_A.img.shape, dtype=np.float32)
                     mask_A[vigncorr_A.img < self.polyfit_2d_mask_thresh] = 0
@@ -1647,33 +1656,37 @@ class PyplisWorker:
                     mask_B_warped[vigncorr_B_warped.img < self.polyfit_2d_mask_thresh] = 0
 
                     # First method: retrieve tau image using poly surface fit
-                    tau_A = self.plume_bg.get_tau_image(vigncorr_A,
-                                                        mode=self.BG_CORR_MODES[0],
-                                                        surface_fit_mask=mask_A,
-                                                        surface_fit_polyorder=1)
-                    tau_B = self.plume_bg.get_tau_image(vigncorr_B,
-                                                        mode=self.BG_CORR_MODES[0],
-                                                        surface_fit_mask=mask_B,
-                                                        surface_fit_polyorder=1)
-                    tau_B_warped = self.plume_bg.get_tau_image(vigncorr_B_warped,
-                                                        mode=self.BG_CORR_MODES[0],
-                                                        surface_fit_mask=mask_B_warped,
-                                                        surface_fit_polyorder=1)
+                    tau_A = self.plume_bg_A.get_tau_image(vigncorr_A,
+                                                          mode=self.BG_CORR_MODES[0],
+                                                          surface_fit_mask=mask_A,
+                                                          surface_fit_polyorder=1)
+                    tau_B = self.plume_bg_B.get_tau_image(vigncorr_B,
+                                                          mode=self.BG_CORR_MODES[0],
+                                                          surface_fit_mask=mask_B,
+                                                          surface_fit_polyorder=1)
+                    tau_B_warped = pyplis.Img(self.img_reg.register_image(tau_A.img, tau_B.img))
+                    self.update_meta(tau_B_warped, tau_B)
+                    # tau_B_warped = self.plume_bg_A.get_tau_image(vigncorr_B_warped,       # TODO edited on 09/06/2022 as I think we can just warp tau_B - check this works
+                    #                                              mode=self.BG_CORR_MODES[0],
+                    #                                              surface_fit_mask=mask_B_warped,
+                    #                                              surface_fit_polyorder=1)
                 else:
                     if img_A.edit_log['vigncorr']:
                         img_A.edit_log['vigncorr'] = False
                         img_B.edit_log['vigncorr'] = False
-                    tau_A = self.plume_bg.get_tau_image(img_A, self.bg_A)
-                    tau_B = self.plume_bg.get_tau_image(img_B, self.bg_B)
+                    tau_A = self.plume_bg_A.get_tau_image(img_A, self.bg_A)
+                    tau_B = self.plume_bg_B.get_tau_image(img_B, self.bg_B)
 
                     # Generating warped B from warped images -
                     # I think I have to do this here rather than registering tau_B, because the background plume params are
-                    # based on tau_A image, so they won't match the B images unles we use registered versions
-                    bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))
-                    self.update_meta(bg_B_warped, self.bg_B)
-                    img_B_warped.edit_log['vigncorr'] = False
-                    tau_B_warped = self.plume_bg.get_tau_image(img_B_warped, bg_B_warped)
-                    self.update_meta(tau_B_warped, img_B_warped)
+                    # based on tau_A image, so they won't match the B images unless we use registered versions
+                    # bg_B_warped = pyplis.Img(self.img_reg.register_image(self.bg_A.img, self.bg_B.img))       # TODO same edit as above - should be fine?
+                    # self.update_meta(bg_B_warped, self.bg_B)
+                    # img_B_warped.edit_log['vigncorr'] = False
+                    # tau_B_warped = self.plume_bg_A.get_tau_image(img_B_warped, bg_B_warped)
+                    # self.update_meta(tau_B_warped, img_B_warped)
+                    tau_B_warped = pyplis.Img(self.img_reg.register_image(tau_A.img, tau_B.img))
+                    self.update_meta(tau_B_warped, tau_B)
             except BaseException as e:
                 print('ERROR! When attempting pyplis background modelling: {}'.format(e))
                 print('Reverting to basic rectangular background model. Note subsequent processing will attempt pyplis modelling again unless changed by the user.')
@@ -1716,7 +1729,7 @@ class PyplisWorker:
 
         # Plots
         if plot:
-            self.fig_bg.update_plots(tau_A, tau_B_warped)
+            self.fig_bg.update_plots(tau_A, tau_B)
 
             # if self.bg_pycam:
             #    # TODO need to do my own plotting if doing pycam background
@@ -1731,11 +1744,11 @@ class PyplisWorker:
             #         pass
             #
             #     if pcs_line is not None:
-            #         self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A, PCS=pcs_line)
-            #         self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B, PCS=pcs_line)
+            #         self.fig_bg_A = self.plume_bg_A.plot_tau_result(tau_A, PCS=pcs_line)
+            #         self.fig_bg_B = self.plume_bg_A.plot_tau_result(tau_B, PCS=pcs_line)
             #     else:
-            #         self.fig_bg_A = self.plume_bg.plot_tau_result(tau_A)
-            #         self.fig_bg_B = self.plume_bg.plot_tau_result(tau_B)
+            #         self.fig_bg_A = self.plume_bg_A.plot_tau_result(tau_A)
+            #         self.fig_bg_B = self.plume_bg_A.plot_tau_result(tau_B)
             #
             #     self.fig_bg_A.canvas.set_window_title('Background model: Image A')
             #     self.fig_bg_B.canvas.set_window_title('Background model: Image B')
@@ -1822,7 +1835,8 @@ class PyplisWorker:
                 # Run model background with light-dilution corrected images
                 img_dict = {'A': img_A, 'B': img_B, 'B_warped': img_B_warped}
                 tau_A, tau_B, tau_B_warped = self.model_background(imgs=img_dict, set_vign=False,
-                                                                   params=self.background_params, plot=False)
+                                                                   params_A=self.background_params_A,
+                                                                   params_B=self.background_params_B, plot=False)
                 self.tau_A, self.tau_B, self.tau_B_warped = tau_A, tau_B, tau_B_warped
             print('Light dilution correction time: {}'.format(time.time()-t))
         else:
@@ -2853,6 +2867,8 @@ class PyplisWorker:
         Processes the current image directory
         Direcotry should therefore already have been processed using load_sequence()
         """
+        with self.stop_q.mutex:
+             self.stop_q.queue.clear()
         self.in_processing = True
 
         # Reset important parameters to ensure we start processing correctly
@@ -2875,6 +2891,13 @@ class PyplisWorker:
         # Loop through img_list and process data
         self.first_image = True
         for i in range(len(self.img_list)):
+
+            try:
+                ans = self.stop_q.get(block=False)
+                if ans == 1:
+                    break
+            except queue.Empty:
+                pass
 
             # Always plot the final image and always force cross-correlation
             if i == len(self.img_list) - 1:
@@ -2914,6 +2937,11 @@ class PyplisWorker:
         print('Time per image: {:.2f}'.format(proc_time / len(self.img_list)))
 
         self.in_processing = False
+
+    def stop_sequence_processing(self):
+        """Stops processing if in sequence"""
+        if self.in_processing:
+            self.stop_q.put(1)
 
     def start_processing(self):
         """Public access thread starter for _processing"""

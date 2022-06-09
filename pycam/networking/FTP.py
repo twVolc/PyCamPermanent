@@ -181,6 +181,46 @@ class CurrentDirectories:
 
         return local_date_dir
 
+    def unpack_data(self, directory):
+        """
+        Sorts all data in a directory by unpacking it into the correct directories.
+        Data must be in sub-directories within the defined directory.
+        :param  directory   str     Directory in which all data subdirectories are held
+        """
+        # List all subdirectories in directory, then filter out any subdirectories we aren't interested in
+        subdirs = os.listdir(directory)
+        ignore = ['Images', 'saved_objects', 'Spectra']
+        subdirs = [x for x in subdirs if x not in ignore]
+        subdirs = [x for x in subdirs if os.path.isdir(os.path.join(directory, x))]
+        print('Found directories: {}'.format(subdirs))
+
+        for date_dir in subdirs:
+            print('Unpacking directory: {}'.format(date_dir))
+            full_path = os.path.join(directory, date_dir)
+            data_list = os.listdir(full_path)
+
+            # Get data based on this objects file extension (either images or spectra)
+            my_data = [x for x in data_list if self.specs.file_ext in x]
+
+            # Loop through data list dealing with each file individually
+            for filename in my_data:
+                print('Moving file: {}'.format(filename))
+                new_dir = self.get_file_dir(filename)
+                full_file_new = os.path.join(new_dir, filename)
+                full_file_old = os.path.join(full_path, filename)
+
+                # Check if file exists - dont overwrite it if so
+                if os.path.exists(full_file_new):
+                    print('File already exists in correct place, unpacking aborted: {}'.format(filename))
+                    os.remove(full_file_old)
+                else:
+                    # Create lockfile
+                    lock_file = full_file_new.replace(self.specs.file_ext, '.lock')
+                    open(lock_file, 'a').close()
+                    os.rename(full_file_old, full_file_new)
+                    os.remove(lock_file)
+
+
 
 class FileTransferGUI:
     """

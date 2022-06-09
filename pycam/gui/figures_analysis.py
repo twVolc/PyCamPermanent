@@ -575,7 +575,7 @@ class ImageSO2(LoadSaveProcessingSettings):
                                          increment=50, command=self.scale_img, font=self.main_gui.main_font)
         self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
         self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
-                                              command=self.scale_img)
+                                               command=self.scale_img)
         self.auto_ppmm_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
 
         # Optical flow checkbutton
@@ -876,7 +876,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
         :return:
         """
+        print('In scale image')
         if self.disp_cal:
+            print('In disp cal')
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
                 self.vmax_cal = np.nanpercentile(self.image_cal, 99)
@@ -906,6 +908,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         if draw:
             # If in processing, the canvas is drawn a lot, so we don't draw it here
             if not self.pyplis_worker.in_processing:
+                print('Drawing canvas')
                 self.img_canvas.draw()
 
     def plt_opt_flow(self, draw=True):
@@ -2154,12 +2157,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._tau_min.set(value)
 
     def gather_vars(self):
-        # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg.mode
-        # It is instead assigned to the bg_pycam flag, which overpowers plume_bg.mode
+        # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
+        # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
         if self.bg_mode == 7:
             pyplis_worker.bg_pycam = True
         else:
-            pyplis_worker.plume_bg.mode = self.bg_mode
+            pyplis_worker.plume_bg_A.mode = self.bg_mode
+            pyplis_worker.plume_bg_B.mode = self.bg_mode
             pyplis_worker.bg_pycam = False
         pyplis_worker.auto_param_bg = self.auto_param
         pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_thresh
@@ -2224,8 +2228,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         """Updates plots"""
         self.tau_A = tau_A
         self.tau_B = tau_B
-        fig_A = pyplis_worker.plume_bg.plot_tau_result(tau_A)
-        fig_B = pyplis_worker.plume_bg.plot_tau_result(tau_B)
+        fig_A = pyplis_worker.plume_bg_A.plot_tau_result(tau_A)
+        fig_B = pyplis_worker.plume_bg_B.plot_tau_result(tau_B)
 
         figs = {'A': fig_A, 'B': fig_B}
 
@@ -2268,7 +2272,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if pyplis_worker.bg_pycam:
             self.bg_mode = 7
         else:
-            self.bg_mode = pyplis_worker.plume_bg.mode
+            self.bg_mode = pyplis_worker.plume_bg_A.mode
         self.auto_param = pyplis_worker.auto_param_bg
         self.polyfit_2d_thresh = pyplis_worker.polyfit_2d_mask_thresh
         self.ref_check_lower = pyplis_worker.ref_check_lower

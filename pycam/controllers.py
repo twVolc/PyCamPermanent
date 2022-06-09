@@ -162,9 +162,15 @@ class Camera(CameraSpecs):
 
     def check_exposure_speed(self):
         """Checks that exposure speed is within reasonable limits of shutter speed"""
+        start_time = time.time()
+        self.cam.shutter_speed = self.shutter_speed
+        timeout = 1.5
         while self.cam.exposure_speed < 0.93 * self.shutter_speed or self.cam.exposure_speed > self.shutter_speed:
+            time_taken = time.time() - start_time
             self.cam.shutter_speed = self.shutter_speed
             # print('Exposure speed: {}   Shutter speed: {}'.format(self.cam.exposure_speed, self.shutter_speed))
+            if time_taken > timeout:
+                break
             time.sleep(0.01)  # Sleep until camera exposure speed is set close enough to requested ss
 
         # Return the camera's exact exposure speed

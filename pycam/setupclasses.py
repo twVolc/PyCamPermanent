@@ -191,16 +191,15 @@ class CameraSpecs:
                                        np.arange(10000, 50000, 5000),
                                        np.arange(50000, 100000, 10000),
                                        np.arange(100000, 500000, 50000),
-                                       np.arange(500000, 1000000, 100000),
-                                       np.arange(1000000, 6000000, 500000), [6000000]))
+                                       np.arange(500000, 1000000, 100000), [1000000]))
 
         # Acquisition settings
         self.shutter_speed = 10000  # Camera shutter speeds (us)
-        self.framerate = 0.25       # Camera framerate (Hz)
+        self.framerate = 0.2       # Camera framerate (Hz)
         self.analog_gain = 1        # Camera analog gain
         self.auto_ss = True         # Bool for requesting automated shutter speed adjustment
-        self.min_saturation = 0.7   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
-        self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.min_saturation = 0.5   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.max_saturation = 0.8   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
         self.saturation_pixels = 100  # Number of pixels checked for saturation
         self.saturation_rows = int(self.pix_num_y / 2)   # rows to extract for saturation check (don't want to check lower rows as snow may be present (if negative, rows start from bottom and work up, postive -top-down)
 
@@ -447,9 +446,9 @@ class SpecSpecs:
         self.spectrum_filename = None   # Filename for spectrum
 
         self.auto_int = True        # Bool for requesting automated integration time adjustment
-        self.min_saturation = 0.6   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
-        self.max_saturation = 0.9   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
-        self.saturation_range = [300, 335]  # Range of wavelengths used in checking integration time
+        self.min_saturation = 0.7   # Minimum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.max_saturation = 0.8   # Maximum saturation accepted before adjusting shutter speed (if auto_ss is True)
+        self.saturation_range = [300, 340]  # Range of wavelengths used in checking integration time
         self.saturation_pixels = 2  # Number of pixels to check
 
         # Predefined list of integration times for automatic exposure adjustment

@@ -951,7 +951,14 @@ class IFitWorker:
             start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
             end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
             filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
-            pathname = os.path.join(self.spec_dir, filename)
+
+            subdir = 'Processed_{}'
+            i = 1
+            while os.path.exists(os.path.join(self.spec_dir, subdir.format(i))):
+                i += 1
+            pathname = os.path.join(self.spec_dir, subdir.format(i))
+            os.mkdir(pathname)
+            pathname = os.path.join(pathname, filename)
 
         # Create full database to save
         frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
@@ -963,6 +970,12 @@ class IFitWorker:
         # self.results[idx_start:idx_end].to_csv(pathname)
         df.to_csv(pathname)
         print('DOAS results saved: {}'.format(pathname))
+        pathname = pathname.replace('.csv', '.txt')
+        with open(pathname, 'w') as f:
+            f.write('DOAS processing parameters\n')
+            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
+            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
+            f.write('Light dilution correction=\n'.format(self.corr_light_dilution))
 
     def load_results(self, filename=None, plot=True):
         """

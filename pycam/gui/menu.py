@@ -163,9 +163,12 @@ class PyMenu:
         self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
+        self.submenu_proc.add_command(label='Stop processing', command=pyplis_worker.stop_sequence_processing)
 
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
+        self.menus[tab].add_separator()
+        self.menus[tab].add_command(label='Unpack data', command=self.unpack_data)
         self.menus[tab].add_separator()
         self.disp_var = tk.IntVar()
         self.disp_var.set(0)
@@ -324,6 +327,17 @@ class PyMenu:
 
         # Close frame
         self.space_frame.destroy()
+
+    def unpack_data(self):
+        """Controls unpacking of data"""
+        directory = filedialog.askdirectory(title='Select directory containing subdirectories of data',
+                                            initialdir=FileLocator.IMG_SPEC_PATH_WINDOWS)
+        if not directory:
+            return
+        print('Unpacking camera data...')
+        cfg.ftp_client.img_dir.unpack_data(directory)
+        print('Unpacking spectrometer data...')
+        cfg.ftp_client.spec_dir.unpack_data(directory)
 
 
 class Settings:
