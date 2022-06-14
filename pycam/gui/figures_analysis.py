@@ -3614,7 +3614,37 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.frame.title('Cross-correlation settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
+        # -------------------------------------
+        # Information frame
         row = 0
+        self.frame_info = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_info.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        label_1 = ttk.Label(self.frame_info, text='ICA gap [m]:')
+        label_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        self.label_ica_gap = ttk.Label(self.frame_info, text='')
+        self.label_ica_gap.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+
+        label_1 = ttk.Label(self.frame_info, text='Lag [frames]:')
+        label_1.grid(row=1, column=0, sticky='w', padx=2, pady=2)
+        self.label_lag_frames = ttk.Label(self.frame_info, text='')
+        self.label_lag_frames.grid(row=1, column=1, sticky='w', padx=2, pady=2)
+
+        label_1 = ttk.Label(self.frame_info, text='Lag [s]:')
+        label_1.grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        self.label_lag_secs = ttk.Label(self.frame_info, text='')
+        self.label_lag_secs.grid(row=2, column=1, sticky='w', padx=2, pady=2)
+
+        label_1 = ttk.Label(self.frame_info, text='Plume speed [m/s]:')
+        label_1.grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        self.label_speed = ttk.Label(self.frame_info, text='')
+        self.label_speed.grid(row=3, column=1, sticky='w', padx=2, pady=2)
+
+        self.update_info(self.pyplis_worker.cross_corr_info)
+        # ----------------------------------------
+
+        # Figure frame
+        row += 1
         self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
@@ -3667,7 +3697,20 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             toolbar.update()
             self.fig_canvas._tkcanvas.pack(side=tk.TOP)
 
+            self.update_info(info)
+
             self.q.put(1)
+
+    def update_info(self, info):
+        """Updates cross-correlation info"""
+        try:
+            # Update info
+            self.label_ica_gap.configure(text='{:.1f}'.format(info['ica_gap']))
+            self.label_lag_frames.configure(text='{:.1f}'.format(info['lag_frames']))
+            self.label_lag_secs.configure(text='{:.1f}'.format(info['lag']))
+            self.label_speed.configure(text='{:.1f}'.format(info['velocity']))
+        except KeyError:
+            print('No cross-correlation info to update')
 
     def close_frame(self):
         """

@@ -158,3 +158,25 @@ pycam/Data/Images/Villarrica/Seq_1/Processed_1/
 pycam/Data/Images/
 
 pycam/tests/test_data/test_spectra/doas_results_2019-05-29T124401_2019-05-29T124412.csv
+
+pycam/Data/saved_objects/pcs_lines/lastarria_line_2.txt
+
+pycam/Data/saved_objects/pcs_lines/lastarria_line_1.txt
+
+pycam/Data/saved_objects/pcs_lines/lascar_line_2.txt
+
+pycam/Data/saved_objects/pcs_lines/lascar_line_1.txt
+
+pycam/conf/cam_geom/lastarria_estimate.txt
+
+pycam/conf/cam_geom/lascar_permanent_camera.txt
+
+pycam/conf/cam_geom/lascar_estimate.txt
+
+pycam/Data/saved_objects/image_registration/lastarria_cv_registration.npy
+
+pycam/Data/saved_objects/image_registration/lascar_cv_registration.npy
+
+pycam/conf/processing_setting_defaults.txt
+
+pycam/conf/cam_geom/default.txt

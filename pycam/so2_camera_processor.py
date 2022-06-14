@@ -119,6 +119,7 @@ class PyplisWorker:
         self.cross_corr_series = {'time': [],           # datetime list
                                   'young': [],          # Young plume series list
                                   'old': [] }           # Old plume series list
+        self.got_cross_corr = False
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
@@ -129,6 +130,7 @@ class PyplisWorker:
                            "flow_hybrid": False}        # Hybrid histogram
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
+        self.cross_corr_info = {}
         self.vel_glob = []                              # Global velocity (m/s)
         self.vel_glob_err = None                        # Global velocity error
         self.optflow_err_rel_veff = 0.15                # Empirically determined optical flow error (from pyplis)
@@ -484,6 +486,7 @@ class PyplisWorker:
         self.cross_corr_series = {'time': [],  # datetime list
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
+        self.got_cross_corr = False
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
@@ -2216,13 +2219,14 @@ class PyplisWorker:
               'Lag [s]:\t{}\n'
               'Plume speed [m/s]:\t{}\n'.format(distance, lag_frames, lag, vel))
 
-        # TODO Plot if requested cross-correlation results with lag etc
+        self.cross_corr_info = {'ica_gap': distance,
+                                'lag_frames': lag_frames,
+                                'lag': lag,
+                                'velocity': vel}
         if plot:
-            info = {'distance': distance,
-                    'lag_frames': lag_frames,
-                    'lag': lag,
-                    'velocity': vel}
-            self.fig_cross_corr.update_plot(ax, info)
+            self.fig_cross_corr.update_plot(ax, self.cross_corr_info)
+
+        self.got_cross_corr = True
 
     def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
@@ -2444,7 +2448,11 @@ class PyplisWorker:
                     vel_glob_err = vel_dict['vel_err']
                     break
             # If we haven't found a suitable time we use the most recent velocity
-            if vel_glob is None:
+            try:
+                if vel_glob is None:
+                    vel_glob = self.vel_glob[-1]['vel']
+                    vel_glob_err = self.vel_glob[-1]['vel_err']
+            except UnboundLocalError:
                 vel_glob = self.vel_glob[-1]['vel']
                 vel_glob_err = self.vel_glob[-1]['vel_err']
 
@@ -2845,6 +2853,7 @@ class PyplisWorker:
         print('Finalising processing...')
         # Save the final emission rates
         save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
+        self.save_processing_params()
         if save_doas:
             self.doas_worker.save_results()
 
@@ -2867,6 +2876,16 @@ class PyplisWorker:
         Processes the current image directory
         Direcotry should therefore already have been processed using load_sequence()
         """
+        if self.velo_modes['flow_glob']:
+            for key in self.cross_corr_lines:
+                if not isinstance(self.cross_corr_lines[key], LineOnImage):
+                    messagebox.showerror('Cross-correlation lines not defined',
+                                         'Cross-correlation plume speed has been requested, but young and old ICA lines'
+                                         'have not been defined. Please define the old and young cross-correlation lines'
+                                         'in the Analysis Window, and then rerun processing.')
+                    return
+
+
         with self.stop_q.mutex:
              self.stop_q.queue.clear()
         self.in_processing = True
@@ -3108,6 +3127,43 @@ class PyplisWorker:
 
                 # We can now delete that key from the dictionary - so we don't slowly use up memory
                 del self.watched_imgs[time_key]
+
+    def save_processing_params(self):
+        """Saves processing parameters in current processing directory"""
+        # Cross correlation save
+        if self.got_cross_corr:
+            cross_corr_file = os.path.join(self.processed_dir, 'cross_corr_info.txt')
+            with open(cross_corr_file, 'a') as f:
+                for key in self.cross_corr_info:
+                    f.write('{}={}\n'.format(key, self.cross_corr_info[key]))
+                f.write('{}'.format(self.cross_corr_lines['young']))
+
+        # Processing settings save
+        settings = os.path.join(self.processed_dir, 'processing_settings.txt')
+        with open(settings, 'a') as f:
+            f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+            f.write('ambient_roi={}\n'.format(self.ambient_roi))
+            f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
+            f.write('DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y))
+            f.write('DOAS_FOV_radius={}\n'.format(self.doas_fov_extent))
+            if self.doas_recal:
+                f.write('DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins))
+            else:
+                f.write('DOAS_remove_data [minutes]=False\n')
+            if self.doas_fov_recal:
+                f.write('DOAS_fov_recal [minutes]={}\n'.format(self.doas_fov_recal_mins))
+            else:
+                f.write('DOAS_fov_recal [minutes]=False\n')
+
+        # Save PCS lines info
+        lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
+        with open(settings, 'a') as f:
+            for i, line in enumerate(lines):
+                f.write('Line_{}\n'.format(i))
+                f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
+                f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
+                f.write('orientation={}\n'.format(line.normal_orientation))
+
 
 
 class ImageRegistration:
