@@ -10,7 +10,7 @@ local_data_dir=./Data/                   # Local directory for saving data
 
 # IP ADDRESSES
 host_ip=169.254.10.180              # IP address of server pi (server pi runs the spectrometer)
-pi_ip=169.254.10.178 # ,169.254.10.179 # IP addresses of two camera pis
+pi_ip=169.254.10.178                # IP addresses of two camera pis
 local_ip=127.0.0.1                  # Local host ip, used for spectrometer comms
 
 # PORTS

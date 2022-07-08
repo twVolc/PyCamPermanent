@@ -180,3 +180,7 @@ pycam/Data/saved_objects/image_registration/lascar_cv_registration.npy
 pycam/conf/processing_setting_defaults.txt
 
 pycam/conf/cam_geom/default.txt
+
+pycam/Data/saved_objects/ld_lookups/
+
+pycam/Data/saved_objects/

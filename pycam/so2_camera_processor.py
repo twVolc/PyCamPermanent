@@ -1344,6 +1344,8 @@ class PyplisWorker:
         :param kwargs:  Any further settings to be passed to DilutionCorr object
         :return:
         """
+        print("Altitude offset: {}".format(self.meas.meas_geometry.cam_altitude_offs))
+
         # If we are passed lines, we use these, otherwise we use already defined lines
         if lines is not None:
             self.light_dil_lines = lines
@@ -1355,12 +1357,16 @@ class PyplisWorker:
         self.dil_corr = DilutionCorr(self.light_dil_lines, self.meas.meas_geometry, **kwargs)
 
         # Determine distances to the two lines defined above (every 6th pixel)
+        # TODO note if the cam GeoPoint has NaNs in it this will fail due to the scipy interpolation. Need to work
+        # TODO out how to stop this - maybe interpolate the NaNs to get values, but I'm not sure why these NaNs appear
+        # TODO in the first place
+        self.meas.meas_geometry.cam.topo_data = np.nan_to_num(self.meas.meas_geometry.cam.topo_data)
         for line_id in self.dil_corr.line_ids:
             self.dil_corr.det_topo_dists_line(line_id)
 
         # Update light dilution plots - they will only be drawn in widget if requested
         # Plot the geometry and line results in a 3D map
-        basemap = self.dil_corr.plot_distances_3d(alt_offset_m=10, axis_off=False, draw_fov=True)
+        basemap = self.dil_corr.plot_distances_3d(alt_offset_m=self.cam.alt_offset, axis_off=False, draw_fov=True)
 
         # Get light dilution coefficients
         ax0, ax1 = self.get_light_dilution_coefficients(plot=False)
@@ -2777,6 +2783,27 @@ class PyplisWorker:
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
                                  self.img_B_prev.filename, opt_flow=opt_flow)
 
+    def check_buffer_size(self):
+        """
+        Checks buffer size relative to DOAS FOV calibration time - if the buffer is too small the earliest data will be
+        lost and no emission rate will be generated from it.
+        :returns    True    If the buffer size is adequate for the size of the doas FOV recal time
+                    False   If the buffer size is too small
+        """
+        # Find time between frames
+        time_1 = self.get_img_time(self.img_list[0][0])
+        time_2 = self.get_img_time(self.img_list[1][0])
+        frame_gap = time_2 - time_1
+
+        # Use time gap to work out how many minutes the buffer can hold (this is assuming the framerate is the same
+        # throughout)
+        img_buff_timespan = frame_gap * self.img_buff_size
+
+        if img_buff_timespan >= datetime.timedelta(self.doas_fov_recal_mins):
+            return True
+        else:
+            return False
+
     def get_emission_rate_from_buffer(self, after=None, overwrite=False):
         """
         Script to go back through buffer and retrieve emission rates
@@ -2876,6 +2903,7 @@ class PyplisWorker:
         Processes the current image directory
         Direcotry should therefore already have been processed using load_sequence()
         """
+        # Check cross-correlation lines are defined if we have requested cross-correlation
         if self.velo_modes['flow_glob']:
             for key in self.cross_corr_lines:
                 if not isinstance(self.cross_corr_lines[key], LineOnImage):
@@ -2884,6 +2912,17 @@ class PyplisWorker:
                                          'have not been defined. Please define the old and young cross-correlation lines'
                                          'in the Analysis Window, and then rerun processing.')
                     return
+
+        # Check buffer size is suitable for DOAS FOV calibration time
+        if not self.check_buffer_size():
+            a = messagebox.askyesno('Buffer too small',
+                                    'The defined buffer size is too small for the length of time set to determine DOAS '
+                                    'FOV location. This may mean some of the earliest data in the sequence will not be '
+                                    'processed. Buffer size can be increase in settings, or FOV calibration time may be'
+                                    ' decreased. \n'
+                                    'Do you wish to continue without editing the processing settings?')
+            if not a:
+                return
 
 
         with self.stop_q.mutex:

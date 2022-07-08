@@ -291,7 +291,7 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                 # Arrange times of file
                 file_date = start_time.strftime(date_fmt)
                 file_start_time = start_time.replace(hour=hour, minute=0, second=0)
-                file_end_time = start_time.replace(hour=hour, minute=59, second=0)
+                file_end_time = start_time.replace(hour=hour, minute=59, second=59)
                 start_time_str = file_start_time.strftime(time_fmt)
                 end_time_str = file_end_time.strftime(time_fmt)
 

@@ -770,11 +770,21 @@ class IFitWorker:
                                                                        wavelengths=self.wavelengths,
                                                                        spectra=self.plume_spec_corr,
                                                                        spec_time=self.spec_time)
+                    print('Fit val uncorrected: {}'.format(fit_0.params['SO2'].fit_val))
+                    print('Fit val corrected: {}'.format(df_lookup['SO2'][0]))
+                    # Update SO2 value for the best SO2 value we have
+                    if not np.isnan(df_lookup['SO2'][0]):
+                        fit_0.params['SO2'].fit_val = df_lookup['SO2'][0]
+
                     self.fit_0 = fit_0  # Save corrected fits
                     self.fit_1 = fit_1
                     self.applied_ld_correction = True
                     self.spec_time_last_ld = self.spec_time     # Set this spec time to last ld calculation spec time
+
                 else:
+                    # TODO I don't think this alone works - the ldf doesn't seem to change the fit result
+                    # TODO instead i will still need to run the LD lookup to find so2_best which is the column density value we
+                    # TODO are interested in.
                     fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_corr, self.ldf_best)
 
         else:
@@ -975,7 +985,8 @@ class IFitWorker:
             f.write('DOAS processing parameters\n')
             f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
             f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
-            f.write('Light dilution correction=\n'.format(self.corr_light_dilution))
+            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
+            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
 
     def load_results(self, filename=None, plot=True):
         """
@@ -1643,6 +1654,7 @@ class IFitWorker:
             # =============================================================
             # Refit using the best LDF (following refit.py)
             # =============================================================
+            # TODO - I'm not sure this actually changes anyuthing so may just be unneccesary extra processing
             if np.isnan(ldf_best):
                 # Change analyser values
                 self.analyser0.params['LDF'].set(value=0)
@@ -1673,6 +1685,9 @@ class IFitWorker:
         This will save time. i.e. can check when last LDF was calculated and if it was recently you can pass it to
         this rather than running ld_lookpup. ASSUMING LDF DOESN'T CHANGE RAPIDLY IN TIME
         """
+        # TODO I don't think this alone works - the ldf doesn't seem to change the fit result
+        # TODO instead i will still need to run the LD lookup to find so2_best which is the column density value we
+        # TODO are interested in.
         if np.isnan(ldf):
             # Change analyser values
             self.analyser0.params['LDF'].set(value=0)

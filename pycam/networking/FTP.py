@@ -233,6 +233,7 @@ class FileTransferGUI:
         self.spec_dir = spec_dir
         self.ftp_client = ftp_client
         self.menu = menu
+        self.q = queue.Queue()
 
         # Defines whether we want to watch for images to then process them. Whether they are then processed, or simply
         # displayed will depend on if plot_iter is True or if display_only is true. If the settings are not setup
@@ -267,8 +268,13 @@ class FileTransferGUI:
     def disp_images(self, value):
         self._disp_images.set(value)
 
-    def start_transfer(self, new_only=False):
-        """Starts automatic image transfer from instrument"""
+    def start_transfer(self, new_only=False, reconnect=True):
+        """
+        Starts automatic image transfer from instrument
+        new_only    bool    If True, existing images on the instrument are ignored and only new images are transferred
+        reconnect   bool    If True, if connection is lost to the instrument we attempt to reconnect (for if pi turns
+                            off at night)
+        """
         if self.disp_images:
             if not self.pyplis_worker.plot_iter and not self.pyplis_worker.display_only:
                 self.pyplis_worker.display_only = 1
@@ -277,7 +283,7 @@ class FileTransferGUI:
             self.doas_worker.start_watching(self.spec_dir.root_dir, recursive=True)
 
         try:
-            self.ftp_client.watch_dir(new_only=new_only)
+            self.ftp_client.watch_dir(new_only=new_only, reconnect=reconnect)
         except ConnectionError:
             print('FTP client failed. Cannot transfer data back to host machine')
             self.pyplis_worker.stop_watching()
@@ -486,21 +492,21 @@ class FTPClient:
 
         return local_name, local_date_dir
 
-    def watch_dir(self, lock='.lock', new_only=False):
+    def watch_dir(self, lock='.lock', new_only=False, reconnect=True):
         """Public access thread starter for _watch_dir"""
         print('FTP: Start watching directory')
         if not self.test_connection():
             raise ConnectionError
 
-        self.watch_thread = threading.Thread(target=self._watch_dir, args=(lock, new_only,))
+        self.watch_thread = threading.Thread(target=self._watch_dir, args=(lock, new_only, reconnect,))
         self.watch_thread.daemon = True
         self.watch_thread.start()
         self.watching_dir = True
 
-    def _watch_dir(self, lock='.lock', new_only=False):
+    def _watch_dir(self, lock='.lock', new_only=False, reconnect=True):
         """
         Watches directory for new files and adds image to queue when they appear. Watches the directory defined by
-        self.dir_data_remote.
+        self.dir_data_remote
 
         :param lock: str
             Filename extension which defines when the file is not ready to be collected (in a locked state)
@@ -508,6 +514,9 @@ class FTPClient:
             If True, only new files are transfered across - files already on the instrument are ignored - used for
             manual acquisitions where we don't want to transfer old images, we want to start with any new ones taken
             during manual acquisition
+        :param reconnect: bool
+            If True, if the connection is dropped we continually try to reconnect - useful for if wanting to watch
+            a directory on a system that turns off overnight.
         """
         # Empty old queue
         with self.watch_q.mutex:
@@ -534,6 +543,17 @@ class FTPClient:
                     return
             except queue.Empty:
                 pass
+
+            # Test the connection - if there isn't one, wait 1 second then try to reconnect
+            if not self.test_connection():
+                if reconnect:
+                    print('FTP connection lost - attempting to reconnect...')
+                    time.sleep(1)
+                    continue
+                else:
+                    print('FTP connection lost - stopping instrument directory watcher')
+                    self.watching_dir = False
+                    return
 
             # Get file list from host machine
             try:

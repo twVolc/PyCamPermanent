@@ -72,3 +72,23 @@ Requirements for GUI:
 > Clone to pycam/ folder. I also cloned the light_dilution branch to ifit_ld. If this remaisn saved in pycam then no installation is needed for new users 
 > tqdm (for ifit)
 > shapely (for light diluiton correction of ifit)
+
+
+
+CHANGING IP ADDRESSES
+IP addresses are read in from config files. A few locations need to be changed:
+> ./pycam/conf/config.txt
+> ./pycam/conf/network_transfer.txt
+> ./pycam/conf/network_comm.txt
+> ./pycam/conf/network_ext.txt
+In config.txt you need to change the host_ip (master) and pi_ip (slave) IPs.
+You then need to make changes on the Pi operating system itself, since we have set it up to have a static IP address
+Pi 1 (Witty Pi):
+> /etc/network/interfaces - line 18: change to desired host address.
+> May need to the change lines 20 and 21 in above file: network and broadcast to reflect the new IP. Keep the endings the same, just change the first 2 numbers
+> /etc/ntp.conf - line 32: Change "restrict" IP address to desired new Pi 2 Address. 
+> May then need to change the broadcast line lower down to contain the same first 3 numbers (then keep 255 I think)
+Pi 2:
+> /etc/network/interfaces - line 18: Change to desired address. 
+> Again, then probably need to change lines 20 and 21 of above file: network and broadcast.
+> /etc/ntp.conf - line 7: change "server" to Pi 1 IP

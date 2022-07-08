@@ -1370,7 +1370,7 @@ class GeomSettings:
         self._lat = tk.StringVar()
         self._lon = tk.StringVar()
         self._altitude = tk.IntVar()
-        self._alt_offset = tk.IntVar()
+        self._alt_offset = tk.DoubleVar()
         self._elev = tk.DoubleVar()
         self._azim = tk.DoubleVar()
         self._volcano = tk.StringVar()
@@ -1438,7 +1438,7 @@ class GeomSettings:
         row += 1
         label = ttk.Label(self.frame_geom, text='Altitude offset [m]:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._alt_offset, from_=0, to=9999, increment=1, width=4, font=self.main_gui.main_font)
+        spinbox = ttk.Spinbox(self.frame_geom, textvariable=self._alt_offset, from_=0, to=9999, increment=0.1, width=4, font=self.main_gui.main_font)
         spinbox.grid(row=row, column=1, padx=2, pady=2, sticky='nsew')
 
         row += 1
@@ -1818,7 +1818,7 @@ class GeomSettings:
                 value = value.replace('\n', '')
                 if key == 'volcano':
                     setattr(self, key, value)
-                elif key == 'altitude' or key == 'alt_offset':
+                elif key == 'altitude':
                     setattr(self, key, int(value))
                 else:
                     setattr(self, key, float(value))
@@ -4705,8 +4705,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                  width=2, command=self.set_spec_recal, font=self.gui.main_font)
         recal_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
-        self.run_butt = ttk.Button(options_frame, text='Generate lookup', command=self.run_ld_lookup_generator)
-        self.run_butt.grid(row=2, column=0, sticky='w', padx=2, pady=2)
 
         # Load spectra
         self.load_spec = ttk.LabelFrame(self.frame_spec, text='Load spectra')
@@ -4738,6 +4736,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         incr_ppmm_spin = ttk.Spinbox(self.opt_frame, textvariable=self._grid_increment_ppmm, from_=0, to=100,
                                      increment=1, font=self.gui.main_font)
         incr_ppmm_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
+
+        self.run_butt = ttk.Button(self.opt_frame, text='Generate lookup', command=self.run_ld_lookup_generator)
+        self.run_butt.grid(row=2, column=0, sticky='w', padx=2, pady=2)
 
         # Load grids
         self.load_grid = ttk.LabelFrame(self.frame_spec, text='Load grids')
