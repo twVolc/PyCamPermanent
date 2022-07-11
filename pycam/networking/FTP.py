@@ -383,6 +383,20 @@ class FTPClient:
             return conn
         return True
 
+    def update_connection(self, ip):
+        """Updates connection with new IP address"""
+        self.host_ip = ip
+
+        # If watchign directory and we want to change the IP we need to first stop watching
+        if self.watching_dir:
+            print('Warning! Directory watcher was running whilst the connection IP was updated. '
+                  'Directory watcher will be stopped')
+            self.stop_watch()
+            time.sleep(0.5)
+
+        # Test the new connection
+        self.test_connection()
+
     def move_file_to_instrument(self, local_file, remote_file):
         """Move specific file from local_file location to remote_file location"""
         if not os.path.exists(local_file):
@@ -496,7 +510,10 @@ class FTPClient:
         """Public access thread starter for _watch_dir"""
         print('FTP: Start watching directory')
         if not self.test_connection():
-            raise ConnectionError
+            if reconnect:
+                pass
+            else:
+                raise ConnectionError
 
         self.watch_thread = threading.Thread(target=self._watch_dir, args=(lock, new_only, reconnect,))
         self.watch_thread.daemon = True
@@ -548,7 +565,7 @@ class FTPClient:
             if not self.test_connection():
                 if reconnect:
                     print('FTP connection lost - attempting to reconnect...')
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
                 else:
                     print('FTP connection lost - stopping instrument directory watcher')

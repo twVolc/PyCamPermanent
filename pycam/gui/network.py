@@ -150,6 +150,7 @@ class ConnectionGUI:
     def update_connection(self):
         """Updates socket address information"""
         cfg.sock.update_address(self.host_ip, self.port)
+        cfg.ftp_client.update_connection(self.host_ip)
 
     def test_connection(self):
         """Tests that IP address is available"""

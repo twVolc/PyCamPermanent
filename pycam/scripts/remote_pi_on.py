@@ -94,6 +94,7 @@ while stat_dict != stat_dict_on:
             else:
                 with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
                     f.write("{} remote_pi_on.py: {} no longer reachable\n".format(date_str, ip))
+print('Exiting pi startup script')
 
 # Cleanup at the end
 GPIO.cleanup()

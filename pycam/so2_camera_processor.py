@@ -2767,7 +2767,13 @@ class PyplisWorker:
             # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
             # function can add this most recent data point to the cross-corr buffer)
             if self.velo_modes['flow_glob']:
-                time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
+                # If we get a type error it is because cross_corr_last is an integer, i.e. it has not been set before,
+                # So we set it to the time of this image
+                try:
+                    time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
+                except TypeError:
+                    self.cross_corr_last = self.img_A.meta['start_acq']
+                    time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
                 time_gap = time_gap.total_seconds() / 60
                 if cross_corr or time_gap >= self.cross_corr_recal:
                     self.generate_cross_corr(self.cross_corr_series['time'],

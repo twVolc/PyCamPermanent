@@ -76,13 +76,14 @@ Requirements for GUI:
 
 
 CHANGING IP ADDRESSES
-IP addresses are read in from config files. A few locations need to be changed:
+IP addresses are read in from config files. A few locations need to be changed (on both Pis!):
 > ./pycam/conf/config.txt
 > ./pycam/conf/network_transfer.txt
 > ./pycam/conf/network_comm.txt
 > ./pycam/conf/network_ext.txt
 In config.txt you need to change the host_ip (master) and pi_ip (slave) IPs.
 You then need to make changes on the Pi operating system itself, since we have set it up to have a static IP address
+May find online help useful for setting up the static IPs https://elinux.org/RPi_Setting_up_a_static_IP_in_Debian
 Pi 1 (Witty Pi):
 > /etc/network/interfaces - line 18: change to desired host address.
 > May need to the change lines 20 and 21 in above file: network and broadcast to reflect the new IP. Keep the endings the same, just change the first 2 numbers
@@ -92,3 +93,4 @@ Pi 2:
 > /etc/network/interfaces - line 18: Change to desired address. 
 > Again, then probably need to change lines 20 and 21 of above file: network and broadcast.
 > /etc/ntp.conf - line 7: change "server" to Pi 1 IP
+You may then need to change your laptop computer's IP to a static IP in the same subnet, otherwise connection will fail.

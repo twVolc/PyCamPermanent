@@ -30,7 +30,7 @@ try:
     spec = Spectrometer(ignore_device=True, filename=FileLocator.CONFIG_SPEC)
 except SpectrometerConnectionError:
     print('No spectrometer detected, please connect spectrometer and restart program')
-    sys.exit()
+    # sys.exit()
 
 # If second flag is a 0 we don't add the save specs to the register - pycam_dark_capture.py doesn't want specs saved
 if len(sys.argv) > 2:
