@@ -131,6 +131,9 @@ class Indicator:
         # Setup function to send comms to socket
         cfg.send_comms.thread_func()
 
+        # Retrieve current instrument settings straight away
+        cfg.send_comms.q.put({'LOG': 1})
+
     def disconnect_sock(self):
         """Closes socket if we are connected"""
         if not self.connected:
