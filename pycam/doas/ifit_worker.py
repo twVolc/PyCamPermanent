@@ -155,6 +155,7 @@ class IFitWorker:
         self.processing_in_thread = False   # Flags whether the object is processing in a thread or in the main thread - therefore deciding whether plots should be updated herein or through pyplisworker
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
+        self.q_stop = queue.Queue()     # Queue for stopping processing of sequence
         self.watcher = None
         self.watching_dir = None
         self.watching = False
@@ -244,6 +245,10 @@ class IFitWorker:
 
         # Reset last LDF correction
         self.spec_time_last_ld = None
+
+        # Clear stop queue so old requests aren't caught
+        with self.q_stop.mutex:
+            self.q_stop.queue.clear()
 
     @property
     def start_stray_wave(self):
@@ -1078,6 +1083,14 @@ class IFitWorker:
         ss_str = self.spec_specs.file_ss.replace('{}', '')
 
         while True:
+            # See if we are wanting an early exit
+            try:
+                ans = self.q_stop.get(block=False)
+                if ans == self.STOP_FLAG:
+                    break
+            except queue.Empty:
+                pass
+
             # Blocking wait for new file
             pathname = self.q_spec.get(block=True)
             print('IFit worker processing thread: got new file: {}'.format(pathname))
@@ -1163,6 +1176,10 @@ class IFitWorker:
                 self.fig_spec.update_clear()
             else:
                 print('IFitWorker: spectrum type not recognised: {}'.format(pathname))
+
+    def stop_sequence_processing(self):
+        """Stops processing a sequence"""
+        self.q_stop.put(self.STOP_FLAG)
 
     def start_watching(self, directory, recursive=True):
         """

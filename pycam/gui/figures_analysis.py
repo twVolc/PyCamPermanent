@@ -1963,11 +1963,6 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode, self.bg_mode, *pyplis_worker.BG_CORR_MODES)
         self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
-        # Automatic reference areas
-        row += 1
-        self.auto = ttk.Checkbutton(self.opt_frame, text='Automatic reference areas', variable=self._auto_param)
-        self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
-
         # Reference are check
         row += 1
         ref_check_frame = ttk.LabelFrame(self.opt_frame, text='Reference background ROI', relief=tk.RAISED, borderwidth=3)
@@ -2036,11 +2031,62 @@ class PlumeBackground(LoadSaveProcessingSettings):
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
+        # -----------------------------
+        # Reference areas
+        # -----------------------------
+        # Automatic reference areas
+        self.ref_area_frame = ttk.LabelFrame(self.top_frame, text='Reference regions')
+        self.ref_area_frame.grid(row=0, column=2, sticky='nw', padx=5, pady=5)
+
+        row = 0
+        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas', variable=self._auto_param,
+                                    command=self.update_draw)
+        self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
+
+        # Radiobuttons for reference area drawing
+        self.rect_selector = tk.IntVar()
+        self.rect_selector.set(0)
+        self.rect_colours = ['lime', 'b', 'c']
+        self.rect_labels = ['scale_rect', 'ygrad_rect', 'xgrad_rect']
+        self.scale_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw scale_rect', variable=self.rect_selector,
+                                         value=0, command=self.update_draw)
+        self.ygrad_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw ygrad_rect', variable=self.rect_selector,
+                                         value=1, command=self.update_draw)
+        self.xgrad_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw xgrad_rect', variable=self.rect_selector,
+                                         value=2, command=self.update_draw)
+        row += 1
+        self.scale_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+        row += 1
+        self.ygrad_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+        row += 1
+        self.xgrad_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+
+        # Vertical line
+        row += 1
+        vert_frame = tk.LabelFrame(self.ref_area_frame, text='Profiles')
+        vert_frame.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(vert_frame, text='Row:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        self.ref_row = tk.IntVar()
+        self.ref_row.set(5)
+        spin_row = ttk.Spinbox(vert_frame, textvariable=self.ref_row, command=self.update_ref_areas,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y, increment=1, width=4)
+        spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab_1 = ttk.Label(vert_frame, text='Column:')
+        lab_1.grid(row=0, column=2, sticky='w', padx=2, pady=2)
+        self.ref_column = tk.IntVar()
+        self.ref_column.set(5)
+        spin_col = ttk.Spinbox(vert_frame, textvariable=self.ref_column, command=self.update_ref_areas,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x, increment=1, width=4)
+        spin_col.grid(row=0, column=3, sticky='w', padx=2, pady=2)
+    # ------------------------------
+
         # Build figures
         self._build_figures()
 
         # Run current background model to load up figures
         self.run_process(reload_seq=False)
+        self.update_draw()
 
         # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
         # But a call to mainloop here prevents the crash
@@ -2083,6 +2129,84 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         if hasattr(self, 'tau_A'):
             self.update_plots(self.tau_A, self.tau_B)
+
+    def update_ref_areas(self):
+        """
+        Updates all relevant reference areas in the plots and in pyplis backend
+        """
+        pass
+
+    def update_draw(self):
+        """
+        Edits bindings on figure to change what is being drawn based on self.rect_selector:
+        0 = scale_rect
+        1 = ygrad_rect
+        2 = xgrad_rect
+        """
+        if self.auto_param:
+            self.scale_rect_rad.configure(state=tk.DISABLED)
+            self.ygrad_rect_rad.configure(state=tk.DISABLED)
+            self.xgrad_rect_rad.configure(state=tk.DISABLED)
+            #TODO unbind all drawing from figures then return here, so no drawing gets bound later in method
+            try:
+                self.rs_A.disconnect_events()
+                self.rs_B.disconnect_events()
+            except AttributeError:
+                pass
+            return
+        else:
+            self.scale_rect_rad.configure(state=tk.NORMAL)
+            self.ygrad_rect_rad.configure(state=tk.NORMAL)
+            self.xgrad_rect_rad.configure(state=tk.NORMAL)
+
+        rect_dict = dict(fc=self.rect_colours[self.rect_selector.get()], ec=self.rect_colours[self.rect_selector.get()],
+                         alpha=0.3, fill=True)
+
+        self.rs_A = widgets.RectangleSelector(self.fig_tau_A.axes[0], self.draw_roi_A, drawtype='box',
+                                              rectprops=rect_dict)
+
+        self.rs_B = widgets.RectangleSelector(self.fig_tau_B.axes[0], self.draw_roi_B, drawtype='box',
+                                              rectprops=rect_dict)
+
+    def draw_roi_A(self, eclick, erelease):
+        """Draws ROI"""
+        ax = self.fig_tau_A.axes[0]
+
+        # Delete previous rectangle, if it exists - making sure it is the Rectangle with the correct colour
+        try:
+            label = self.rect_labels[self.rect_selector.get()]
+            for child in ax.get_children():
+                if isinstance(child, patches.Rectangle):
+                    if child._label == label:
+                        child.remove()
+        except AttributeError:
+            pass
+
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+
+        col = self.rect_colours[self.rect_selector.get()]
+        ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y), crop_X, crop_Y,
+                                        facecolor=col, edgecolor=col, fill=True, alpha=0.3, label=label))
+
+        # Update figure canvas
+        self.fig_canvas_A.draw()
+
+        # Update the plumebackground model to hold this rectangle
+        update_dict = {label: [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]}
+        self.pyplis_worker.plume_bg_A.update(**update_dict)
+        # TODO get this to actually work as at them moent I don't think the above code actually correctly changes the
+        #  TODO rectangle if I try to rerun the background modelling
+
+    def draw_roi_B(self, eclick, erelease):
+        """Draws ROI"""
+        pass
 
     @property
     def bg_mode(self):
@@ -2263,6 +2387,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Set colourmaps
         self.set_cmap(draw=False)
+
+        # Reattach bindings to new figure
+        self.update_draw()
 
         if self.in_frame:
             self.q.put(1)
@@ -3847,7 +3974,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.in_frame = True
 
         self.frame = tk.Toplevel()
-        self.frame.title('Optical flow settings')
+        self.frame.title('Plume velocity settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
         # -------------------------

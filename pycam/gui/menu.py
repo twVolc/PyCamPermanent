@@ -163,7 +163,7 @@ class PyMenu:
         self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
-        self.submenu_proc.add_command(label='Stop processing', command=pyplis_worker.stop_sequence_processing)
+        self.submenu_proc.add_command(label='Stop processing', command=self.stop_sequence_processing)
 
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
@@ -188,7 +188,7 @@ class PyMenu:
                                          command=lambda: cell_calib.update_plot(generate_frame=True))
         self.submenu_windows.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
         self.submenu_windows.add_separator()
-        self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
+        self.submenu_windows.add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
         self.submenu_windows.add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
         self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
@@ -338,6 +338,11 @@ class PyMenu:
         cfg.ftp_client.img_dir.unpack_data(directory)
         print('Unpacking spectrometer data...')
         cfg.ftp_client.spec_dir.unpack_data(directory)
+
+    def stop_sequence_processing(self):
+        """Stops sequence processing of SO2 camera and DOAS"""
+        pyplis_worker.stop_sequence_processing()
+        doas_worker.stop_sequence_processing()
 
 
 class Settings:
