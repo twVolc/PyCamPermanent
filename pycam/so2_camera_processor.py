@@ -1598,14 +1598,19 @@ class PyplisWorker:
             self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
             self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
+        # Find clear sky regions if requested
         if self.auto_param_bg and params_A is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
             self.background_params_A = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
             self.background_params_B = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_B)
             params_A = self.background_params_A
             params_B = self.background_params_B
-        self.plume_bg_A.update(**params_A)
-        self.plume_bg_B.update(**params_B)
+
+        # Update params if we have some
+        if params_A is not None:
+            self.plume_bg_A.update(**params_A)
+        if params_B is not None:
+            self.plume_bg_B.update(**params_B)
 
         if mode == 7:
             self.bg_pycam = True

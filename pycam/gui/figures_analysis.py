@@ -1911,7 +1911,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
-                     'auto_bg_cmap': int}
+                     'auto_bg_cmap': int,
+                     'ygrad_line_colnum': int,
+                     'ygrad_line_startrow': int,
+                     'ygrad_line_stoprow': int,
+                     'xgrad_line_rownum': int,
+                     'xgrad_line_startcol': int,
+                     'xgrad_line_stopcol': int}
 
 
         self._bg_mode = tk.IntVar()
@@ -1925,6 +1931,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.tau_max = 0.1
         self._tau_min = tk.DoubleVar()
         self.tau_min = -0.1
+
+        self._ygrad_line_colnum = tk.IntVar()
+        self._ygrad_line_startrow = tk.IntVar()
+        self._ygrad_line_stoprow = tk.IntVar()
+        self._xgrad_line_rownum = tk.IntVar()
+        self._xgrad_line_startcol = tk.IntVar()
+        self._xgrad_line_stopcol = tk.IntVar()
 
         self.load_defaults()
 
@@ -2006,37 +2019,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        # ---------------
-        # Figure settings
-        # ---------------
-        self.fig_sett_frame = ttk.LabelFrame(self.top_frame, text='Figure settings')
-        self.fig_sett_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
-
-        row = 0
-        check = ttk.Checkbutton(self.fig_sett_frame, text='Auto limits', variable=self._auto_bg_cmap,
-                                command=self.set_cmap)
-        check.grid(row=row, column=0, padx=2, pady=2, sticky='w')
-        row += 1
-
-        ttk.Label(self.fig_sett_frame, text='\u03C4 maximum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_max, width=4,
-                           command=self.set_cmap, from_=0, to=1, increment=0.01, format='%.2f',
-                           font=self.main_gui.main_font)
-        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-        row += 1
-
-        ttk.Label(self.fig_sett_frame, text='\u03C4 minimum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
-        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_min, width=4, command=self.set_cmap,
-                           from_=-1, to=0, increment=0.01, format='%.2f', font=self.main_gui.main_font)
-        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
-        row += 1
 
         # -----------------------------
         # Reference areas
         # -----------------------------
         # Automatic reference areas
         self.ref_area_frame = ttk.LabelFrame(self.top_frame, text='Reference regions')
-        self.ref_area_frame.grid(row=0, column=2, sticky='nw', padx=5, pady=5)
+        self.ref_area_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
 
         row = 0
         self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas', variable=self._auto_param,
@@ -2061,25 +2050,75 @@ class PlumeBackground(LoadSaveProcessingSettings):
         row += 1
         self.xgrad_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
 
-        # Vertical line
+        # Line profiles
         row += 1
-        vert_frame = tk.LabelFrame(self.ref_area_frame, text='Profiles')
-        vert_frame.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
-        lab_1 = ttk.Label(vert_frame, text='Row:')
+        prof_frame = tk.LabelFrame(self.ref_area_frame, text='Profiles')
+        prof_frame.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+
+        # Row profile
+        row_frame = tk.LabelFrame(prof_frame, relief=tk.RAISED, text='Row')
+        row_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(row_frame, text='Row number:')
         lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        self.ref_row = tk.IntVar()
-        self.ref_row.set(5)
-        spin_row = ttk.Spinbox(vert_frame, textvariable=self.ref_row, command=self.update_ref_areas,
-                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y, increment=1, width=4)
+        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum, command=self.update_ref_lines,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
         spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
-        lab_1 = ttk.Label(vert_frame, text='Column:')
-        lab_1.grid(row=0, column=2, sticky='w', padx=2, pady=2)
-        self.ref_column = tk.IntVar()
-        self.ref_column.set(5)
-        spin_col = ttk.Spinbox(vert_frame, textvariable=self.ref_column, command=self.update_ref_areas,
-                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x, increment=1, width=4)
-        spin_col.grid(row=0, column=3, sticky='w', padx=2, pady=2)
-    # ------------------------------
+        lab = ttk.Label(row_frame, text='Start col:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol, command=self.update_ref_lines,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(row_frame, text='End col:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol, command=self.update_ref_lines,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Column profile
+        col_frame = tk.LabelFrame(prof_frame, relief=tk.RAISED, text='Column')
+        col_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(col_frame, text='Column number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum, command=self.update_ref_lines,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin_col.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(col_frame, text='Start row:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow, command=self.update_ref_lines,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(col_frame, text='End row:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow, command=self.update_ref_lines,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+        # ------------------------------
+
+        # ---------------
+        # Figure settings
+        # ---------------
+        self.fig_sett_frame = ttk.LabelFrame(self.top_frame, text='Figure settings')
+        self.fig_sett_frame.grid(row=0, column=2, sticky='nw', padx=5, pady=5)
+
+        row = 0
+        check = ttk.Checkbutton(self.fig_sett_frame, text='Auto limits', variable=self._auto_bg_cmap,
+                                command=self.set_cmap)
+        check.grid(row=row, column=0, padx=2, pady=2, sticky='w')
+        row += 1
+
+        ttk.Label(self.fig_sett_frame, text='\u03C4 maximum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_max, width=4,
+                           command=self.set_cmap, from_=0, to=1, increment=0.01, format='%.2f',
+                           font=self.main_gui.main_font)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        ttk.Label(self.fig_sett_frame, text='\u03C4 minimum:', font=self.main_gui.main_font).grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.fig_sett_frame, textvariable=self._tau_min, width=4, command=self.set_cmap,
+                           from_=-1, to=0, increment=0.01, format='%.2f', font=self.main_gui.main_font)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
+        row += 1
+        # -------------------------------------------
 
         # Build figures
         self._build_figures()
@@ -2130,11 +2169,36 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if hasattr(self, 'tau_A'):
             self.update_plots(self.tau_A, self.tau_B)
 
-    def update_ref_areas(self):
+    def update_ref_lines(self):
         """
         Updates all relevant reference areas in the plots and in pyplis backend
         """
-        pass
+        # Do a few checks to ensure we have valid numbers
+        if self.ygrad_line_stoprow < self.ygrad_line_startrow:
+            if self.ygrad_line_startrow == pyplis_worker.cam_specs.pix_num_y - 1:
+                self.ygrad_line_startrow = pyplis_worker.cam_specs.pix_num_y - 2
+                self.ygrad_line_stoprow = pyplis_worker.cam_specs.pix_num_y - 1
+            else:
+                self.ygrad_line_stoprow = self.ygrad_line_startrow + 1
+
+        if self.xgrad_line_stopcol < self.xgrad_line_startcol:
+            if self.xgrad_line_startcol == pyplis_worker.cam_specs.pix_num_x - 1:
+                self.xgrad_line_startcol = pyplis_worker.cam_specs.pix_num_x - 2
+                self.xgrad_line_stopcol = pyplis_worker.cam_specs.pix_num_x - 1
+            else:
+                self.xgrad_line_stopcol = self.xgrad_line_startcol + 1
+
+        # Create update dictionary
+        update_dict = {'ygrad_line_colnum': self.ygrad_line_colnum,
+                       'ygrad_line_startrow': self.ygrad_line_startrow,
+                       'ygrad_line_stoprow': self.ygrad_line_stoprow,
+                       'xgrad_line_rownum': self.xgrad_line_rownum,
+                       'xgrad_line_startcol': self.xgrad_line_startcol,
+                       'xgrad_line_stopcol': self.xgrad_line_stopcol}
+
+        # Update PlumeBackground objects
+        self.pyplis_worker.plume_bg_A.update(**update_dict)
+        self.pyplis_worker.plume_bg_B.update(**update_dict)
 
     def update_draw(self):
         """
@@ -2206,7 +2270,37 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def draw_roi_B(self, eclick, erelease):
         """Draws ROI"""
-        pass
+        ax = self.fig_tau_B.axes[0]
+
+        # Delete previous rectangle, if it exists - making sure it is the Rectangle with the correct colour
+        try:
+            label = self.rect_labels[self.rect_selector.get()]
+            for child in ax.get_children():
+                if isinstance(child, patches.Rectangle):
+                    if child._label == label:
+                        child.remove()
+        except AttributeError:
+            pass
+
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+
+        col = self.rect_colours[self.rect_selector.get()]
+        ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y), crop_X, crop_Y,
+                                       facecolor=col, edgecolor=col, fill=True, alpha=0.3, label=label))
+
+        # Update figure canvas
+        self.fig_canvas_B.draw()
+
+        # Update the plumebackground model to hold this rectangle
+        update_dict = {label: [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]}
+        self.pyplis_worker.plume_bg_B.update(**update_dict)
 
     @property
     def bg_mode(self):
@@ -2280,6 +2374,54 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def tau_min(self, value):
         self._tau_min.set(value)
 
+    @property
+    def ygrad_line_colnum(self):
+        return self._ygrad_line_colnum.get()
+
+    @ygrad_line_colnum.setter
+    def ygrad_line_colnum(self, value):
+        self._ygrad_line_colnum.set(value)
+
+    @property
+    def ygrad_line_startrow(self):
+        return self._ygrad_line_startrow.get()
+
+    @ygrad_line_startrow.setter
+    def ygrad_line_startrow(self, value):
+        self._ygrad_line_startrow.set(value)
+
+    @property
+    def ygrad_line_stoprow(self):
+        return self._ygrad_line_stoprow.get()
+
+    @ygrad_line_stoprow.setter
+    def ygrad_line_stoprow(self, value):
+        self._ygrad_line_stoprow.set(value)
+
+    @property
+    def xgrad_line_rownum(self):
+        return self._xgrad_line_rownum.get()
+
+    @xgrad_line_rownum.setter
+    def xgrad_line_rownum(self, value):
+        self._xgrad_line_rownum.set(value)
+
+    @property
+    def xgrad_line_startcol(self):
+        return self._xgrad_line_startcol.get()
+
+    @xgrad_line_startcol.setter
+    def xgrad_line_startcol(self, value):
+        self._xgrad_line_startcol.set(value)
+
+    @property
+    def xgrad_line_stopcol(self):
+        return self._xgrad_line_stopcol.get()
+
+    @xgrad_line_stopcol.setter
+    def xgrad_line_stopcol(self, value):
+        self._xgrad_line_stopcol.set(value)
+
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
@@ -2303,6 +2445,16 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.frame.attributes('-topmost', 0)
         if reload_seq:
             pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        self.get_current_settings()
+
+    def get_current_settings(self):
+        # Update GUI settings with current background setting
+        self.ygrad_line_colnum = pyplis_worker.plume_bg_A.ygrad_line_colnum
+        self.ygrad_line_startrow = pyplis_worker.plume_bg_A.ygrad_line_startrow
+        self.ygrad_line_stoprow = pyplis_worker.plume_bg_A.ygrad_line_stoprow
+        self.xgrad_line_rownum = pyplis_worker.plume_bg_A.xgrad_line_rownum
+        self.xgrad_line_startcol = pyplis_worker.plume_bg_A.xgrad_line_startcol
+        self.xgrad_line_stopcol = pyplis_worker.plume_bg_A.xgrad_line_stopcol
 
     def set_cmap(self, draw=True):
         """Sets colourmap of figures"""
