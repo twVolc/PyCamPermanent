@@ -1939,6 +1939,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._xgrad_line_startcol = tk.IntVar()
         self._xgrad_line_stopcol = tk.IntVar()
 
+        self.line_col = [None, None]
+        self.line_row = [None, None]
+
         self.load_defaults()
 
     def generate_frame(self):
@@ -2018,7 +2021,6 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
 
         # -----------------------------
         # Reference areas
@@ -2125,6 +2127,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Run current background model to load up figures
         self.run_process(reload_seq=False)
+        self.draw_lines()
         self.update_draw()
 
         # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
@@ -2188,6 +2191,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
             else:
                 self.xgrad_line_stopcol = self.xgrad_line_startcol + 1
 
+        # Draw lines on figures
+        self.draw_lines()
+
         # Create update dictionary
         update_dict = {'ygrad_line_colnum': self.ygrad_line_colnum,
                        'ygrad_line_startrow': self.ygrad_line_startrow,
@@ -2199,6 +2205,26 @@ class PlumeBackground(LoadSaveProcessingSettings):
         # Update PlumeBackground objects
         self.pyplis_worker.plume_bg_A.update(**update_dict)
         self.pyplis_worker.plume_bg_B.update(**update_dict)
+
+    def draw_lines(self, draw=True):
+        """Draws scale lnes on plots"""
+
+        for i, ax in enumerate([self.fig_tau_A.axes[0], self.fig_tau_B.axes[0]]):
+            try:
+                self.line_col[i].pop(0).remove()
+                self.line_row[i].pop(0).remove()
+            except AttributeError:
+                pass
+
+            self.line_col[i] = ax.plot([self.ygrad_line_colnum, self.ygrad_line_colnum],
+                                       [self.ygrad_line_startrow, self.ygrad_line_stoprow], lw=4, color='limegreen')
+
+            self.line_row[i] = ax.plot([self.xgrad_line_startcol, self.xgrad_line_stopcol],
+                                       [self.xgrad_line_rownum, self.xgrad_line_rownum], lw=4, color='pink')
+
+        if draw:
+            self.fig_canvas_A.draw()
+            self.fig_canvas_B.draw()
 
     def update_draw(self):
         """
@@ -2539,6 +2565,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Set colourmaps
         self.set_cmap(draw=False)
+
+        # Draw lines
+        self.draw_lines(draw=False)
 
         # Reattach bindings to new figure
         self.update_draw()
