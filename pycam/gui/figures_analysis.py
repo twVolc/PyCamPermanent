@@ -1912,12 +1912,18 @@ class PlumeBackground(LoadSaveProcessingSettings):
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
                      'auto_bg_cmap': int,
-                     'ygrad_line_colnum': int,
-                     'ygrad_line_startrow': int,
-                     'ygrad_line_stoprow': int,
-                     'xgrad_line_rownum': int,
-                     'xgrad_line_startcol': int,
-                     'xgrad_line_stopcol': int}
+                     'ygrad_line_colnum_A': int,
+                     'ygrad_line_startrow_A': int,
+                     'ygrad_line_stoprow_A': int,
+                     'xgrad_line_rownum_A': int,
+                     'xgrad_line_startcol_A': int,
+                     'xgrad_line_stopcol_A': int,
+                     'ygrad_line_colnum_B': int,
+                     'ygrad_line_startrow_B': int,
+                     'ygrad_line_stoprow_B': int,
+                     'xgrad_line_rownum_B': int,
+                     'xgrad_line_startcol_B': int,
+                     'xgrad_line_stopcol_B': int}
 
 
         self._bg_mode = tk.IntVar()
@@ -1932,15 +1938,22 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._tau_min = tk.DoubleVar()
         self.tau_min = -0.1
 
-        self._ygrad_line_colnum = tk.IntVar()
-        self._ygrad_line_startrow = tk.IntVar()
-        self._ygrad_line_stoprow = tk.IntVar()
-        self._xgrad_line_rownum = tk.IntVar()
-        self._xgrad_line_startcol = tk.IntVar()
-        self._xgrad_line_stopcol = tk.IntVar()
+        self._ygrad_line_colnum_A = tk.IntVar()
+        self._ygrad_line_startrow_A = tk.IntVar()
+        self._ygrad_line_stoprow_A = tk.IntVar()
+        self._xgrad_line_rownum_A = tk.IntVar()
+        self._xgrad_line_startcol_A = tk.IntVar()
+        self._xgrad_line_stopcol_A = tk.IntVar()
 
-        self.line_col = [None, None]
-        self.line_row = [None, None]
+        self._ygrad_line_colnum_B = tk.IntVar()
+        self._ygrad_line_startrow_B = tk.IntVar()
+        self._ygrad_line_stoprow_B = tk.IntVar()
+        self._xgrad_line_rownum_B = tk.IntVar()
+        self._xgrad_line_startcol_B = tk.IntVar()
+        self._xgrad_line_stopcol_B = tk.IntVar()
+
+        self.line_col = {'A': None, 'B': None}
+        self.line_row = {'A': None, 'B': None}
 
         self.load_defaults()
 
@@ -2054,44 +2067,90 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Line profiles
         row += 1
-        prof_frame = tk.LabelFrame(self.ref_area_frame, text='Profiles')
-        prof_frame.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+        prof_frame_A = tk.LabelFrame(self.ref_area_frame, text='Profiles')
+        prof_frame_A.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+
+        notebook = ttk.Notebook(prof_frame_A, style='One.TNotebook.Tab')
+        notebook.pack(fill='both', expand=1, padx=5, pady=5)
+
+        on_band_frame = ttk.Frame(notebook)
+        off_band_frame = ttk.Frame(notebook)
+        notebook.add(on_band_frame, text='On-band')
+        notebook.add(off_band_frame, text='Off-band')
 
         # Row profile
-        row_frame = tk.LabelFrame(prof_frame, relief=tk.RAISED, text='Row')
+        row_frame = tk.LabelFrame(on_band_frame, relief=tk.RAISED, text='Row')
         row_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
         lab_1 = ttk.Label(row_frame, text='Row number:')
         lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum, command=self.update_ref_lines,
+        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum_A, command=self.update_ref_lines_A,
                                from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
         spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
         lab = ttk.Label(row_frame, text='Start col:')
         lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
-        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol, command=self.update_ref_lines,
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol_A, command=self.update_ref_lines_A,
                            from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-2, increment=1, width=4)
         spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
         lab = ttk.Label(row_frame, text='End col:')
         lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
-        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol, command=self.update_ref_lines,
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol_A, command=self.update_ref_lines_A,
                            from_=1, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
         spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
 
         # Column profile
-        col_frame = tk.LabelFrame(prof_frame, relief=tk.RAISED, text='Column')
+        col_frame = tk.LabelFrame(on_band_frame, relief=tk.RAISED, text='Column')
         col_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
         lab_1 = ttk.Label(col_frame, text='Column number:')
         lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
-        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum, command=self.update_ref_lines,
+        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum_A, command=self.update_ref_lines_A,
                                from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
         spin_col.grid(row=0, column=1, sticky='w', padx=2, pady=2)
         lab = ttk.Label(col_frame, text='Start row:')
         lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
-        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow, command=self.update_ref_lines,
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow_A, command=self.update_ref_lines_A,
                            from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-2, increment=1, width=4)
         spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
         lab = ttk.Label(col_frame, text='End row:')
         lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
-        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow, command=self.update_ref_lines,
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow_A, command=self.update_ref_lines_A,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Row profile
+        row_frame = tk.LabelFrame(off_band_frame, relief=tk.RAISED, text='Row')
+        row_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(row_frame, text='Row number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum_B, command=self.update_ref_lines_B,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(row_frame, text='Start col:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol_B, command=self.update_ref_lines_B,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(row_frame, text='End col:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol_B, command=self.update_ref_lines_B,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Column profile
+        col_frame = tk.LabelFrame(off_band_frame, relief=tk.RAISED, text='Column')
+        col_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(col_frame, text='Column number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum_B, command=self.update_ref_lines_B,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin_col.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(col_frame, text='Start row:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow_B, command=self.update_ref_lines_B,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(col_frame, text='End row:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow_B, command=self.update_ref_lines_B,
                            from_=1, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
         spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
         # ------------------------------
@@ -2172,59 +2231,96 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if hasattr(self, 'tau_A'):
             self.update_plots(self.tau_A, self.tau_B)
 
-    def update_ref_lines(self):
+    def update_ref_lines_A(self):
         """
         Updates all relevant reference areas in the plots and in pyplis backend
         """
         # Do a few checks to ensure we have valid numbers
-        if self.ygrad_line_stoprow < self.ygrad_line_startrow:
-            if self.ygrad_line_startrow == pyplis_worker.cam_specs.pix_num_y - 1:
-                self.ygrad_line_startrow = pyplis_worker.cam_specs.pix_num_y - 2
-                self.ygrad_line_stoprow = pyplis_worker.cam_specs.pix_num_y - 1
+        if self.ygrad_line_stoprow_A <= self.ygrad_line_startrow_A:
+            if self.ygrad_line_startrow_A == pyplis_worker.cam_specs.pix_num_y - 1:
+                self.ygrad_line_startrow_A = pyplis_worker.cam_specs.pix_num_y - 2
+                self.ygrad_line_stoprow_A = pyplis_worker.cam_specs.pix_num_y - 1
             else:
-                self.ygrad_line_stoprow = self.ygrad_line_startrow + 1
+                self.ygrad_line_stoprow_A = self.ygrad_line_startrow_A + 1
 
-        if self.xgrad_line_stopcol < self.xgrad_line_startcol:
-            if self.xgrad_line_startcol == pyplis_worker.cam_specs.pix_num_x - 1:
-                self.xgrad_line_startcol = pyplis_worker.cam_specs.pix_num_x - 2
-                self.xgrad_line_stopcol = pyplis_worker.cam_specs.pix_num_x - 1
+        if self.xgrad_line_stopcol_A <= self.xgrad_line_startcol_A:
+            if self.xgrad_line_startcol_A == pyplis_worker.cam_specs.pix_num_x - 1:
+                self.xgrad_line_startcol_A = pyplis_worker.cam_specs.pix_num_x - 2
+                self.xgrad_line_stopcol_A = pyplis_worker.cam_specs.pix_num_x - 1
             else:
-                self.xgrad_line_stopcol = self.xgrad_line_startcol + 1
+                self.xgrad_line_stopcol_A = self.xgrad_line_startcol_A + 1
 
         # Draw lines on figures
-        self.draw_lines()
+        self.draw_lines(bands=['A'])
 
         # Create update dictionary
-        update_dict = {'ygrad_line_colnum': self.ygrad_line_colnum,
-                       'ygrad_line_startrow': self.ygrad_line_startrow,
-                       'ygrad_line_stoprow': self.ygrad_line_stoprow,
-                       'xgrad_line_rownum': self.xgrad_line_rownum,
-                       'xgrad_line_startcol': self.xgrad_line_startcol,
-                       'xgrad_line_stopcol': self.xgrad_line_stopcol}
+        update_dict = {'ygrad_line_colnum_A': self.ygrad_line_colnum_A,
+                       'ygrad_line_startrow_A': self.ygrad_line_startrow_A,
+                       'ygrad_line_stoprow_A': self.ygrad_line_stoprow_A,
+                       'xgrad_line_rownum_A': self.xgrad_line_rownum_A,
+                       'xgrad_line_startcol_A': self.xgrad_line_startcol_A,
+                       'xgrad_line_stopcol_A': self.xgrad_line_stopcol_A}
 
         # Update PlumeBackground objects
         self.pyplis_worker.plume_bg_A.update(**update_dict)
+
+    def update_ref_lines_B(self):
+        """
+        Updates all relevant reference areas in the plots and in pyplis backend
+        """
+        # Do a few checks to ensure we have valid numbers
+        if self.ygrad_line_stoprow_B <= self.ygrad_line_startrow_B:
+            if self.ygrad_line_startrow_B == pyplis_worker.cam_specs.pix_num_y - 1:
+                self.ygrad_line_startrow_B = pyplis_worker.cam_specs.pix_num_y - 2
+                self.ygrad_line_stoprow_B = pyplis_worker.cam_specs.pix_num_y - 1
+            else:
+                self.ygrad_line_stoprow_B = self.ygrad_line_startrow_B + 1
+
+        if self.xgrad_line_stopcol_B <= self.xgrad_line_startcol_B:
+            if self.xgrad_line_startcol_B == pyplis_worker.cam_specs.pix_num_x - 1:
+                self.xgrad_line_startcol_B = pyplis_worker.cam_specs.pix_num_x - 2
+                self.xgrad_line_stopcol_B = pyplis_worker.cam_specs.pix_num_x - 1
+            else:
+                self.xgrad_line_stopcol_B = self.xgrad_line_startcol_B + 1
+
+        # Draw lines on figures
+        self.draw_lines(bands='B')
+
+        # Create update dictionary
+        update_dict = {'ygrad_line_colnum_B': self.ygrad_line_colnum_B,
+                       'ygrad_line_startrow_B': self.ygrad_line_startrow_B,
+                       'ygrad_line_stoprow_B': self.ygrad_line_stoprow_B,
+                       'xgrad_line_rownum_B': self.xgrad_line_rownum_B,
+                       'xgrad_line_startcol_B': self.xgrad_line_startcol_B,
+                       'xgrad_line_stopcol_B': self.xgrad_line_stopcol_B}
+
+        # Update PlumeBackground objects
         self.pyplis_worker.plume_bg_B.update(**update_dict)
 
-    def draw_lines(self, draw=True):
+    def draw_lines(self, draw=True, bands=['A', 'B']):
         """Draws scale lnes on plots"""
 
-        for i, ax in enumerate([self.fig_tau_A.axes[0], self.fig_tau_B.axes[0]]):
+        for band in bands:
+            fig = getattr(self, 'fig_tau_{}'.format(band))
+            ax = fig.axes[0]
             try:
-                self.line_col[i].pop(0).remove()
-                self.line_row[i].pop(0).remove()
+                self.line_col[band].pop(0).remove()
+                self.line_row[band].pop(0).remove()
             except AttributeError:
                 pass
 
-            self.line_col[i] = ax.plot([self.ygrad_line_colnum, self.ygrad_line_colnum],
-                                       [self.ygrad_line_startrow, self.ygrad_line_stoprow], lw=4, color='limegreen')
+            self.line_col[band] = ax.plot([getattr(self, 'ygrad_line_colnum_{}'.format(band)),
+                                        getattr(self, 'ygrad_line_colnum_{}'.format(band))],
+                                       [getattr(self, 'ygrad_line_startrow_{}'.format(band)),
+                                        getattr(self, 'ygrad_line_stoprow_{}'.format(band))], lw=4, color='limegreen')
 
-            self.line_row[i] = ax.plot([self.xgrad_line_startcol, self.xgrad_line_stopcol],
-                                       [self.xgrad_line_rownum, self.xgrad_line_rownum], lw=4, color='pink')
+            self.line_row[band] = ax.plot([getattr(self, 'xgrad_line_startcol_{}'.format(band)),
+                                        getattr(self, 'xgrad_line_stopcol_{}'.format(band))],
+                                       [getattr(self, 'xgrad_line_rownum_{}'.format(band)),
+                                        getattr(self, 'xgrad_line_rownum_{}'.format(band))], lw=4, color='pink')
 
-        if draw:
-            self.fig_canvas_A.draw()
-            self.fig_canvas_B.draw()
+            if draw:
+                getattr(self, 'fig_canvas_{}'.format(band)).draw()
 
     def update_draw(self):
         """
@@ -2401,52 +2497,100 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._tau_min.set(value)
 
     @property
-    def ygrad_line_colnum(self):
-        return self._ygrad_line_colnum.get()
+    def ygrad_line_colnum_A(self):
+        return self._ygrad_line_colnum_A.get()
 
-    @ygrad_line_colnum.setter
-    def ygrad_line_colnum(self, value):
-        self._ygrad_line_colnum.set(value)
-
-    @property
-    def ygrad_line_startrow(self):
-        return self._ygrad_line_startrow.get()
-
-    @ygrad_line_startrow.setter
-    def ygrad_line_startrow(self, value):
-        self._ygrad_line_startrow.set(value)
+    @ygrad_line_colnum_A.setter
+    def ygrad_line_colnum_A(self, value):
+        self._ygrad_line_colnum_A.set(value)
 
     @property
-    def ygrad_line_stoprow(self):
-        return self._ygrad_line_stoprow.get()
+    def ygrad_line_startrow_A(self):
+        return self._ygrad_line_startrow_A.get()
 
-    @ygrad_line_stoprow.setter
-    def ygrad_line_stoprow(self, value):
-        self._ygrad_line_stoprow.set(value)
-
-    @property
-    def xgrad_line_rownum(self):
-        return self._xgrad_line_rownum.get()
-
-    @xgrad_line_rownum.setter
-    def xgrad_line_rownum(self, value):
-        self._xgrad_line_rownum.set(value)
+    @ygrad_line_startrow_A.setter
+    def ygrad_line_startrow_A(self, value):
+        self._ygrad_line_startrow_A.set(value)
 
     @property
-    def xgrad_line_startcol(self):
-        return self._xgrad_line_startcol.get()
+    def ygrad_line_stoprow_A(self):
+        return self._ygrad_line_stoprow_A.get()
 
-    @xgrad_line_startcol.setter
-    def xgrad_line_startcol(self, value):
-        self._xgrad_line_startcol.set(value)
+    @ygrad_line_stoprow_A.setter
+    def ygrad_line_stoprow_A(self, value):
+        self._ygrad_line_stoprow_A.set(value)
 
     @property
-    def xgrad_line_stopcol(self):
-        return self._xgrad_line_stopcol.get()
+    def xgrad_line_rownum_A(self):
+        return self._xgrad_line_rownum_A.get()
 
-    @xgrad_line_stopcol.setter
-    def xgrad_line_stopcol(self, value):
-        self._xgrad_line_stopcol.set(value)
+    @xgrad_line_rownum_A.setter
+    def xgrad_line_rownum_A(self, value):
+        self._xgrad_line_rownum_A.set(value)
+
+    @property
+    def xgrad_line_startcol_A(self):
+        return self._xgrad_line_startcol_A.get()
+
+    @xgrad_line_startcol_A.setter
+    def xgrad_line_startcol_A(self, value):
+        self._xgrad_line_startcol_A.set(value)
+
+    @property
+    def xgrad_line_stopcol_A(self):
+        return self._xgrad_line_stopcol_A.get()
+
+    @xgrad_line_stopcol_A.setter
+    def xgrad_line_stopcol_A(self, value):
+        self._xgrad_line_stopcol_A.set(value)
+
+    @property
+    def ygrad_line_colnum_B(self):
+        return self._ygrad_line_colnum_B.get()
+
+    @ygrad_line_colnum_B.setter
+    def ygrad_line_colnum_B(self, value):
+        self._ygrad_line_colnum_B.set(value)
+
+    @property
+    def ygrad_line_startrow_B(self):
+        return self._ygrad_line_startrow_B.get()
+
+    @ygrad_line_startrow_B.setter
+    def ygrad_line_startrow_B(self, value):
+        self._ygrad_line_startrow_B.set(value)
+
+    @property
+    def ygrad_line_stoprow_B(self):
+        return self._ygrad_line_stoprow_B.get()
+
+    @ygrad_line_stoprow_B.setter
+    def ygrad_line_stoprow_B(self, value):
+        self._ygrad_line_stoprow_B.set(value)
+
+    @property
+    def xgrad_line_rownum_B(self):
+        return self._xgrad_line_rownum_B.get()
+
+    @xgrad_line_rownum_B.setter
+    def xgrad_line_rownum_B(self, value):
+        self._xgrad_line_rownum_B.set(value)
+
+    @property
+    def xgrad_line_startcol_B(self):
+        return self._xgrad_line_startcol_B.get()
+
+    @xgrad_line_startcol_B.setter
+    def xgrad_line_startcol_B(self, value):
+        self._xgrad_line_startcol_B.set(value)
+
+    @property
+    def xgrad_line_stopcol_B(self):
+        return self._xgrad_line_stopcol_B.get()
+
+    @xgrad_line_stopcol_B.setter
+    def xgrad_line_stopcol_B(self, value):
+        self._xgrad_line_stopcol_B.set(value)
 
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
@@ -2475,12 +2619,19 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def get_current_settings(self):
         # Update GUI settings with current background setting
-        self.ygrad_line_colnum = pyplis_worker.plume_bg_A.ygrad_line_colnum
-        self.ygrad_line_startrow = pyplis_worker.plume_bg_A.ygrad_line_startrow
-        self.ygrad_line_stoprow = pyplis_worker.plume_bg_A.ygrad_line_stoprow
-        self.xgrad_line_rownum = pyplis_worker.plume_bg_A.xgrad_line_rownum
-        self.xgrad_line_startcol = pyplis_worker.plume_bg_A.xgrad_line_startcol
-        self.xgrad_line_stopcol = pyplis_worker.plume_bg_A.xgrad_line_stopcol
+        self.ygrad_line_colnum_A = pyplis_worker.plume_bg_A.ygrad_line_colnum
+        self.ygrad_line_startrow_A = pyplis_worker.plume_bg_A.ygrad_line_startrow
+        self.ygrad_line_stoprow_A = pyplis_worker.plume_bg_A.ygrad_line_stoprow
+        self.xgrad_line_rownum_A = pyplis_worker.plume_bg_A.xgrad_line_rownum
+        self.xgrad_line_startcol_A = pyplis_worker.plume_bg_A.xgrad_line_startcol
+        self.xgrad_line_stopcol_A = pyplis_worker.plume_bg_A.xgrad_line_stopcol
+
+        self.ygrad_line_colnum_B = pyplis_worker.plume_bg_B.ygrad_line_colnum
+        self.ygrad_line_startrow_B = pyplis_worker.plume_bg_B.ygrad_line_startrow
+        self.ygrad_line_stoprow_B = pyplis_worker.plume_bg_B.ygrad_line_stoprow
+        self.xgrad_line_rownum_B = pyplis_worker.plume_bg_B.xgrad_line_rownum
+        self.xgrad_line_startcol_B = pyplis_worker.plume_bg_B.xgrad_line_startcol
+        self.xgrad_line_stopcol_B = pyplis_worker.plume_bg_B.xgrad_line_stopcol
 
     def set_cmap(self, draw=True):
         """Sets colourmap of figures"""
