@@ -12,7 +12,7 @@ bg_dark_A='.\Data\Images\Villarrica\Cal_1\2018-03-26T143638_fltrA_1ag_1399829ss_
 bg_dark_B='.\Data\Images\Villarrica\Cal_1\2018-03-26T143631_fltrB_1ag_99980ss_Dark.png'
 cell_cal_dir='.\Data\Images\Villarrica\Cal_1\'
 cal_type_int=1
-use_sensitivity_mask=1
+use_sensitivity_mask=0
 use_light_dilution=0
 min_cd=5e16
 plot_iter=0
@@ -35,6 +35,7 @@ save_doas_cal=0
 # Plume background model
 bg_mode=5
 auto_param=1
+vign_corr=1
 polyfit_2d_thresh=100
 ref_check_lower=-9e+16
 ref_check_upper=5e+16
@@ -44,6 +45,7 @@ auto_bg_cmap=0
 # DOAS calibration and DOAS-AA calibration
 doas_method=ifit
 ILS_path='.\tests\test_data\test_spectra\2019-07-03_302nm_ILS.txt'
+doas_cal_adjust_offset=1
 maxrad_doas=1.0
 remove_doas_mins=30
 doas_recal=1

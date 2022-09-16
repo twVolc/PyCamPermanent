@@ -633,6 +633,8 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
         self.gather_vars()
 
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+
         self.q.put(1)
 
     def add_pcs_line(self, line, line_num=None, force_add=True):
@@ -1878,6 +1880,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
     """
     Generates plume background image figure and settings to adjust parameters
     """
+    # TODO I think manually setting the lines gets overwritten some times after rerunning the bakground model.
+    # TODO It might have somethign to do with reloading the sequence when Run is clicked, whichmight redo the background modelling??
     def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, gui_setts=gui_setts):
         super().__init__()
         self.pyplis_worker = pyplis_work
@@ -1889,6 +1893,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.dpi = gui_setts.dpi
         self.q = queue.Queue()
         self.canvases = [None] * 3
+        self.ones_mask = FileLocator.ONES_MASK
 
         if generate_frame:
             self.initiate_variables()
@@ -1907,6 +1912,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.main_gui = main_gui
         self.vars = {'bg_mode': int,
                      'auto_param': int,
+                     'vign_corr': int,
                      'polyfit_2d_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
@@ -1928,6 +1934,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
+        self._vign_corr = tk.IntVar()
         self._polyfit_2d_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
@@ -1991,6 +1998,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
         self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode, self.bg_mode, *pyplis_worker.BG_CORR_MODES)
         self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+
+        # Vignette correction
+        row += 1
+        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction', variable=self._vign_corr,
+                                command=self.set_vignette_correction)
+        check.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Reference are check
         row += 1
@@ -2441,6 +2454,14 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._auto_param.set(value)
 
     @property
+    def vign_corr(self):
+        return self._vign_corr.get()
+
+    @vign_corr.setter
+    def vign_corr(self, value):
+        self._vign_corr.set(value)
+
+    @property
     def polyfit_2d_thresh(self):
         return self._polyfit_2d_thresh.get()
 
@@ -2591,6 +2612,27 @@ class PlumeBackground(LoadSaveProcessingSettings):
     @xgrad_line_stopcol_B.setter
     def xgrad_line_stopcol_B(self, value):
         self._xgrad_line_stopcol_B.set(value)
+
+    def set_vignette_correction(self):
+        """
+        Sets vignette correction. If no correction is requested the masks are set as arrays of ones, so no adjustment
+        to the images will be made
+        :return:
+        """
+        if not self.vign_corr:
+            pyplis_worker.use_vign_corr = False
+            # Save the old path so we can revert back to it
+            if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
+                pyplis_worker.bg_A_path_old = pyplis_worker.bg_A_path
+                pyplis_worker.bg_B_path_old = pyplis_worker.bg_B_path
+            pyplis_worker.load_BG_img(self.ones_mask, band='A', ones=True)
+            pyplis_worker.load_BG_img(self.ones_mask, band='B', ones=True)
+
+        else:
+            pyplis_worker.use_vign_corr = True
+            if pyplis_worker.bg_A_path_old is not None:
+                pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
+                pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
 
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
@@ -3191,14 +3233,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
         :return:
         """
         pyplis_worker.plot_iter = self.plot_iter
+        doas_worker.plot_iter = self.plot_iter
         pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
         pyplis_worker.cal_type = self.cal_type_int
         pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
-        pyplis_worker.load_BG_img(self.bg_A, band='A')
-        pyplis_worker.load_BG_img(self.bg_B, band='B')
+        if pyplis_worker.use_vign_corr:
+            pyplis_worker.load_BG_img(self.bg_A, band='A')
+            pyplis_worker.load_BG_img(self.bg_B, band='B')
         pyplis_worker.min_cd = self.min_cd
         pyplis_worker.img_buff_size = self.buff_size
         pyplis_worker.save_opt_flow = self.save_opt_flow
@@ -3273,7 +3317,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         :return:
         """
         self.main_gui = main_gui
-        self.vars = {'remove_doas_mins': int,
+        self.vars = {'doas_cal_adjust_offset': int,
+                     'remove_doas_mins': int,
                      'doas_recal': int,
                      'doas_fov_recal_mins': int,
                      'doas_fov_recal': int,
@@ -3289,6 +3334,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # unless changing FOV, actually what I want to define is a limit to the time that a DOAS point contributes to
         # the scatter plot - so eseentially as we step forward in time we lose the oldest DOAS points, as they are
         # less likely to represent the current calibration conditions
+        self._doas_cal_adjust_offset = tk.IntVar()
         self._remove_doas_mins = tk.IntVar()
         self._doas_recal = tk.BooleanVar()          # If False, DOAS data is never removed (until next day). Otherwise data is removed based on remove_doas_mins
         self._doas_fov_recal_mins = tk.IntVar()     # Recalibration time [minutes] for FOV recalibration
@@ -3302,8 +3348,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
     def gather_vars(self, message=False):
         """Updates pyplis worker settings"""
+        self.pyplis_worker.doas_cal_adjust_offset = self.doas_cal_adjust_offset
         self.pyplis_worker.maxrad_doas = self.maxrad_doas
-
         self.pyplis_worker.remove_doas_mins = self.remove_doas_mins
         self.pyplis_worker.doas_recal = self.doas_recal
         self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
@@ -3353,6 +3399,12 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.frame_opts.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
+
+        # Offset options
+        check = ttk.Checkbutton(self.frame_opts, text='Include calibration offset', variable=self._doas_cal_adjust_offset,
+                                command=self.gather_vars)
+        check.grid(row=row, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+        row += 1
 
         # Maximum accepted radius for FOV search
         lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:', font=self.main_gui.main_font)
@@ -3446,7 +3498,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         row += 1
 
         # Fixing parameters (no calibration will be performed
-        check = ttk.Checkbutton(self.frame_info, text='Fix FOV parameters (no calibration run)', variable=self._fix_fov)
+        check = ttk.Checkbutton(self.frame_info, text='Fix FOV parameters (no calibration run)', variable=self._fix_fov,
+                                command=self.gather_vars)
         check.grid(row=row, column=0, columnspan=2, sticky='e', padx=2, pady=2)
 
         # ---------------------------------------------------------------
@@ -3485,6 +3538,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             self.update_plot()
         else:
             self.q.put(1)
+
+    @property
+    def doas_cal_adjust_offset(self):
+        """Access to tk variable _doas_cal_adjust_offsets. Defines whether offset in CD-tau calibration is used"""
+        return self._doas_cal_adjust_offset.get()
+
+    @doas_cal_adjust_offset.setter
+    def doas_cal_adjust_offset(self, value):
+        self._doas_cal_adjust_offset.set(value)
 
     @property
     def maxrad_doas(self):

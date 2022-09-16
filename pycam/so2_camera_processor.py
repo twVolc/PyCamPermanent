@@ -195,6 +195,7 @@ class PyplisWorker:
         self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
+        self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -249,12 +250,15 @@ class PyplisWorker:
         self.vign_A = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_A_path = None
+        self.bg_A_path_old = None       # Old path to vign image - used if ones mask is used
+        self.use_vign_corr = True
 
         # Load background image if we are provided with one
         self.bg_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vign_B = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
+        self.bg_A_path_old = None
 
         self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
                           'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
@@ -652,11 +656,12 @@ class PyplisWorker:
         except IndexError:
             pass
 
-    def load_BG_img(self, bg_path, band='A'):
+    def load_BG_img(self, bg_path, band='A', ones=False):
         """Loads in background file
 
         :param bg_path: Path to background sky image
-        :param band: Defines whether image is for on or off band (A or B)"""
+        :param band: Defines whether image is for on or off band (A or B)
+        :param ones:  bool  If True, dark image is not subtracted as this image is simply an array of ones"""
         if not os.path.exists(bg_path):
             raise ValueError('File path specified for background image does not exist: {}'.format(bg_path))
         if band not in ['A', 'B']:
@@ -665,16 +670,17 @@ class PyplisWorker:
         # Create image object
         img = pyplis.image.Img(bg_path, self.load_img_func)
 
-        # Dark subtraction - first extract ss then hunt for dark image
-        ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        if not ones:
+            # Dark subtraction - first extract ss then hunt for dark image
+            ss = str(int(img.texp * 10 ** 6))
+            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
 
-        if dark_img is not None:
-            img.subtract_dark_image(dark_img)
-            img.img[img.img <= 0] = np.finfo(float).eps
-        else:
-            warnings.warn('No dark image provided for background image.\n '
-                          'Background image has not been corrected for dark current.')
+            if dark_img is not None:
+                img.subtract_dark_image(dark_img)
+                img.img[img.img <= 0] = np.finfo(float).eps
+            else:
+                warnings.warn('No dark image provided for background image.\n '
+                              'Background image has not been corrected for dark current.')
 
         # Set variables
         setattr(self, 'bg_{}'.format(band), img)
@@ -1908,6 +1914,10 @@ class PyplisWorker:
         if self.got_doas_fov and self.cal_type in [1, 2]:
             cal_img = self.calib_pears.calibrate(img)
 
+            # If we want to adjust for the offset in the calibration curve we add y_offset back to the image here
+            if self.doas_cal_adjust_offset:
+                cal_img.img = cal_img.img + self.calib_pears.y_offset
+
         elif self.cal_type == 0:
             if isinstance(img, pyplis.Img):
                 # cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
@@ -2428,12 +2438,12 @@ class PyplisWorker:
             # This image
             if self.ref_check_mode:
                 if not self.ref_check_lower < avg < self.ref_check_upper:
-                    warnings.warn("Image contains CDs in ambient region above designated acceptable limit"
-                                  "Processing of this image is not being performed")
+                    print("Image contains CDs in ambient region above designated acceptable limit"
+                          "Processing of this image is not being performed")
                     return None
         except BaseException:
-            warnings.warn("Failed to retrieve data within background ROI (bg_roi)"
-                 "writing NaN")
+            print("Failed to retrieve data within background ROI (bg_roi)"
+                  "writing NaN")
             self.bg_std.append(np.nan)
             self.bg_mean.append(np.nan)
             # If we are in check mode, then we return if we failed to check the CD of the ambient ROI
@@ -2631,7 +2641,10 @@ class PyplisWorker:
                         # get bool mask for indices along the pcs
                         bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
 
-                        frac_bad = sum(bad) / float(len(bad))
+                        try:
+                            frac_bad = sum(bad) / float(len(bad))
+                        except ZeroDivisionError:
+                            frac_bad = 0
                         indices = np.arange(len(bad))[bad]
                         # now check impact of ill-constraint motion vectors
                         # on ICA
@@ -3191,7 +3204,12 @@ class PyplisWorker:
         # Processing settings save
         settings = os.path.join(self.processed_dir, 'processing_settings.txt')
         with open(settings, 'a') as f:
-            f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+            if self.bg_pycam:
+                f.write('BG_mode={}\n'.format(7))
+            else:
+                f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+            if self.cal_type in [1, 2]:
+                f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
             f.write('ambient_roi={}\n'.format(self.ambient_roi))
             f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
             f.write('DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y))

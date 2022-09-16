@@ -160,6 +160,7 @@ class IFitWorker:
         self.watching_dir = None
         self.watching = False
         self.STOP_FLAG = 'exit'
+        self.plot_iter = True           # Plots time series plot iteratively if true
 
         self._dark_dir = None
         self.dark_dir = dark_dir        # Directory where dark images are stored
@@ -250,6 +251,10 @@ class IFitWorker:
         with self.q_stop.mutex:
             self.q_stop.queue.clear()
 
+        # Clear images queue
+        with self.q_spec.mutex:
+            self.q_spec.queue.clear()
+
     @property
     def start_stray_wave(self):
         return self._start_stray_wave
@@ -329,6 +334,7 @@ class IFitWorker:
         """If dark_dir is changed we need to reset the dark_dict which holds preloaded dark specs"""
         self.dark_dict = {}
         self._dark_dir = value
+        print('Dark spectra directory set: {}'.format(self.dark_dir))
 
     @property
     def clear_spec_raw(self):
@@ -967,7 +973,7 @@ class IFitWorker:
             end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
             filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
 
-            subdir = 'Processed_{}'
+            subdir = 'Processed_{}_spec'
             i = 1
             while os.path.exists(os.path.join(self.spec_dir, subdir.format(i))):
                 i += 1
@@ -1097,6 +1103,9 @@ class IFitWorker:
 
             # Close thread if requested with 'exit' command
             if pathname == self.STOP_FLAG:
+                # Update plot at end if we haven't been updating it as we go - this should speed up processing as plotting takes a long time
+                if self.fig_series is not None and not self.plot_iter:
+                    self.fig_series.update_plot()
                 if continuous_save:
                     self.save_results(end_time=self.spec_time)
                 else:
@@ -1155,7 +1164,7 @@ class IFitWorker:
                 # Update doas plot
                 if self.fig_doas is not None:
                     self.fig_doas.update_plot()
-                if self.fig_series is not None:
+                if self.fig_series is not None and self.plot_iter:
                     self.fig_series.update_plot()
 
                 # Save all results if we are on the 0 or 30th minute of the hour

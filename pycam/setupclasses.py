@@ -77,7 +77,7 @@ class FileLocator:
     # Images
     GREEN_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/green-led.png'
     RED_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/red-led.png'
-
+    ONES_MASK = PYCAM_ROOT_WINDOWS + '/gui/icons/2022-08-07T111111_fltr_1ag_1ss_onesmask.png'
 
     # GUI
     GUI_SETTINGS = './gui/gui_settings.txt'
