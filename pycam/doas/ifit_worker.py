@@ -1459,9 +1459,11 @@ class IFitWorker:
         # --------------------
         # Define filenames
         date_str = spec_date.strftime(self.spec_specs.file_datestr)
-        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, self.start_fit_wave, self.end_fit_wave,
+        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave)),
+                                                                 int(np.round(self.end_fit_wave)),
                                                                  self.grid_max_ppmm, self.grid_increment_ppmm)
-        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, self.start_fit_wave_2, self.end_fit_wave_2,
+        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
+                                                                 int(np.round(self.end_fit_wave_2)),
                                                                  self.grid_max_ppmm, self.grid_increment_ppmm)
         file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
         file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)

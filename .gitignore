@@ -186,3 +186,5 @@ pycam/Data/saved_objects/ld_lookups/
 pycam/Data/saved_objects/
 
 pycam/Data/Hawaii/
+
+pycam/conf/cam_geom/kilauea_permanent.txt

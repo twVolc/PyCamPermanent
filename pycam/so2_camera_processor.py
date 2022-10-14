@@ -1967,6 +1967,7 @@ class PyplisWorker:
                 while os.path.exists(full_path):
                     self.doas_file_num += 1
                     full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                # TODO I don't think this line actually saves data...
                 self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
 
                 # Set new time of most recent save
@@ -2139,6 +2140,8 @@ class PyplisWorker:
             calib_dat = copy.deepcopy(self.calib_pears)
 
         # Edit all vectors
+        if time_obj > datetime.datetime(year=2022, month=7, day=26, hour=2, minute=2, second=25):
+            pass
         calib_dat.tau_vec = calib_dat.tau_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec = calib_dat.cd_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec_err = calib_dat.cd_vec_err[calib_dat.time_stamps >= time_obj]
