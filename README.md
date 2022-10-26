@@ -42,6 +42,7 @@ off Auto SS and the second to set shutter speed - if done in one round, if the S
 fail as AutoSS still won't have been turned off yet.
 
 TODO ideas:
+- Access to changing the polyorder of calib_pears should be provided, as for larger columnn densities and under light dilution the fit becomes non-linear - DONE need to check works 
 
 
 

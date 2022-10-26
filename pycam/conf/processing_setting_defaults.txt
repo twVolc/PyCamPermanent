@@ -53,6 +53,7 @@ doas_fov_recal_mins=30
 doas_fov_recal=0
 fix_fov=0
 max_doas_cam_dif=2
+polyorder_cal=1
 
 # Optical flow
 pyr_scale=0.5

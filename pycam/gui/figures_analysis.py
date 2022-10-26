@@ -3324,7 +3324,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                      'doas_fov_recal': int,
                      'max_doas_cam_dif': int,
                      'fix_fov': int,
-                     'maxrad_doas': float}          # Maximum radius in pixels, not degrees, so depends on distance!
+                     'maxrad_doas': float,
+                     'polyorder_cal': int}          # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
         # self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
@@ -3344,6 +3345,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self._fov_rad = tk.DoubleVar()
         self._fix_fov = tk.BooleanVar()             # Fixes the FOV - no FOV re-calibration at all will occur
 
+        self._polyorder_cal = tk.IntVar()
+
         self.load_defaults()
 
     def gather_vars(self, message=False):
@@ -3356,6 +3359,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
         self.pyplis_worker.fix_fov = self.fix_fov
         self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
+        self.pyplis_worker.polyorder_cal = self.polyorder_cal
 
         if message:
             messagebox.showinfo('Settings updated',
@@ -3445,6 +3449,13 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         check_frame.grid(row=row, column=2, sticky='w', padx=2)
         check = ttk.Checkbutton(check_frame, text='On', variable=self._doas_fov_recal)
         check.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        lab = ttk.Label(self.frame_opts, text='Calibration polynomial order:', font=self.main_gui.main_font)
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._polyorder_cal, from_=1, to=10, increment=1,
+                           width=5, font=self.main_gui.main_font)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
         butt_frame = ttk.Frame(self.frame_opts)
@@ -3662,6 +3673,14 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def max_doas_cam_dif(self, value):
         self._max_doas_cam_dif.set(value)
 
+    @property
+    def polyorder_cal(self):
+        return self._polyorder_cal.get()
+
+    @polyorder_cal.setter
+    def polyorder_cal(self, value):
+        self._polyorder_cal.set(value)
+
     def update_vars(self):
         """Updates FOV variables based on pyplis worker"""
         try:
@@ -3722,6 +3741,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
         self.fix_fov = self.pyplis_worker.fix_fov
         self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
+        self.polyorder_cal = self.pyplis_worker.polyorder_cal
 
         self.in_frame = False
         self.frame.destroy()

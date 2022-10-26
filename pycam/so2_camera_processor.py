@@ -177,6 +177,7 @@ class PyplisWorker:
         self.doas_worker = None                 # DOASWorker object
         sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
         self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=sens_mask)     # Pyplis object holding functions to plot results
+        self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
         self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
         self.doas_fov_y = None                  # Y FOV of DOAS
@@ -2033,7 +2034,7 @@ class PyplisWorker:
                     #                                                               stds=self.test_doas_stds)
                     # TODO ==========================================
 
-                    self.doas_fov_search(stack, self.doas_worker.results)
+                    self.doas_fov_search(stack, self.doas_worker.results, polyorder=self.polyorder_cal)
 
                     # Once we have a calibration we need to go back through buffer and get emission rates
                     # Overwrite any emission rates since last calibration, as they require new FOV calibration
