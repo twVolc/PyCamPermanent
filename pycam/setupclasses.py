@@ -53,6 +53,9 @@ class FileLocator:
     SPEC_PATH_WINDOWS = DAT_DIR_WINDOWS + 'Spectra/'
 
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
+    START_PYCAM = SCRIPTS + 'start_pycam.sh'
+    CHECK_RUN = SCRIPTS + 'check_run.py'
+    REMOTE_PI_RUN_PYCAM = SCRIPTS + 'remote_pi_run_pycam.py'
     MOUNT_SSD_SCRIPT = SCRIPTS + 'mount_ssd.py'
     UNMOUNT_SSD_SCRIPT = SCRIPTS + 'unmount_ssd.py'
     CLEAR_SSD_SCRIPT = SCRIPTS + 'clear_ssd.py'
@@ -193,7 +196,7 @@ class CameraSpecs:
                                        np.arange(10000, 50000, 5000),
                                        np.arange(50000, 100000, 10000),
                                        np.arange(100000, 500000, 50000),
-                                       np.arange(500000, 1000000, 100000), [1000000]))
+                                       np.arange(500000, 1000000, 100000), [1000000], [1500000]))
 
         # Acquisition settings
         self.shutter_speed = 10000  # Camera shutter speeds (us)
@@ -427,6 +430,7 @@ class SpecSpecs:
         self.file_ss = '{}ss'   # Shutter speed format spec
         self.file_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear', 'test': 'Test'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
+        self.file_coadd = 'coadd'   # Coadd string format
         self.file_date_loc = 0
         self.file_ss_loc = 1        # Shutter speed location in filename
         self.file_coadd_loc = 2     # Coadd location in filename

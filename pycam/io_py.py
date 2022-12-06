@@ -4,12 +4,16 @@
 Contains some simple functions for saving data
 """
 
-from .setupclasses import SpecSpecs, CameraSpecs
+from .setupclasses import SpecSpecs, CameraSpecs, FileLocator
 from .utils import check_filename
 import numpy as np
-import cv2
 import os
 import datetime
+import time
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    pass
 from tkinter import filedialog
 try:
     from pyplis import LineOnImage
@@ -17,6 +21,10 @@ try:
     import scipy.io
 except ImportError:
     print('Working on a machine without pyplis. Processing will not be possible')
+try:
+    import cv2
+except ModuleNotFoundError:
+    print('OpenCV could not be imported, there may be some issues caused by this')
 
 
 def save_img(img, filename, ext='.png'):
@@ -552,3 +560,49 @@ def read_temp_log(filename):
     return dates, temps
 
 
+def reboot_remote_pi(channel_off=16, channel_on=23, pi_ip=['169.254.10.178']):
+    """
+    Reboots slave pi using channel_off and channel_on GPIOs
+    NOTE this will not reboot the master pi even if the IP is changed, as the pi is not setup for GPIO off and on
+    """
+    # Use BCM rather than board numbers
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(channel_on, GPIO.OUT)
+    GPIO.setup(channel_off, GPIO.OUT)
+
+    # Send pulse to turn off pi
+    GPIO.output(channel_off, GPIO.HIGH)
+    time.sleep(0.2)
+    GPIO.output(channel_off, GPIO.LOW)
+    time.sleep(0.2)
+    GPIO.output(channel_off, GPIO.HIGH)
+    time.sleep(20)
+
+    # ------------------------------------------------------------
+    # Then reboot again
+    stat_dict = {}
+    stat_dict_on = {}
+    for ip in pi_ip:
+        stat_dict_on[ip] = True
+        stat_dict[ip] = False
+
+    while stat_dict != stat_dict_on:
+        # Send pulse to turn off pi
+        GPIO.output(channel_on, GPIO.HIGH)
+        time.sleep(0.2)
+        GPIO.output(channel_on, GPIO.LOW)
+        time.sleep(20)
+
+        # For each pi attempt to connect. If we can't we flag that this pi is now turned off
+        for ip in pi_ip:
+            if not stat_dict[ip]:
+                date_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ret = os.system("ping -w 1 {}".format(ip))
+                if ret == 0:
+                    with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                        f.write("{} remote_pi_on.py: {} now turned on\n".format(date_str, ip))
+                    stat_dict[ip] = True
+                else:
+                    with open(FileLocator.MAIN_LOG_PI, 'a', newline='\n') as f:
+                        f.write("{} remote_pi_on.py: {} no longer reachable\n".format(date_str, ip))
+    GPIO.cleanup()
