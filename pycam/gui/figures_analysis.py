@@ -3357,9 +3357,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.doas_recal = self.doas_recal
         self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
         self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
-        self.pyplis_worker.fix_fov = self.fix_fov
         self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
         self.pyplis_worker.polyorder_cal = self.polyorder_cal
+        self.pyplis_worker.fix_fov = self.fix_fov
+        if self.fix_fov:
+            self.pyplis_worker.doas_fov_x = self.centre_pix_x
+            self.pyplis_worker.doas_fov_y = self.centre_pix_y
+            self.pyplis_worker.doas_fov_extent = self.fov_rad
+            self.pyplis_worker.generate_doas_fov()
+
 
         if message:
             messagebox.showinfo('Settings updated',
@@ -3742,6 +3748,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.fix_fov = self.pyplis_worker.fix_fov
         self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
         self.polyorder_cal = self.pyplis_worker.polyorder_cal
+        self.update_vars()
 
         self.in_frame = False
         self.frame.destroy()

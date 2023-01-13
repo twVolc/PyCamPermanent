@@ -175,8 +175,8 @@ class PyplisWorker:
 
         # Calibration attributes
         self.doas_worker = None                 # DOASWorker object
-        sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
-        self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=sens_mask)     # Pyplis object holding functions to plot results
+        self.sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
+        self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=self.sens_mask)     # Pyplis object holding functions to plot results
         self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
         self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
@@ -193,6 +193,7 @@ class PyplisWorker:
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
         self.max_doas_cam_dif = 5               # Difference (seconds) between camera and DOAS time - any difference larger than this and the data isn't added to the calibration
         self.fix_fov = False                    # If True, FOV calibration is not performed and current FOV is used
+        self.had_fix_fov_cal = False            # If True, it means we have performed the first full calibration from fixed DOAS FOV (i.e. enough time has passed to have a dataset for a calibration)
         self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
@@ -482,6 +483,7 @@ class PyplisWorker:
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.got_doas_fov = False
+        self.had_fix_fov_cal = False
         self.got_cal_cell = False
         self.got_light_dil = False
         self.dil_recal_last = 0
@@ -1913,11 +1915,14 @@ class PyplisWorker:
 
         # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
         if self.got_doas_fov and self.cal_type in [1, 2]:
-            cal_img = self.calib_pears.calibrate(img)
+            if self.fix_fov and not self.had_fix_fov_cal:
+                pass
+            else:
+                cal_img = self.calib_pears.calibrate(img)
 
-            # If we want to adjust for the offset in the calibration curve we add y_offset back to the image here
-            if self.doas_cal_adjust_offset:
-                cal_img.img = cal_img.img + self.calib_pears.y_offset
+                # If we want to adjust for the offset in the calibration curve we add y_offset back to the image here
+                if self.doas_cal_adjust_offset:
+                    cal_img.img = cal_img.img + self.calib_pears.y_offset
 
         elif self.cal_type == 0:
             if isinstance(img, pyplis.Img):
@@ -1941,6 +1946,7 @@ class PyplisWorker:
         :return:
         """
         print('Performing DOAS FOV search')
+        # TODO May want to initiate this DoasFOVEng with info on camera?
         s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
         s.maxrad = self.maxrad_doas  # Set maximum radius of FOV to close to that expected from optical calculations
         s.g2dasym = False  # Allow only circular FOV (not eliptical)
@@ -1979,6 +1985,28 @@ class PyplisWorker:
             print('Updating DOAS FOV plot')
             self.fig_doas_fov.update_plot()
 
+    def generate_doas_fov(self):
+        """
+        Generates clibpears object from fixed DOAS FOV parameters
+        :return:
+        """
+        self.calib_pears = DoasCalibData(polyorder=self.polyorder_cal, camera=self.cam,
+                                         senscorr_mask=self.sens_mask)  # includes DoasCalibData class
+
+        # self.calib_pears.update_search_settings(method='pearson')
+        # self.calib_pears.merge_data(merge_type=self._settings["mergeopt"])
+        self.calib_pears.fov.result_pearson['cx_rel'] = self.doas_fov_x
+        self.calib_pears.fov.result_pearson['cy_rel'] = self.doas_fov_y
+        self.calib_pears.fov.result_pearson['rad_rel'] = self.doas_fov_extent
+        self.calib_pears.fov.img_prep['pyrlevel'] = 1
+        self.calib_pears.fov.search_settings['method'] = 'pearson'
+        mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                  self.doas_fov_x, self.doas_fov_y, self.doas_fov_extent)
+        self.calib_pears.fov.fov_mask_rel = mask.astype(np.float64)
+        self.fov = self.calib_pears.fov
+        self.got_doas_fov = True
+        self.doas_last_fov_cal = self.img_A.meta['start_acq']
+
     def update_doas_calibration(self, img_tau=None, force_fov_cal=False):
         """
         Updates DOAS results to include more data, or FOV location is also updated if this is requested and in the
@@ -2005,7 +2033,10 @@ class PyplisWorker:
 
             # Update calibration data - on startup there is not calib data, so if have none we just catch the exception
             try:
-                self.rem_doas_cal_data(oldest_time, recal=True)
+                # self.rem_doas_cal_data(oldest_time, recal=True)
+                # EDITED TO THIS ON 13/01/2023 BECAUSE WE RUN RECAL WHEN WE ADD DATA TOO  -DON'T NEED TO KEEP RECALIBRATING
+                # AND THIS RECAL MESSES WITH THE FIXED FOV CAL
+                self.rem_doas_cal_data(oldest_time, recal=False)
             except ValueError:
                 pass
 
@@ -2109,7 +2140,26 @@ class PyplisWorker:
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
-            self.add_doas_cal_data(cal_dict)
+
+            # Rerun fit if we have enough data
+            # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
+            # we're always calibrating with the same number of data points. Once we get this number, we calibrate and
+            # go back thorugh buffer to get all emission rates. After that we flag that we've had a fixed FOV
+            # calibration so from then on don't need to get emission rate from buffer - just proceed normally.
+            if self.fix_fov and not self.had_fix_fov_cal:
+                oldest_time = img_time - datetime.timedelta(minutes=self.remove_doas_mins)
+                if oldest_time < self.doas_last_fov_cal:
+                    self.add_doas_cal_data(cal_dict, recal=False)
+                else:
+                    self.add_doas_cal_data(cal_dict, recal=True)
+                    self.had_fix_fov_cal = True
+
+                    # Get emission rate from buffer
+                    last_cal = copy.deepcopy(self.doas_last_fov_cal)
+                    recal = True
+                    self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+            else:
+                self.add_doas_cal_data(cal_dict, recal=True)
 
             # Update doas figure, but no need to change the correlation image as we haven't changed that
             self.fig_doas_fov.update_plot(update_img=False)
@@ -2124,7 +2174,7 @@ class PyplisWorker:
         self.calib_pears.cd_vec_err = np.append(self.calib_pears.cd_vec_err, cal_dict['cd_err'])
         self.calib_pears.time_stamps = np.append(self.calib_pears.time_stamps, cal_dict['time'])
 
-        # Rerun fit
+        # Recalibrate
         if recal:
             self.calib_pears.fit_calib_data()
 
@@ -2141,8 +2191,8 @@ class PyplisWorker:
             calib_dat = copy.deepcopy(self.calib_pears)
 
         # Edit all vectors
-        if time_obj > datetime.datetime(year=2022, month=7, day=26, hour=2, minute=2, second=25):
-            pass
+        if time_obj > datetime.datetime(year=2022, month=5, day=20, hour=16, minute=5, second=10):
+            pass        # Useful for debugging as I can put a breakpoint here and only interrogate after a time I define above
         calib_dat.tau_vec = calib_dat.tau_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec = calib_dat.cd_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec_err = calib_dat.cd_vec_err[calib_dat.time_stamps >= time_obj]
@@ -2972,6 +3022,11 @@ class PyplisWorker:
             self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
+        # Fix FOV if we are using DOAS calibration
+        if self.cal_type in [1,2]:
+            if self.fix_fov:
+                self.generate_doas_fov()
+
         time_proc = time.time()
 
         # Loop through img_list and process data
@@ -2999,6 +3054,7 @@ class PyplisWorker:
                     force_cal = True
 
             # Process image pair
+            print('SO2 cam processor: Processing pair: {}'.format(self.img_list[i][0]))
             self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
                               plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
 
@@ -3045,6 +3101,11 @@ class PyplisWorker:
         # TODO I may need to think about whether I use this to look for images and perform load_sequence() - whihc also
         # TODO sets the processing directory with set_processing_directory(). Otherwise i need the watcher function
         # TODO to be checking for changes in directory and then controlling the current working directory of the object etc
+
+        # Fix FOV if we are using DOAS calibration
+        if self.cal_type in [1,2]:
+            if self.fix_fov:
+                self.generate_doas_fov()
 
         while True:
             # Get the next images in the list

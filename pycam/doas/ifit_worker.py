@@ -77,8 +77,8 @@ class IFitWorker:
         self.stretch_resample = 100     # Number of points to resample the spectrum by during stretching
         self._start_stray_pix = None    # Pixel space stray light window definitions
         self._end_stray_pix = None
-        self._start_stray_wave = 280    # Wavelength space stray light window definitions
-        self._end_stray_wave = 290
+        self._start_stray_wave = 292    # Wavelength space stray light window definitions
+        self._end_stray_wave = 296
         self._start_fit_pix = None  # Pixel space fitting window definitions
         self._end_fit_pix = None
         self._start_fit_wave_init = 300  # Wavelength space fitting window definitions       Set big range to start Analyser
@@ -744,10 +744,10 @@ class IFitWorker:
             self.stray_corr_spectra()
 
         # Run processing
-        print('IFit worker: Running fit')
+        #print('IFit worker: Running fit')
         fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
-        print('IFit worker: Finished fit')
+        #print('IFit worker: Finished fit')
         self.applied_ld_correction = False
 
         # Update wavelengths
@@ -1019,11 +1019,14 @@ class IFitWorker:
         self.reset_self()
 
         # Unpack results into DoasResults object
-        res = df['Column density'].squeeze()
-        res.index = [datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S') for x in df['Time']]
+        res = df['Column density'].astype(float).squeeze()
+        try:
+            res.index = [datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S') for x in df['Time']]
+        except Exception:
+            res.index = [datetime.datetime.strptime(x, '%d/%m/%Y %H:%M:%S') for x in df['Time']]
         self.results = DoasResults(res, species_id='SO2')
-        self.results.fit_errs = df['CD error']
-        self.results.ldfs = df['LDF']
+        self.results.fit_errs = df['CD error'].astype(float)
+        self.results.ldfs = df['LDF'].astype(float)
 
         # Plot results if requested
         if plot:
@@ -1116,7 +1119,7 @@ class IFitWorker:
 
             if spec_type == self.spec_specs.file_type['meas'] or spec_type == self.spec_specs.file_type['test'] or \
                     self.spec_specs.file_type['cal'] in spec_type:
-                print('IFitWorker: processing spectrum: {}'.format(pathname))
+                #print('IFitWorker: processing spectrum: {}'.format(pathname))
                 # Extract filename and create datetime object of spectrum time
                 working_dir, filename = os.path.split(pathname)
                 self.spec_dir = working_dir     # Update working directory to where most recent file has come from
@@ -1171,7 +1174,7 @@ class IFitWorker:
                 if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
                     self.save_results(end_time=self.spec_time)
 
-                print('IFit worker: Processed file: {}'.format(filename))
+                #print('IFit worker: Processed file: {}'.format(filename))
 
             elif spec_type == self.spec_specs.file_type['dark']:
                 print('IFitWorker: got dark spectrum: {}'.format(pathname))

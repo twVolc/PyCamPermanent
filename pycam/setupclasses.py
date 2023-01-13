@@ -40,6 +40,7 @@ class FileLocator:
     SCRIPT_SCHEDULE_PI = CRON_PYCAM_PI + SCRIPT_SCHEDULE_FILE
     CRON_DIR = '/etc/cron.d/'
     CRON_FILE = CRON_DIR + 'script_schedule'                    # Location for start/stop pycam in crontab
+    GOOGLE_DRIVE_PARENT_FOLDER = "google_drive.txt"
 
     NET_PORTS_FILE = CONF_DIR + 'network_ports.txt'             # Network file containing port options
     NET_PORTS_FILE_WINDOWS = CONF_DIR_WINDOWS + 'network_ports.txt' # Network file containing port options

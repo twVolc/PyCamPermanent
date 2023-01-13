@@ -579,7 +579,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         else:
             return self.img_registration
 
-    def load_pcs(self, filename=None):
+    def load_pcs(self, filename=None, new_line=False):
         """Loads PCS into GUI"""
         if filename is None:
             kwargs = {}
@@ -589,7 +589,11 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         if len(filename) > 0:
             line = load_pcs_line(filename)
-            self.pyplis_worker.fig_tau.add_pcs_line(line, force_add=True)
+            if new_line:
+                line_num = None
+            else:
+                line_num = self.pyplis_worker.fig_tau.current_ica
+            self.pyplis_worker.fig_tau.add_pcs_line(line, line_num=line_num, force_add=True)
 
     def add_pcs_startup(self, num):
         """
@@ -616,7 +620,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         """Loads all lines held in this object and updates pyplis_worker.fig tau to contain these lines"""
         for line in self._pcs_lines:
             if line is not self.no_line:
-                self.load_pcs(filename=line)
+                self.load_pcs(filename=line, new_line=True)
 
     def load_dil(self, filename=None):
         """Loads light dilution line into GUI"""
