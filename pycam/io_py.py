@@ -313,7 +313,7 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                 else:
                     # Make new emission rates object to save
                     emis_rates = EmissionRates(line_id, velo_mode=flow_mode)
-                    indices = tuple([(file_start_time < np.array(emis_dict._start_acq)) &
+                    indices = tuple([(file_start_time <= np.array(emis_dict._start_acq)) &
                                      (np.array(emis_dict._start_acq) <= file_end_time)])
                     # Loop through attributes in emission rate object and set them to new object
                     # This loop is just cleaner than writing out each attribute...
