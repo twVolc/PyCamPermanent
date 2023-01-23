@@ -481,6 +481,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=1, column=0, columnspan=2, sticky='nsew')
 
+        frame_toolbar = ttk.Frame(self.frame_fig)
+        frame_toolbar.grid(row=2, column=0, columnspan=2, sticky='nsew')
+        self.toolbar_A = NavigationToolbar2Tk(self.img_canvas, frame_toolbar)
+        self.toolbar_A.update()
+        self.toolbar_A.pack(side=tk.BOTTOM)
+
         # Bind click event to figure
         self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
 
@@ -3291,6 +3297,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.dpi = fig_setts.dpi
         self.fig_size_doas_calib_img = fig_setts.fig_doas_calib_img
         self.fig_size_doas_calib_fit = fig_setts.fig_doas_calib_fit
+        self.fig_size_doas_calib_params = fig_setts.fig_doas_calib_params
 
         # Correlation image
         self.img_corr = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_y])
@@ -3395,7 +3402,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         self.frame_ui.grid(row=0, column=0, sticky='nsew')
         self.frame_scat.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
-        self.frame_img.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
+        self.frame_plots.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
         self.frame_ui.grid_columnconfigure(1, weight=1)
 
     def _build_opts(self):
@@ -3523,19 +3530,22 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
     def _build_figures(self):
         """Builds figures for DOAS FOV"""
+        self.frame_plots = ttk.Frame(self.frame)
+
         # Create figure
         self.fig_img = plt.Figure(figsize=self.fig_size_doas_calib_img, dpi=self.dpi)
         self.ax_img = self.fig_img.subplots(1, 1)
         self.ax_img.set_aspect(1)
-        self.fig_img.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
+        # self.fig_img.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
 
-        self.frame_img = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_img = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
         self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame_img)
         self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
         # Add toolbar so figures can be saved
         toolbar = NavigationToolbar2Tk(self.img_canvas, self.frame_img)
         toolbar.update()
         self.img_canvas._tkcanvas.pack(side=tk.TOP)
+        self.frame_img.pack(side=tk.TOP)
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_doas_calib_fit, dpi=self.dpi)
@@ -3549,6 +3559,23 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         toolbar = NavigationToolbar2Tk(self.fit_canvas, self.frame_scat)
         toolbar.update()
         self.fit_canvas._tkcanvas.pack(side=tk.TOP)
+
+        # Create figure for calibration gradient and r2 of fit
+        self.fig_cal_params = plt.Figure(figsize=self.fig_size_doas_calib_params, dpi=self.dpi)
+        self.ax_cal_params_1 = self.fig_cal_params.subplots(1, 1)
+        self.ax_cal_params_2 = self.ax_cal_params_1.twinx()
+        # self.fig_cal_params.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
+        self.ax_cal_params_1.set_ylabel('Fit 1st order')
+        self.ax_cal_params_2.set_ylabel('Fit error')
+
+        self.frame_cal_params = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
+        self.cal_params_canvas = FigureCanvasTkAgg(self.fig_cal_params, master=self.frame_cal_params)
+        self.cal_params_canvas.get_tk_widget().pack(side=tk.LEFT)
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.cal_params_canvas, self.frame_cal_params)
+        toolbar.update()
+        self.cal_params_canvas._tkcanvas.pack(side=tk.TOP)
+        self.frame_cal_params.pack(side=tk.TOP)
 
         # If there is a calibration already available we can plot it
         if self.pyplis_worker.calib_pears is not None:
@@ -3695,7 +3722,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         except AttributeError:
             pass
 
-    def update_plot(self, update_scat=True, update_img=True):
+    def update_plot(self, update_scat=True, update_img=True, update_params=True):
         """
         Updates plot
         :return:
@@ -3715,6 +3742,24 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             except (AttributeError, ValueError):
                 pass
 
+        # Update calibration parameters plot
+        if update_params:
+            try:
+                #TODO This plotting isn't working as I want - not updating. Maybe just save each data point to an array
+                #TODO in pyplis_worker and then update the plot each time by clearing the axes and replotting the full
+                #TODO arrays, rather than doing one by one? This would also mean I could save the full arrays later
+                print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
+                print('Calib coeff: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs[1]))
+                print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
+                self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
+                                          self.pyplis_worker.calib_pears.calib_coeffs[1], color='red', marker='o')
+                self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
+                                          self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
+                self.ax_cal_params_1.margins(0.05)
+                self.ax_cal_params_2.margins(0.05)
+            except (AttributeError, ValueError, TypeError) as e:
+                print('Error in calibration parameter fit plot: {}'.format(e))
+
         # Update correlation image plot
         if update_img:
             try:
@@ -3729,6 +3774,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
             except AttributeError:
                 return
+
+
 
         self.q.put(1)
 
