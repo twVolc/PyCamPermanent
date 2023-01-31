@@ -16,10 +16,11 @@ from pydrive.drive import GoogleDrive
 
 class GoogleDriveUploader:
     "Class for watching directory for new data, then uploading that data to Google Drive"
-    def __init__(self, root_folder_id=None, watch_folder=None):
+    def __init__(self, root_folder_id=None, watch_folder=None, delete_on_upload=False):
         self.gauth = GoogleAuth()
         self.drive = GoogleDrive(self.gauth)
         self.watch_folder = watch_folder
+        self.delete_on_upload = delete_on_upload      # If True, the file is deleted from the local machine after upload
 
         if root_folder_id is None:
             self.root_folder_id = self.get_folder_id_from_file()
@@ -28,8 +29,14 @@ class GoogleDriveUploader:
         self.folder_id = self.root_folder_id
 
         # Setup directory watcher
-        if os.path.exists(self.watch_folder):
-            self.watcher = create_dir_watcher(self.watch_folder, False, self.directory_watch_handler)
+        if self.watch_folder is not None:
+            if os.path.exists(self.watch_folder):
+                print('Setting up directory watcher: {}'.format(watch_folder))
+                self.watcher = create_dir_watcher(self.watch_folder, False, self.directory_watch_handler)
+                self.watcher.start()
+            else:
+                print('Unreognised watcher directory: {}'.format(self.watch_folder))
+                self.watcher = None
         else:
             self.watcher = None
 
@@ -87,14 +94,18 @@ class GoogleDriveUploader:
 
         return folder_return
 
-    def upload_file(self, file_path, filename, folder=None):
+    def upload_file(self, file_path, filename, folder=None, delete=False):
         """
         Uploads file to folder. If no folder is provided we use the current folder_id
-        :param file:        Full path to file to be uploaded
-        :param file:        Filename to be uploaded
+        :param file_path:        Full path to file to be uploaded
+        :param filename:        Filename to be uploaded
         :param folder:
         :return:
         """
+        full_path = os.path.join(file_path, filename)
+        if not os.path.exists(full_path):
+            print('GoogleDriveUploader: File does not exist: {}'.format(full_path))
+
         if folder is not None:
             self.create_folder(folder)
             gfile = self.drive.CreateFile({"parents": [{"kind": "drive#fileLink", "id": self.folder_id}],
@@ -103,9 +114,12 @@ class GoogleDriveUploader:
             gfile = self.drive.CreateFile({'parents': [{'id': self.folder_id}],
                                            'title': filename})
 
-        gfile.SetContentFile(os.path.join(file_path, filename))
+        gfile.SetContentFile(full_path)
         gfile.Upload()
         print('Uploaded file: {}'.format(filename))
+
+        if delete:
+            os.remove(full_path)
 
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""
@@ -126,7 +140,7 @@ class GoogleDriveUploader:
         date_str = file_time.strftime('%Y-%m-%d')
 
         # Upload file to correct date directory
-        self.upload_file(directory, filename, folder=date_str)
+        self.upload_file(directory, filename, folder=date_str, delete=self.delete_on_upload)
 
 
 
@@ -135,8 +149,10 @@ class GoogleDriveUploader:
 
 if __name__ == '__main__':
 
-    upload_file_list = ['C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\tests\\test_data\\2019-09-18T074335_fltrA_1ag_999904ss_Plume.png',
-                        'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\tests\\test_data\\temp_io_test.txt']
+    # upload_file_list = ['C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\tests\\test_data\\2019-09-18T074335_fltrA_1ag_999904ss_Plume.png',
+    #                     'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\tests\\test_data\\temp_io_test.txt']
+
+    upload_file_list = ['/home/pi/pycam/Images/2022-10-17T144122_fltrB_1ag_99980ss_Test.png']
 
     gdrive = GoogleDriveUploader()
     for upload_file in upload_file_list:

@@ -196,6 +196,50 @@ def make_circular_mask_line(h, w, cx, cy, radius, tol=0.008):
     return  np.where((rad_grid >= rad_square_min) & (rad_grid <= rad_square_max), True, False)
 
 
+def get_horizontal_plume_speed(opti_flow, col_dist_img, pcs_line, filename=None):
+    """
+    Gets horizontal plume speed associated with pcs line and velocity image. Used in 2023 paper for comparison
+    with weather station wind speed data.
+
+    :param  opti_flow   OptflowFarneback    Velocity image given from pyplis output
+    :param  col_dist_img    np.array        Array holding distances of pixels in metres
+    :param  pcs_line    np.array            Line to extract velocities from
+    :param  filename    str                 If not None, the results are appended to a file
+    """
+    # Convert x displacements to velocities
+    dx = col_dist_img.img * opti_flow.flow[:, :, 0] / opti_flow.del_t
+
+    # Get velocites in line region only
+    dx_line = pcs_line.get_line_profile(dx)
+
+    # Find median velocity
+    med_vel = np.nanmedian(dx_line)
+    mean_vel = np.nanmean(dx_line)
+
+    # Extract time
+    t0, t1 = opti_flow.get_img_acq_times()
+    str_time = datetime.datetime.strftime(t0, '%Y-%m-%d %H:%M:%S')
+
+    # If filename is provided we append data to file
+    if filename is not None:
+        if not os.path.exists(filename):
+            try:
+                with open(filename, 'w') as f:
+                    f.write('Time\tMean [m/s]\tMedian [m/s]\n')
+            except BaseException as e:
+                print('Could not create x-velocities file: {}'.format(e))
+                return
+
+        try:
+            with open(filename, 'a') as f:
+                f.write('{}\t{}\t{}\n'.format(str_time, mean_vel, med_vel))
+        except BaseException as e:
+            print('Could not write to x-velocities file: {}'.format(e))
+            return
+
+    return {'mean': mean_vel, 'median': med_vel}
+
+
 def calc_dt(img_prev, img_curr):
     """
     Calculates time difference between two pyplis.Img objects

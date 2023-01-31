@@ -6,7 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
-from pycam.utils import make_circular_mask_line, calc_dt
+from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
@@ -113,7 +113,7 @@ class PyplisWorker:
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
-        self.PCS_lines_all = []
+        self.PCS_lines_all = [] # TODO not sure the difference between these two - there may be one but it isn't clear...
         self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
                                  'old': None}           # Old plume LineOnImage for cross-correlation
         self.cross_corr_series = {'time': [],           # datetime list
@@ -2433,11 +2433,12 @@ class PyplisWorker:
             if key == 'roi_abs':
                 self.opt_flow.settings.roi_rad_abs = settings[key]
 
-    def generate_opt_flow(self, img_tau=None, img_tau_next=None, plot=False):
+    def generate_opt_flow(self, img_tau=None, img_tau_next=None, plot=False, save_horizontal_stats=False):
         """
         Generates optical flow vectors for current and previous image
         :param img_tau:         pyplis.Img  First image
         :param img_tau_next:    pyplis.Img  Subesequent image
+        :param save_horizontal_stats    bool    Just used for Frontier In article to calculate horizontal velocities and save them
         :return:
         """
         if img_tau is None:
@@ -2460,6 +2461,16 @@ class PyplisWorker:
             self.fig_tau.update_plot(img_tau_next, img_cal=self.img_cal)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
+
+        # Just for Frontier in manuscript really
+        if save_horizontal_stats:
+            for i, line in enumerate(self.PCS_lines_all):
+                if isinstance(line, LineOnImage):
+                    dirname = os.path.join(self.processed_dir, 'line_{}'.format(i))
+                    if not os.path.exists(dirname):
+                        os.mkdir(dirname)
+                    filename = os.path.join(dirname, 'horizontal_speed.txt')
+                    get_horizontal_plume_speed(self.opt_flow, self.dist_img_step, self.PCS_lines_all[0], filename=filename)
 
         return self.flow, self.velo_img
 
