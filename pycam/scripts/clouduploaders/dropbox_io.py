@@ -188,21 +188,6 @@ class DropboxIO:
                 # Upload file
                 self.upload_file(self.watch_folder, filename, folder=self.root_folder, delete=self.delete_after)
 
-    def upload_existing_files_threads(self):
-        """
-        Uploads pre-existing files in folder
-        :return:
-        """
-        # Get all existing files
-        files = os.listdir(self.watch_folder)
-        files.sort()
-
-        # Loop through all pertinent files and upload them once they are ready
-        for filename in files:
-            pathname = os.path.join(self.watch_folder, filename)
-            with self.lock:
-                self.q.put(pathname)
-
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""
         directory = os.path.dirname(pathname)
@@ -218,50 +203,6 @@ class DropboxIO:
 
         # Upload file to correct date directory
         self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_after)
-
-    def directory_watch_handler_threads(self, pathname, t):
-        """Controls the watching of a directory"""
-        with self.lock:
-            print('Putting new file in q: {}'.format(pathname))
-            self.q.put(pathname)
-
-    def start_uploader(self):
-        """Starts uploader thread"""
-        self.uploader_thread = threading.Thread(target=self._uploader, args=())
-        self.uploader_thread.daemon = True
-        self.uploader_thread.start()
-
-    def _uploader(self):
-        """
-        Uploader that gets files from queue and uploads them
-        :return:
-        """
-        while True:
-            try:
-                with self.lock:
-                    pathname = self.q.get(block=False)
-            except queue.Empty:
-                time.sleep(0.1)
-                continue
-
-            print('Got file: {}'.format(pathname))
-            if not os.path.exists(pathname):
-                continue
-
-            directory = os.path.dirname(pathname)
-            filename = os.path.basename(pathname)
-
-            # Check there is no coexisting lock file
-            file, ext = os.path.splitext(filename)
-            if ext in [self.cam_specs.file_ext, self.spec_specs.file_ext]:
-                time_1 = time.time()
-                while os.path.exists(file + '.lock') and time.time() - time_1 < self.timeout:
-                    pass
-            else:
-                return
-
-            # Upload file to correct date directory
-            self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_after)
 
     def downloader(self):
         """Downloads data from dropbox folder"""
