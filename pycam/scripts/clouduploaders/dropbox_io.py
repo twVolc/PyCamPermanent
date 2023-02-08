@@ -9,6 +9,9 @@ from pycam.directory_watcher import can_watch_directories, create_dir_watcher
 from pycam.utils import get_img_time, get_spec_time
 import os
 import time
+import queue
+import threading
+import datetime
 
 import dropbox
 from dropbox.exceptions import AuthError
@@ -20,18 +23,25 @@ class DropboxIO:
     Class for watching directory for new data, then uploading that data to Dropbox
     Connection is via PKCE - https://github.com/dropbox/dropbox-sdk-python/blob/main/example/oauth/commandline-oauth-pkce.py
     """
-    def __init__(self, refresh_token_from_file=True, root_folder=None, watch_folder=None, recursive=True,
-                 delete_on_upload=False):
+    def __init__(self, refresh_token_from_file=True, refresh_token_path=FileLocator.DROPBOX_ACCESS_TOKEN,
+                 root_folder=None, watch_folder=None, recursive=True, delete_after=False,
+                 save_folder=None, download_to_datedirs=True, timeout=1):
+        self.refresh_token_path = refresh_token_path
         self.recursive = recursive
-        self.delete_on_upload = delete_on_upload      # If True, the file is deleted from the local machine after upload
+        self.delete_after = delete_after      # If True, the file is deleted from the local machine after upload
+        self.q = queue.Queue()
+        self.timeout = timeout
+        self.lock = threading.Lock()
+        self.save_folder = save_folder
+        self.download_to_datedirs = download_to_datedirs
 
         # Access token for dropbox
         # self.access_token = self.get_access_token_from_file()
-        self.app_key = self.get_app_key_from_file()
+        self.app_key = self.get_app_key_from_file(self.refresh_token_path)
 
         # Get refresh token for long-term connection
         if refresh_token_from_file:
-            self.refresh_token = self.get_refresh_token_from_file()
+            self.refresh_token = self.get_refresh_token_from_file(self.refresh_token_path)
         else:
             self.refresh_token = self.get_refresh_token()
 
@@ -39,9 +49,9 @@ class DropboxIO:
         self.dbx = self.dropbox_connect()
 
         if root_folder is None:
-            self.root_folder = self.get_root_folder_from_file()
+            self.root_folder = self.get_root_folder_from_file(self.refresh_token_path)
         else:
-            self.root_folder = root_folder
+            self.root_folder = '/' + root_folder
 
         # Setup directory watcher
         if watch_folder is not None:
@@ -53,26 +63,26 @@ class DropboxIO:
         self.spec_specs = SpecSpecs()
 
     @staticmethod
-    def get_root_folder_from_file():
-        file_contents = read_file(FileLocator.DROPBOX_ACCESS_TOKEN)
+    def get_root_folder_from_file(filename):
+        file_contents = read_file(filename)
         folder = file_contents['root_folder']
         return '/' + folder
 
     @staticmethod
-    def get_access_token_from_file():
-        file_contents = read_file(FileLocator.DROPBOX_ACCESS_TOKEN)
+    def get_access_token_from_file(filename):
+        file_contents = read_file(filename)
         access_token = file_contents['access_token']
         return access_token
 
     @staticmethod
-    def get_app_key_from_file():
-        file_contents = read_file(FileLocator.DROPBOX_ACCESS_TOKEN)
+    def get_app_key_from_file(filename):
+        file_contents = read_file(filename)
         app_key = file_contents['app_key']
         return app_key
 
     @staticmethod
-    def get_refresh_token_from_file():
-        file_contents = read_file(FileLocator.DROPBOX_ACCESS_TOKEN)
+    def get_refresh_token_from_file(filename):
+        file_contents = read_file(filename)
         refresh_token = file_contents['refresh_token']
         return refresh_token
 
@@ -149,7 +159,36 @@ class DropboxIO:
             print('Unrecognised watcher directory: {}'.format(watch_folder))
             self.watcher = None
 
-    def upload_existing_files(self, timeout=1, delete_on_upload=False):
+    def upload_existing_files(self, timeout=1):
+        """
+        Uploads pre-existing files in folder
+        :return:
+        """
+        while True:
+            # Get all existing files
+            files = os.listdir(self.watch_folder)
+            files.sort()
+            print('File list: {}'.format(files))
+
+            # Get all pertinent files, if there are none left we return
+            data_files = [x for x in files if self.cam_specs.file_ext in x or self.spec_specs.file_ext in x]
+            if len(data_files) < 1:
+                print('Existing files all uploaded')
+                return
+
+            # Loop through all pertinent files and upload them once they are ready
+            for filename in data_files:
+                file, ext = os.path.splitext(filename)
+
+                # Check no lock file exists
+                time_1 = time.time()
+                while os.path.exists(file + '.lock') and time.time() - time_1 < timeout:
+                    pass
+
+                # Upload file
+                self.upload_file(self.watch_folder, filename, folder=self.root_folder, delete=self.delete_after)
+
+    def upload_existing_files_threads(self):
         """
         Uploads pre-existing files in folder
         :return:
@@ -158,17 +197,11 @@ class DropboxIO:
         files = os.listdir(self.watch_folder)
         files.sort()
 
+        # Loop through all pertinent files and upload them once they are ready
         for filename in files:
-            file, ext = os.path.splitext(filename)
-            if ext in [self.cam_specs.file_ext, self.spec_specs.file_ext]:
-
-                # Check no lock file exists
-                time_1 = time.time()
-                while os.path.exists(file + '.lock') and time.time() - time_1 < timeout:
-                    pass
-
-                # Upload file
-                self.upload_file(self.watch_folder, filename, folder=self.root_folder, delete=delete_on_upload)
+            pathname = os.path.join(self.watch_folder, filename)
+            with self.lock:
+                self.q.put(pathname)
 
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""
@@ -184,8 +217,100 @@ class DropboxIO:
             return
 
         # Upload file to correct date directory
-        self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_on_upload)
+        self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_after)
 
+    def directory_watch_handler_threads(self, pathname, t):
+        """Controls the watching of a directory"""
+        with self.lock:
+            print('Putting new file in q: {}'.format(pathname))
+            self.q.put(pathname)
+
+    def start_uploader(self):
+        """Starts uploader thread"""
+        self.uploader_thread = threading.Thread(target=self._uploader, args=())
+        self.uploader_thread.daemon = True
+        self.uploader_thread.start()
+
+    def _uploader(self):
+        """
+        Uploader that gets files from queue and uploads them
+        :return:
+        """
+        while True:
+            try:
+                with self.lock:
+                    pathname = self.q.get(block=False)
+            except queue.Empty:
+                time.sleep(0.1)
+                continue
+
+            print('Got file: {}'.format(pathname))
+            if not os.path.exists(pathname):
+                continue
+
+            directory = os.path.dirname(pathname)
+            filename = os.path.basename(pathname)
+
+            # Check there is no coexisting lock file
+            file, ext = os.path.splitext(filename)
+            if ext in [self.cam_specs.file_ext, self.spec_specs.file_ext]:
+                time_1 = time.time()
+                while os.path.exists(file + '.lock') and time.time() - time_1 < self.timeout:
+                    pass
+            else:
+                return
+
+            # Upload file to correct date directory
+            self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_after)
+
+    def downloader(self):
+        """Downloads data from dropbox folder"""
+        if self.save_folder is None:
+            print('No save folder provided, downloader cannot run')
+            return
+
+        # Create save folder if it doesn't already exist
+        if not os.path.exists(self.save_folder):
+            os.mkdir(self.save_folder)
+
+        while True:
+            # List all files in dropbox folder
+            meta = self.dbx.files_list_folder(self.root_folder)
+
+            # Loop thorugh each file downloading it to local directory
+            for entry in meta.entries:
+
+                # -------------------------------------------------------------------------
+                # Separate into date directories if asked
+                if self.download_to_datedirs:
+                    dummy, ext = os.path.splitext(entry.name)
+                    if ext == self.cam_specs.file_ext:
+                        date_dir = get_img_time(entry.name, date_loc=self.cam_specs.file_date_loc,
+                                                date_fmt=self.cam_specs.file_datestr)
+                        date_dir = date_dir.strftime('%Y-%m-%d')
+                    elif ext == self.spec_specs.file_ext:
+                        date_dir = get_spec_time(entry.name, date_loc=self.spec_specs.file_date_loc,
+                                                 date_fmt=self.spec_specs.file_datestr)
+                        date_dir = date_dir.strftime('%Y-%m-%d')
+                    else:
+                        print('Unrecognised file in dropbox folder: {}'.format(entry.name))
+                        continue
+                    save_path = self.save_folder + date_dir
+
+                    if not os.path.exists(save_path):
+                        os.mkdir(save_path)
+                else:
+                    save_path = self.save_folder
+                # --------------------------------------------------------------------------
+
+                # Download file
+                self.dbx.files_download_to_file(os.path.join(save_path, entry.name), entry.path_lower)
+                print('Downloaded file: {}'.format(entry.name))
+
+                if self.delete_after:
+                    self.dbx.files_delete_v2(entry.path_lower)
+
+            time.sleep(0.2)
 
 
 if __name__ == '__main__':

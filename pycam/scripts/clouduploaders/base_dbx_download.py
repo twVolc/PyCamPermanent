@@ -8,17 +8,10 @@ from pycam.setupclasses import FileLocator
 from pycam.scripts.clouduploaders.dropbox_io import DropboxIO
 
 # Create dropbox object
-dbx = DropboxIO(watch_folder=FileLocator.IMG_SPEC_PATH, delete_after=True, recursive=True)
+dbx = DropboxIO(refresh_token_path='./dbx_access.txt', root_folder='Sheffield',
+                save_folder='./test/', download_to_datedirs=True, delete_after=True)
 # dbx = DropboxIO(watch_folder='C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\', delete_after=False)
 
-# Upload any existing files
-dbx.upload_existing_files()
-
-# Start directory watcher
-dbx.watcher.start()
-
-
-
-
-
+# Download data files
+dbx.downloader()
 

@@ -5443,7 +5443,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             grid_path = filedialog.askopenfilename(initialdir=FileLocator.LD_LOOKUP, title='Select clear spectrum',
                                                    filetypes=(("NumPy arrays", "*.npy"), ("Text files", "*.txt"),
                                                               ("All files", "*.*")))
-        self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num)
+            # We only want to have the worker set this new fit indow as standard if we load in the LD line through GUI
+            # i.e. not on start-up
+            use_new_window = True
+        else:
+            use_new_window = False
+        self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num, use_new_window=use_new_window)
         setattr(self, 'grid_{}_path'.format(grid_num), grid_path)
         if self.in_frame:
             getattr(self, 'name_grid_{}'.format(grid_num)).configure(text=getattr(self,

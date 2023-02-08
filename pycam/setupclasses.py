@@ -240,6 +240,11 @@ class CameraSpecs:
     def ss_idx(self, value):
         """Update shutter speed to value in ss_list defined by ss_idx when ss_idx is changed
         Accesses hidden variable _shutter_speed directly to avoid causing property method being called"""
+        # Check that we have been passed a valid index, if not we adjust it appropriately
+        if value < 0:
+            value = 0
+        elif value > len(self.ss_list) - 1:
+            value = len(self.ss_list) - 1
         self._ss_idx = value
         self._shutter_speed = self.ss_list[self.ss_idx]
 

@@ -77,14 +77,14 @@ class IFitWorker:
         self.stretch_resample = 100     # Number of points to resample the spectrum by during stretching
         self._start_stray_pix = None    # Pixel space stray light window definitions
         self._end_stray_pix = None
-        self._start_stray_wave = 292    # Wavelength space stray light window definitions
+        self._start_stray_wave = 293    # Wavelength space stray light window definitions
         self._end_stray_wave = 296
         self._start_fit_pix = None  # Pixel space fitting window definitions
         self._end_fit_pix = None
         self._start_fit_wave_init = 300  # Wavelength space fitting window definitions       Set big range to start Analyser
         self._end_fit_wave_init = 340
-        self._start_fit_wave = 306       # Update fit window to more reasonable starting size (initial setting was to create a big grid
-        self._end_fit_wave = 316
+        self._start_fit_wave = 308       # Update fit window to more reasonable starting size (initial setting was to create a big grid
+        self._end_fit_wave = 318
         self.start_fit_wave_2 = 312      # Second fit window (used in light dilution correction)
         self.end_fit_wave_2 = 322
         self.fit_window = None      # Fitting window, determined by set_fit_window()
@@ -1480,11 +1480,12 @@ class IFitWorker:
         np.save(file_path_0, lookup_0)
         np.save(file_path_1, lookup_1)
 
-    def load_ld_lookup(self, file_path, fit_num=0):
+    def load_ld_lookup(self, file_path, fit_num=0, use_new_window=False):
         """
         Loads lookup table from file
         :param file_path:   str     Path to lookup table file
         :param fit_num:     int     Either 0 or 1, defines whether this should be set to the 0 or 1 window of the object
+        :param use_new_window   bool    If False, we revert back to the previous fit window after loading in the LD data
         :return:
         """
         dat = np.load(file_path)
@@ -1500,6 +1501,9 @@ class IFitWorker:
         grid_max_ppmm, grid_increment_ppmm = grid.split('-')[-2:]
         self.update_grid(int(grid_max_ppmm), int(grid_increment_ppmm))
 
+        if not use_new_window:
+            start_wave_old, end_wave_old = self.start_fit_wave, self.end_fit_wave
+
         # Fit window update
         start_fit_wave, end_fit_wave = fit_windows.split('-')
         if fit_num == 0:
@@ -1509,6 +1513,11 @@ class IFitWorker:
 
         # Update analysers with fit window settings
         self.update_ld_analysers()
+
+        # Revert back to old fitting windows
+        if not use_new_window:
+            self.start_fit_wave, self.end_fit_wave = start_wave_old, end_wave_old
+
 
     def ld_lookup(self, so2_dat, so2_dat_err, wavelengths, spectra, spec_time):
         """
