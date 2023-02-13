@@ -20,6 +20,7 @@ from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties, find_signa
 from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 from pyplis.doascalib import DoasCalibData, DoasFOV
+from pyplis.exceptions import ImgMetaError
 import pydoas
 
 import pandas as pd
@@ -743,8 +744,11 @@ class PyplisWorker:
         img.pathname = img_path
 
         # Dark subtraction - first extract ss then hunt for dark image
-        ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        try:
+            ss = str(int(img.texp * 10 ** 6))
+            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        except ImgMetaError:
+            dark_img = None
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)

@@ -64,6 +64,7 @@ class FileLocator:
     CLOUD_UPLOADER_DIR = SCRIPTS + 'clouduploaders/'
     GOOGLE_DRIVE_PARENT_FOLDER = CLOUD_UPLOADER_DIR + 'google_drive.txt'
     DROPBOX_ACCESS_TOKEN = CLOUD_UPLOADER_DIR + 'dbx_access.txt'
+    DROPBOX_UPLOAD_SCRIPT = CLOUD_UPLOADER_DIR + 'pi_dbx_upload.py'
 
     LOG_DIR = '/logs/'
     LOG_PATH_PI = PYCAM_ROOT_PI + LOG_DIR

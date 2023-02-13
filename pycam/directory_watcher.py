@@ -131,6 +131,9 @@ class PiDirectoryWatcher:
             print("Observer Stopped")
         self.observer.join()
 
+    def stop(self):
+        self.observer.stop()
+
 
 class Handler(FileSystemEventHandler):
 

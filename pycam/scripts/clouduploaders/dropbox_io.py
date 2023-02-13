@@ -34,6 +34,7 @@ class DropboxIO:
         self.lock = threading.Lock()
         self.save_folder = save_folder
         self.download_to_datedirs = download_to_datedirs
+        self.uploading = False
 
         # Access token for dropbox
         # self.access_token = self.get_access_token_from_file()
@@ -134,8 +135,14 @@ class DropboxIO:
         else:
             dropbox_file_path ='/' +  filename
 
+        # TODO Make empty .lock file, upload it to dropbox
+        # TODO Delete file from dropbox when upload is finished
+        # TODO NOTE probably not necessary as I think I solved the issue with uploading blank images (to do with not searching for lock files on pi correctly)
+
+        self.uploading = True
         with open(full_path, "rb") as f:
             meta = self.dbx.files_upload(f.read(), dropbox_file_path, mode=dropbox.files.WriteMode("overwrite"))
+        self.uploading = False
 
         print('Uploaded file: {}'.format(filename))
 
@@ -168,7 +175,7 @@ class DropboxIO:
             # Get all existing files
             files = os.listdir(self.watch_folder)
             files.sort()
-            print('File list: {}'.format(files))
+            # print('File list: {}'.format(files))
 
             # Get all pertinent files, if there are none left we return
             data_files = [x for x in files if self.cam_specs.file_ext in x or self.spec_specs.file_ext in x]
@@ -181,9 +188,10 @@ class DropboxIO:
                 file, ext = os.path.splitext(filename)
 
                 # Check no lock file exists
+                lock_file = os.path.join(self.watch_folder, file+'.lock')
                 time_1 = time.time()
-                while os.path.exists(file + '.lock') and time.time() - time_1 < timeout:
-                    pass
+                while os.path.exists(lock_file) and time.time() - time_1 < timeout:
+                    time.sleep(0.05)
 
                 # Upload file
                 self.upload_file(self.watch_folder, filename, folder=self.root_folder, delete=self.delete_after)
@@ -196,12 +204,16 @@ class DropboxIO:
         # Check there is no coexisting lock file
         file, ext = os.path.splitext(filename)
         if ext in [self.cam_specs.file_ext, self.spec_specs.file_ext]:
-            while os.path.exists(file + '.lock'):
-                pass
+            lock_file = os.path.join(directory, file + '.lock')
+            time_1 = time.time()
+            while os.path.exists(lock_file) and time.time() - time_1 < self.timeout:
+                time.sleep(0.05)
         else:
             return
 
         # Upload file to correct date directory
+        while self.uploading:
+            time.sleep(0.1)
         self.upload_file(directory, filename, folder=self.root_folder, delete=self.delete_after)
 
     def downloader(self):
@@ -220,6 +232,9 @@ class DropboxIO:
 
             # Loop thorugh each file downloading it to local directory
             for entry in meta.entries:
+
+                # TODO check if .lock file exists for file first, only download it if it has gone
+                # TODO NOTE probably not necessary as I think I solved the issue with uploading blank images (to do with not searching for lock files on pi correctly)
 
                 # -------------------------------------------------------------------------
                 # Separate into date directories if asked
