@@ -617,7 +617,7 @@ class InstrumentConfiguration:
 
         # Uncomment if we want to run check_run.py from crontab
         check_run_str = self.minute_cron_fmt(30)          # Setup check_run.py to run every hour
-        times.append(dbx_str)
+        times.append(check_run_str)
         cmds.append('python3 {}'.format(self.check_run_script))
 
         # Check time compatibility (only on scripts which have specific start times, not those run every x minutes)

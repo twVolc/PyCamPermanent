@@ -6,7 +6,22 @@ sys.path.append('/home/pi/')
 from pycam.utils import read_file
 from pycam.setupclasses import FileLocator
 from pycam.scripts.clouduploaders.dropbox_io import DropboxIO
+import subprocess
+import os
 import time
+
+# ------------------------------------------------------------------
+# Check if pi_dbx_upload.py is already running, and if so kill it
+proc = subprocess.Popen(['ps axg'], stdout=subprocess.PIPE, shell=True)
+stdout_value = proc.communicate()[0]
+stdout_str = stdout_value.decode("utf-8")
+stdout_lines = stdout_str.split('\n')
+# Check ps axg output lines to see whether pi_dbx_upload.py is actually running and kill the first one we come across
+for line in stdout_lines:
+    if os.path.basename(__file__) in line and '/bin/sh' not in line:
+        subprocess.call(['sudo', 'kill', '-9', line.split()[0]])
+        break
+# ----------------------------------------------------------------
 
 # Endlessly loop around - if we ever catch an exception we just delete the dropbox uploader and create a new one
 # This should deal with connection errors
@@ -19,7 +34,7 @@ while True:
 
             # Upload any existing files
             dbx.upload_existing_files()
-c
+
             # Start directory watcher
             dbx.watcher.start()
         else:

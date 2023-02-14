@@ -87,10 +87,11 @@ stdout_value = proc.communicate()[0]
 stdout_str = stdout_value.decode("utf-8")
 stdout_lines = stdout_str.split('\n')
 
-# Check ps axg output lines to see whether pycam is actually running
+# Check ps axg output lines to see whether check_run.py is actually running
 count = 0
 for line in stdout_lines:
-    if os.path.basename(__file__) in line:
+    if os.path.basename(__file__) in line and '/bin/sh' not in line and 'sudo' not in line:
+        # print('check_run.py: Found already running script {}'.format(line))
         count += 1
 if count > 1:
     print('check_run.py already running, so exiting...')
