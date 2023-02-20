@@ -35,6 +35,7 @@ class DropboxIO:
         self.save_folder = save_folder
         self.download_to_datedirs = download_to_datedirs
         self.uploading = False
+        self.is_downloading = False
 
         # Access token for dropbox
         # self.access_token = self.get_access_token_from_file()
@@ -218,6 +219,8 @@ class DropboxIO:
 
     def downloader(self):
         """Downloads data from dropbox folder"""
+        self.is_downloading = True
+
         if self.save_folder is None:
             print('No save folder provided, downloader cannot run')
             return
@@ -227,44 +230,48 @@ class DropboxIO:
             os.mkdir(self.save_folder)
 
         while True:
-            # List all files in dropbox folder
-            meta = self.dbx.files_list_folder(self.root_folder)
+            try:
+                # List all files in dropbox folder
+                meta = self.dbx.files_list_folder(self.root_folder)
 
-            # Loop thorugh each file downloading it to local directory
-            for entry in meta.entries:
+                # Loop thorugh each file downloading it to local directory
+                for entry in meta.entries:
 
-                # TODO check if .lock file exists for file first, only download it if it has gone
-                # TODO NOTE probably not necessary as I think I solved the issue with uploading blank images (to do with not searching for lock files on pi correctly)
+                    # TODO check if .lock file exists for file first, only download it if it has gone
+                    # TODO NOTE probably not necessary as I think I solved the issue with uploading blank images (to do with not searching for lock files on pi correctly)
 
-                # -------------------------------------------------------------------------
-                # Separate into date directories if asked
-                if self.download_to_datedirs:
-                    dummy, ext = os.path.splitext(entry.name)
-                    if ext == self.cam_specs.file_ext:
-                        date_dir = get_img_time(entry.name, date_loc=self.cam_specs.file_date_loc,
-                                                date_fmt=self.cam_specs.file_datestr)
-                        date_dir = date_dir.strftime('%Y-%m-%d')
-                    elif ext == self.spec_specs.file_ext:
-                        date_dir = get_spec_time(entry.name, date_loc=self.spec_specs.file_date_loc,
-                                                 date_fmt=self.spec_specs.file_datestr)
-                        date_dir = date_dir.strftime('%Y-%m-%d')
+                    # -------------------------------------------------------------------------
+                    # Separate into date directories if asked
+                    if self.download_to_datedirs:
+                        dummy, ext = os.path.splitext(entry.name)
+                        if ext == self.cam_specs.file_ext:
+                            date_dir = get_img_time(entry.name, date_loc=self.cam_specs.file_date_loc,
+                                                    date_fmt=self.cam_specs.file_datestr)
+                            date_dir = date_dir.strftime('%Y-%m-%d')
+                        elif ext == self.spec_specs.file_ext:
+                            date_dir = get_spec_time(entry.name, date_loc=self.spec_specs.file_date_loc,
+                                                     date_fmt=self.spec_specs.file_datestr)
+                            date_dir = date_dir.strftime('%Y-%m-%d')
+                        else:
+                            print('Unrecognised file in dropbox folder: {}'.format(entry.name))
+                            continue
+                        save_path = self.save_folder + date_dir
+
+                        if not os.path.exists(save_path):
+                            os.mkdir(save_path)
                     else:
-                        print('Unrecognised file in dropbox folder: {}'.format(entry.name))
-                        continue
-                    save_path = self.save_folder + date_dir
+                        save_path = self.save_folder
+                    # --------------------------------------------------------------------------
 
-                    if not os.path.exists(save_path):
-                        os.mkdir(save_path)
-                else:
-                    save_path = self.save_folder
-                # --------------------------------------------------------------------------
+                    # Download file
+                    self.dbx.files_download_to_file(os.path.join(save_path, entry.name), entry.path_lower)
+                    print('Downloaded file: {}'.format(entry.name))
 
-                # Download file
-                self.dbx.files_download_to_file(os.path.join(save_path, entry.name), entry.path_lower)
-                print('Downloaded file: {}'.format(entry.name))
-
-                if self.delete_after:
-                    self.dbx.files_delete_v2(entry.path_lower)
+                    if self.delete_after:
+                        self.dbx.files_delete_v2(entry.path_lower)
+            except Exception:
+                self.is_downloading = False
+                return
 
             time.sleep(0.2)
 

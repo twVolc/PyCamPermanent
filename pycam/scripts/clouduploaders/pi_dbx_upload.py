@@ -17,10 +17,16 @@ stdout_value = proc.communicate()[0]
 stdout_str = stdout_value.decode("utf-8")
 stdout_lines = stdout_str.split('\n')
 # Check ps axg output lines to see whether pi_dbx_upload.py is actually running and kill the first one we come across
+count = 0
+nums = []
 for line in stdout_lines:
     if os.path.basename(__file__) in line and '/bin/sh' not in line:
-        subprocess.call(['sudo', 'kill', '-9', line.split()[0]])
-        break
+        count += 1
+        nums.append(line.split()[0])
+
+for i in range(len(nums) - 1):
+    subprocess.call(['sudo', 'kill', '-9', nums[i]])
+
 # ----------------------------------------------------------------
 
 # Endlessly loop around - if we ever catch an exception we just delete the dropbox uploader and create a new one
