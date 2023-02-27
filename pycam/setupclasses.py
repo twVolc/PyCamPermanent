@@ -20,7 +20,7 @@ class FileLocator:
     """Defines locations of important files"""
     PYCAM_ROOT_PI = '/home/pi/pycam'                               # Root to pycam on Pis from home directory
     # PYCAM_ROOT_WINDOWS = 'C:/Users/tw9616/Documents/PostDoc/Permanent Camera/PyCamPermanent/pycam'  # Root to pycam on Windows machine
-    PYCAM_ROOT_WINDOWS = '.'  # Root to pycam on Windows machine
+    PYCAM_ROOT_WINDOWS = './pycam'  # Root to pycam on Windows machine
 
     CONF_DIR = PYCAM_ROOT_PI + '/conf/'                         # Directory holding configuration files
     CONF_DIR_WINDOWS = PYCAM_ROOT_WINDOWS + '/conf/'            # Directory holding configuration files on Windows
@@ -80,8 +80,8 @@ class FileLocator:
 
 
     # GUI
-    GUI_SETTINGS = './gui/gui_settings.txt'
-    GUI_SETTINGS_DEFAULT = './gui/gui_settings_default.txt'
+    GUI_SETTINGS = './pycam/gui/gui_settings.txt'
+    GUI_SETTINGS_DEFAULT = './pycam/gui/gui_settings_default.txt'
 
     CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file

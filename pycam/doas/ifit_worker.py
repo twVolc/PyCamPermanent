@@ -55,7 +55,7 @@ class IFitWorker:
     :param q_doas: queue.Queue   Queue where final processed dictionary is placed (should be a PyplisWorker.q_doas)
     """
     def __init__(self, routine=2, species={'SO2': {'path': '', 'value': 0}}, spec_specs=SpecSpecs(), spec_dir='C:\\',
-                 dark_dir=None, q_doas=queue.Queue(), frs_path='./ifit/Ref/sao2010.txt'):
+                 dark_dir=None, q_doas=queue.Queue(), frs_path='./pycam/ifit/Ref/sao2010.txt'):
         self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
 
         self.spec_specs = spec_specs    # Spectrometer specifications
@@ -1718,12 +1718,12 @@ class SpectraError(Exception):
 
 if __name__ == '__main__':
     # Calibration paths
-    ils_path = './calibration/2019-07-03_302nm_ILS.txt'
+    ils_path = './pycam/calibration/2019-07-03_302nm_ILS.txt'
     # ils_path = './calibration/2019-07-03_313nm_ILS.txt'
-    frs_path = '../ifit/Ref/sao2010.txt'
-    ref_paths = {'SO2': {'path': '../iFit/Ref/SO2_295K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
-                 'O3': {'path': '../iFit/Ref/O3_223K.txt', 'value': 1.0e19},
-                 'Ring': {'path': '../iFit/Ref/Ring.txt', 'value': 0.1}
+    frs_path = './pycam/ifit/Ref/sao2010.txt'
+    ref_paths = {'SO2': {'path': './pycam/iFit/Ref/SO2_295K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
+                 'O3': {'path': './pycam/iFit/Ref/O3_223K.txt', 'value': 1.0e19},
+                 'Ring': {'path': './pycam/iFit/Ref/Ring.txt', 'value': 0.1}
                  }
 
     # ref_paths = {'SO2': {'path': 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\doas\\calibration\\Vandaele (2009) x-section in wavelength.txt', 'value': 1.0e16},
@@ -1732,7 +1732,7 @@ if __name__ == '__main__':
     # }
 
     # Spectra path
-    spec_path = 'C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Spectra\\test_data'
+    spec_path = '/pycam/Data/Spectra/test_data'
 
     # Create ifit object
     ifit_worker = IFitWorker(frs_path=frs_path, species=ref_paths, dark_dir=spec_path)
