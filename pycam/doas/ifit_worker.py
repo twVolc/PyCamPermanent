@@ -31,8 +31,8 @@ from shapely.strtree  import STRtree
 from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs, FileLocator
 from pycam.io_py import load_spectrum, spec_txt_2_npy
-from pycam.iFit.ifit.parameters import Parameters
-from pycam.iFit.ifit.spectral_analysis import Analyser
+from ifit.parameters import Parameters
+from ifit.spectral_analysis import Analyser
 from pycam.ifit_ld.ifit_mod.synthetic_suite import Analyser_ld
 from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
