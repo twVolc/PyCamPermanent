@@ -33,6 +33,7 @@ from pycam.setupclasses import SpecSpecs, FileLocator
 from pycam.io_py import load_spectrum, spec_txt_2_npy
 from pycam.iFit.ifit.parameters import Parameters
 from pycam.iFit.ifit.spectral_analysis import Analyser
+from pycam.iFit.ifit.light_dilution import generate_ld_curves
 from pycam.ifit_ld.ifit_mod.synthetic_suite import Analyser_ld
 from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
@@ -206,9 +207,23 @@ class IFitWorker:
         self.params.add('shift0', value=0.0, vary=True)
         self.params.add('shift1', value=0.1, vary=True)
 
+        # TODO when I load in these parameters the STD error in ifit is always inf. Either a bug or i'm doing something wrong,
+        # TODO perhaps the error is retrieved differently when these parameters are used, but I'm not sure why that would be...
+        # TODO I have made a work around to pop these parameters from self.params if generating our own ILS
+        # Add ILS parameters
+        self.ils_params = {
+            'fwem': 0.6,
+            'k': 2.0,
+            'a_w': 0.0,
+            'a_k': 0.0
+        }
+        for key in self.ils_params:
+            self.params.add(key, value=self.ils_params[key], vary=True)
+
         # Setup ifit analyser (we will stray correct ourselves
         self.analyser = Analyser(params=self.params,
                                  fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
+                                 # ils_type=None,
                                  frs_path=frs_path,
                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
@@ -1254,6 +1269,7 @@ class IFitWorker:
         """
         # TODO perhaps requst ben adds an update fit window func to update the analyser without creating a new object
         if self.ils_path is not None:
+            self.remove_ils_params()
             self.analyser = Analyser(params=self.params,
                                      fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                      frs_path=self.frs_path,
@@ -1262,14 +1278,32 @@ class IFitWorker:
                                      ils_type='File',
                                      ils_path=self.ils_path)
         else:
+            # Add ils fitting params if we don't have our own ILD
+            for key in self.ils_params:
+                self.params.add(key, value=self.ils_params[key], vary=True)
             self.analyser = Analyser(params=self.params,
                                      fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                      frs_path=self.frs_path,
+                                     # ils_type=None,
                                      stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                                      dark_flag=False)
 
+    def remove_ils_params(self):
+        """
+        Removes ILS parameters from self.params. This is done as when these parameters are included, the analyser fit
+        errors seem to just be inf.
+        :return:
+        """
+        # Update params to not include ILS fitting params, as this seems to stop the fit from generating fit errors
+        for key in self.ils_params:
+            try:
+                self.params.pop(key)
+            except KeyError:
+                pass
+
     def load_ils(self, ils_path):
         """Load ils from path"""
+        self.remove_ils_params()
         self.analyser = Analyser(params=self.params,
                                  fit_window=[self._start_fit_wave_init, self._end_fit_wave_init],
                                  frs_path=self.frs_path,
@@ -1325,7 +1359,115 @@ class IFitWorker:
         self.so2_grid_ppmm = new_so2_grid_ppmm
         np.multiply(self.so2_grid_ppmm, 2.652e+15)
 
-    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
+    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True,
+                                       ldf_lims=[0, 0.9], ldf_step=0.1, so2_lims=[0, 1e19], so2_step=5e17,):
+        """
+        Generates light dilution curves from the clear spectrum it is passed. Based on Varnam et al. (2020).
+        :param wavelengths:
+        :param spec:
+        :param spec_date:
+        :param is_corr:         bool    Flags if clear spectrum is corrected for stray light and dark current.
+                                        If False, the correction is applied here
+        :return:
+        """
+
+        # TODO FOR SOME REASON THIS ISN@T WORKING PROPERLY - JUST GENERATING STRAIGHT LINES
+        # TODO NEED TO WORK OUT WHAT IS WRONG!!
+
+        if not is_corr:
+            self.clear_spec_raw = spec
+
+            # Ensure we have updated the pixel space of for stray light window - simply setting property runs update
+            self.start_stray_wave = self.start_stray_wave
+            self.end_stray_wave = self.end_stray_wave
+
+            # Correct clear spectrum and then reassign it to spec
+            self.dark_corr_spectra()
+            self.stray_corr_spectra()
+            spec = self.clear_spec_corr
+
+        # Generate grids
+        self.so2_grid = np.arange(so2_lims[0], so2_lims[1]+so2_step, so2_step)
+        self.ldf_grid = np.arange(ldf_lims[0], ldf_lims[1]+ldf_step, ldf_step)
+
+        # Create generator that encompasses full fit window
+        pad = 1
+        # analyser = Analyser(params=self.params,
+        #                     fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+        #                     frs_path=self.frs_path,
+        #                     stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+        #                     dark_flag=False,
+        #                     ils_type='File',
+        #                     ils_path=self.ils_path)
+
+        analyser = Analyser_ld(params=self.params,
+                               fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+                               frs_path=self.frs_path,
+                               stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                               dark_flag=False,
+                               ils_type='File',
+                               ils_path=self.ils_path)
+        analyser.params.add('LDF', value=0.0, vary=False)
+
+        ld_results = generate_ld_curves(analyser, [wavelengths, spec],
+                                        wb1=[self.start_fit_wave, self.end_fit_wave],
+                                        wb2=[self.start_fit_wave_2, self.end_fit_wave_2],
+                                        so2_lims=so2_lims, so2_step=so2_step, ldf_lims=ldf_lims, ldf_step=ldf_step)
+
+        num_rows = ld_results.shape[0]
+        ldf = np.zeros(num_rows)
+        so2 = np.zeros(num_rows)
+        ifit_so2_0 = np.zeros(num_rows)
+        ifit_err_0 = np.zeros(num_rows)
+        ifit_so2_1 = np.zeros(num_rows)
+        ifit_err_1 = np.zeros(num_rows)
+        for i in range(num_rows):
+            # TODO unpack the data into variables - needs to be in the correct format for lookup tables so may need a bit of thought
+            # TODO unpack the data into variables - needs to be in the correct format for lookup tables so may need a bit of thought
+            ldf[i] = ld_results[i][0]
+            so2[i] = ld_results[i][1]
+            ifit_so2_0[i] = ld_results[i][2]
+            ifit_err_0[i] = ld_results[i][3]
+            ifit_so2_1[i] = ld_results[i][4]
+            ifit_err_1[i] = ld_results[i][5]
+            print('LDF: {}\tSO2 real: {}\tSO2 window 1: {}\tSO2 window 2: {}'.format(ldf[i], so2[i], ifit_so2_0[i], ifit_so2_1[i]))
+
+        # Reshape using column-major following how the array is assembled in generate_ld_curves
+        ldf = ldf.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+        so2 = so2.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+        ifit_so2_0 = ifit_so2_0.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+        ifit_err_0 = ifit_err_0.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+        ifit_so2_1 = ifit_so2_1.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+        ifit_err_1 = ifit_err_1.reshape((len(self.so2_grid), len(self.ldf_grid)), order='F')
+
+        # --------------------
+        # Save lookup tables
+        # --------------------
+        # Define filenames
+        date_str = spec_date.strftime(self.spec_specs.file_datestr)
+        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave)),
+                                                                 int(np.round(self.end_fit_wave)),
+                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
+        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
+                                                                 int(np.round(self.end_fit_wave_2)),
+                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
+        file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
+        file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
+
+        # Combine fit and error arrays
+        lookup_0 = np.array([ifit_so2_0, ifit_err_0])
+        lookup_1 = np.array([ifit_so2_1, ifit_err_1])
+
+        # Save files
+        print('Saving light dilution grids: {}, {}'.format(file_path_0, file_path_1))
+        np.save(file_path_0, lookup_0)
+        np.save(file_path_1, lookup_1)
+
+        # Load in lookups
+        for i, file in enumerate([file_path_0, file_path_1]):
+            self.load_ld_lookup(file, fit_num=i)
+
+    def light_diluiton_curve_generator_old(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
         """
         Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
         Code in ld_curve_generator.py on light_dilution branch of ifit.
@@ -1335,7 +1477,7 @@ class IFitWorker:
         :param spec:            np.array    Clear spectrum intensity. Intensities should already be corrected for
                                             stray-light and dark current if is_corr is True
         :param spec_date:       datetime    Clear spectrum acquisition time - used for saving lookup table
-        :param is_corr:         bool        Flags of clear spectrum is corrected for stray light and dark current.
+        :param is_corr:         bool        Flags if clear spectrum is corrected for stray light and dark current.
                                             If False, the correction is applied here
         """
         if not is_corr:
@@ -1480,6 +1622,10 @@ class IFitWorker:
         np.save(file_path_0, lookup_0)
         np.save(file_path_1, lookup_1)
 
+        # Load in lookups
+        for i, file in enumerate([file_path_0, file_path_1]):
+            self.load_ld_lookup(file, fit_num=i)
+
     def load_ld_lookup(self, file_path, fit_num=0, use_new_window=False):
         """
         Loads lookup table from file
@@ -1517,7 +1663,6 @@ class IFitWorker:
         # Revert back to old fitting windows
         if not use_new_window:
             self.start_fit_wave, self.end_fit_wave = start_wave_old, end_wave_old
-
 
     def ld_lookup(self, so2_dat, so2_dat_err, wavelengths, spectra, spec_time):
         """
