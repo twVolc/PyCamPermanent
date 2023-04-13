@@ -16,9 +16,9 @@ from pycam.setupclasses import FileLocator
 
 # TODO I'm getting quite a big difference between ifit ref spectra and Vandaele ref spectra ~20%. Which to use?
 pwd = FileLocator.PYCAM_ROOT_WINDOWS
-species = {'SO2': {'path': os.path.join(pwd, 'ifit/Ref/SO2_293K.txt'), 'value': 1.0e16},  # Value is the inital estimation of CD
-           'O3': {'path': os.path.join(pwd, 'ifit/Ref/O3_223K.txt'), 'value': 1.0e19},
-           'Ring': {'path': os.path.join(pwd, 'ifit/Ref/Ring.txt'), 'value': 0.1}
+species = {'SO2': {'path': os.path.join(pwd, 'doas/calibration/SO2_293K.txt'), 'value': 1.0e16},  # Value is the inital estimation of CD
+           'O3': {'path': os.path.join(pwd, 'doas/calibration/O3_223K.txt'), 'value': 1.0e19},
+           'Ring': {'path': os.path.join(pwd, 'doas/calibration/Ring.txt'), 'value': 0.1}
            }
 
 
