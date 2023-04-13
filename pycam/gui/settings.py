@@ -52,6 +52,7 @@ class GUISettings:
         self.fig_ILS = tuple()
         self.fig_doas_calib_img = tuple()
         self.fig_doas_calib_fit = tuple()
+        self.fig_doas_calib_params = tuple()
         self.fig_cell_fit = tuple()
         self.fig_cell_abs = tuple()
         self.fig_sens_mask = tuple()
@@ -199,6 +200,8 @@ class SettingsFrame:
         self._doas_calib_img_y = tk.DoubleVar()
         self._doas_calib_fit_x = tk.DoubleVar()
         self._doas_calib_fit_y = tk.DoubleVar()
+        self._doas_calib_params_x = tk.DoubleVar()
+        self._doas_calib_params_y = tk.DoubleVar()
         self._cell_fit_x = tk.DoubleVar()
         self._cell_fit_y = tk.DoubleVar()
         self._cell_abs_x = tk.DoubleVar()
@@ -302,6 +305,13 @@ class SettingsFrame:
         doas_calib_fit_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'DOAS FOV calibration fit:',
                                                   self._doas_calib_fit_x, self._doas_calib_fit_y,
                                                   row=row_sett, pdx=self.pdx, pdy=self.pdy)
+
+        row_sett += 1
+
+        doas_calib_fit_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'DOAS calibration parameters:',
+                                                  self._doas_calib_params_x, self._doas_calib_params_y,
+                                                  row=row_sett, pdx=self.pdx, pdy=self.pdy)
+
         row_sett += 1
 
         cell_fit_setts = FigureSizeSettings(self.main_gui.main_font, self.fig_frame, 'Cell calibration fit:',
@@ -459,6 +469,15 @@ class SettingsFrame:
     def fig_doas_calib_fit(self, value):
         self._doas_calib_fit_x.set(value[0])
         self._doas_calib_fit_y.set(value[1])
+
+    @property
+    def fig_doas_calib_params(self):
+        return (self._doas_calib_params_x.get(), self._doas_calib_params_y.get())
+
+    @fig_doas_calib_params.setter
+    def fig_doas_calib_params(self, value):
+        self._doas_calib_params_x.set(value[0])
+        self._doas_calib_params_y.set(value[1])
 
     @property
     def fig_cell_fit(self):

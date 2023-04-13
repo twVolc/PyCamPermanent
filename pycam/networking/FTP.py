@@ -550,6 +550,10 @@ class FTPClient:
                 print(e)
                 ignore_list = []
 
+        # Setup up old file list to check against new one - so we don't waste time looping through everything if
+        # the list is exactly the same as the previous check
+        file_list_old = []
+
         while True:
             # First check we haven't had a stop request
             try:
@@ -581,6 +585,7 @@ class FTPClient:
 
             # Sort file list so oldest times come first (so they will be transferred first)
             file_list.sort()
+            start_1 = time.time()
 
             # Loop through files and decide what to do with them
             for file in file_list:
@@ -595,10 +600,16 @@ class FTPClient:
                 except queue.Empty:
                     pass
 
+                # Check if the file list is identical to previous which has already been checked
+                if file_list == file_list_old:
+                    break
+
                 # Check if this is a file that we want to ignore
+
                 if new_only:
                     if file in ignore_list:
                         continue
+                print('Ignore list time taken: {:.3f}'.format(time.time() - start_1))
 
                 # Extract filename to generate lock file
                 filename, ext = os.path.splitext(file)
@@ -608,6 +619,10 @@ class FTPClient:
                 else:
                     print('Getting file: {}'.format(file))
                     local_file, local_date_dir = self.get_data(os.path.join(self.dir_data_remote, file))
+
+            # Now that this file list has been checked for new images, we set it to this variable, so any list that is
+            # identical isn't checked again
+            file_list_old = file_list
 
             # Sleep for designated time, so I'm not constantly polling the host
             time.sleep(self.refresh_time)

@@ -270,6 +270,8 @@ class InstrumentConfiguration:
         self.dark_script = cfg[ConfigInfo.dark_script]
         self.temp_script = cfg[ConfigInfo.temp_log]
         self.disk_space_script = cfg[ConfigInfo.disk_space_script]
+        self.dbx_script = FileLocator.DROPBOX_UPLOAD_SCRIPT
+        self.check_run_script = FileLocator.CHECK_RUN
 
     def initiate_variable(self, main_gui):
         """Initiate tkinter variables"""
@@ -600,10 +602,23 @@ class InstrumentConfiguration:
         temp_log_str = self.minute_cron_fmt(self.temp_logging)
         disk_space_str = self.minute_cron_fmt(self.check_disk_space)
 
+
+
+
         # Preparation of lists for writing crontab file
         times = [self.start_capt_time, self.stop_capt_time, self.start_dark_time, temp_log_str, disk_space_str]
         cmds = ['python3 {}'.format(self.start_script), 'python3 {}'.format(self.stop_script),
                 'python3 {}'.format(self.dark_script), self.temp_script, 'python3 {}'.format(self.disk_space_script)]
+
+        # Uncomment if we want to run dropbox uploader from crontab
+        dbx_str = self.minute_cron_fmt(60)          # Setup dropbox uploader to run every hour
+        times.append(dbx_str)
+        cmds.append('python3 {}'.format(self.dbx_script))
+
+        # Uncomment if we want to run check_run.py from crontab
+        check_run_str = self.minute_cron_fmt(30)          # Setup check_run.py to run every hour
+        times.append(check_run_str)
+        cmds.append('python3 {}'.format(self.check_run_script))
 
         # Check time compatibility (only on scripts which have specific start times, not those run every x minutes)
         self.check_second_shutdown()

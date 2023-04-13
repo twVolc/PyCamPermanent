@@ -163,7 +163,7 @@ class PyMenu:
         self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.submenu_proc.add_separator()
         self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
-        self.submenu_proc.add_command(label='Stop processing', command=pyplis_worker.stop_sequence_processing)
+        self.submenu_proc.add_command(label='Stop processing', command=self.stop_sequence_processing)
 
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
@@ -188,7 +188,7 @@ class PyMenu:
                                          command=lambda: cell_calib.update_plot(generate_frame=True))
         self.submenu_windows.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
         self.submenu_windows.add_separator()
-        self.submenu_windows.add_command(label='Optical flow settings', command=opti_flow.generate_frame)
+        self.submenu_windows.add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
         self.submenu_windows.add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
         self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
@@ -338,6 +338,11 @@ class PyMenu:
         cfg.ftp_client.img_dir.unpack_data(directory)
         print('Unpacking spectrometer data...')
         cfg.ftp_client.spec_dir.unpack_data(directory)
+
+    def stop_sequence_processing(self):
+        """Stops sequence processing of SO2 camera and DOAS"""
+        pyplis_worker.stop_sequence_processing()
+        doas_worker.stop_sequence_processing()
 
 
 class Settings:
@@ -574,7 +579,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         else:
             return self.img_registration
 
-    def load_pcs(self, filename=None):
+    def load_pcs(self, filename=None, new_line=False):
         """Loads PCS into GUI"""
         if filename is None:
             kwargs = {}
@@ -584,7 +589,11 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         if len(filename) > 0:
             line = load_pcs_line(filename)
-            self.pyplis_worker.fig_tau.add_pcs_line(line, force_add=True)
+            if new_line:
+                line_num = None
+            else:
+                line_num = self.pyplis_worker.fig_tau.current_ica
+            self.pyplis_worker.fig_tau.add_pcs_line(line, line_num=line_num, force_add=True)
 
     def add_pcs_startup(self, num):
         """
@@ -611,7 +620,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         """Loads all lines held in this object and updates pyplis_worker.fig tau to contain these lines"""
         for line in self._pcs_lines:
             if line is not self.no_line:
-                self.load_pcs(filename=line)
+                self.load_pcs(filename=line, new_line=True)
 
     def load_dil(self, filename=None):
         """Loads light dilution line into GUI"""

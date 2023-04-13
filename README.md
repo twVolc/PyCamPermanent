@@ -42,8 +42,12 @@ off Auto SS and the second to set shutter speed - if done in one round, if the S
 fail as AutoSS still won't have been turned off yet.
 
 TODO ideas:
-
-
+ - Calibration when spectrometer FOV isn't within the plume (maybe this will work? Run it past Christoph): 
+> Build inventory of clear sky spectra from period where a calibration was possible.
+> Extract region of spectrum we are interested in for calibration (e.g. 302-335 nm)
+> Normalise spectra to peak so we can compare
+> Find RMS error between current clear sky spectrum and previous inventory spectra
+> Lowest RMS error spectrum represents most similar illumination conditions so take this calibration 
 
 Requirements for GUI:
 > In pycam_gui.py must update os.environ[PROJ_LIB] to point to correct place. Only necessary if there are issues with importing basemap

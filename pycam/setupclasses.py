@@ -53,10 +53,18 @@ class FileLocator:
     SPEC_PATH_WINDOWS = DAT_DIR_WINDOWS + 'Spectra/'
 
     SCRIPTS = PYCAM_ROOT_PI + '/scripts/'
+    START_PYCAM = SCRIPTS + 'start_pycam.sh'
+    CHECK_RUN = SCRIPTS + 'check_run.py'
+    REMOTE_PI_RUN_PYCAM = SCRIPTS + 'remote_pi_run_pycam.py'
     MOUNT_SSD_SCRIPT = SCRIPTS + 'mount_ssd.py'
     UNMOUNT_SSD_SCRIPT = SCRIPTS + 'unmount_ssd.py'
     CLEAR_SSD_SCRIPT = SCRIPTS + 'clear_ssd.py'
     FREE_SPACE_SSD_SCRIPT = SCRIPTS + 'free_space_ssd.py'
+
+    CLOUD_UPLOADER_DIR = SCRIPTS + 'clouduploaders/'
+    GOOGLE_DRIVE_PARENT_FOLDER = CLOUD_UPLOADER_DIR + 'google_drive.txt'
+    DROPBOX_ACCESS_TOKEN = CLOUD_UPLOADER_DIR + 'dbx_access.txt'
+    DROPBOX_UPLOAD_SCRIPT = CLOUD_UPLOADER_DIR + 'pi_dbx_upload.py'
 
     LOG_DIR = '/logs/'
     LOG_PATH_PI = PYCAM_ROOT_PI + LOG_DIR
@@ -77,7 +85,7 @@ class FileLocator:
     # Images
     GREEN_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/green-led.png'
     RED_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/red-led.png'
-
+    ONES_MASK = PYCAM_ROOT_WINDOWS + '/gui/icons/2022-08-07T111111_fltr_1ag_1ss_onesmask.png'
 
     # GUI
     GUI_SETTINGS = './pycam/gui/gui_settings.txt'
@@ -161,8 +169,10 @@ class CameraSpecs:
         self.pix_size_y = 5.6e-6    # Pixel height in m
         self.pix_num_x = 648        # Number of pixels in horizontal
         self.pix_num_y = 486        # Number of pixels in vertical
-        self.fov_x = 28             # Field of view in x
-        self.fov_y = 22             # FOV in y
+        # self.fov_x = 28             # Field of view in x
+        # self.fov_y = 22             # FOV in y
+        self.fov_x = 23.1           # FOV for old lenses
+        self.fov_y = 17.3           # FOV for old lenses
         self.bit_depth = 10         # Bit depth of images (set by property
 
         # Filename info
@@ -191,7 +201,7 @@ class CameraSpecs:
                                        np.arange(10000, 50000, 5000),
                                        np.arange(50000, 100000, 10000),
                                        np.arange(100000, 500000, 50000),
-                                       np.arange(500000, 1000000, 100000), [1000000]))
+                                       np.arange(500000, 1000000, 100000), [1000000], [1500000]))
 
         # Acquisition settings
         self.shutter_speed = 10000  # Camera shutter speeds (us)
@@ -231,6 +241,11 @@ class CameraSpecs:
     def ss_idx(self, value):
         """Update shutter speed to value in ss_list defined by ss_idx when ss_idx is changed
         Accesses hidden variable _shutter_speed directly to avoid causing property method being called"""
+        # Check that we have been passed a valid index, if not we adjust it appropriately
+        if value < 0:
+            value = 0
+        elif value > len(self.ss_list) - 1:
+            value = len(self.ss_list) - 1
         self._ss_idx = value
         self._shutter_speed = self.ss_list[self.ss_idx]
 
@@ -425,6 +440,7 @@ class SpecSpecs:
         self.file_ss = '{}ss'   # Shutter speed format spec
         self.file_type = {'meas': 'Plume', 'dark': 'Dark', 'cal': 'ppmm', 'clear': 'Clear', 'test': 'Test'}
         self.file_datestr = "%Y-%m-%dT%H%M%S"                   # Date/time format spec in filename
+        self.file_coadd = 'coadd'   # Coadd string format
         self.file_date_loc = 0
         self.file_ss_loc = 1        # Shutter speed location in filename
         self.file_coadd_loc = 2     # Coadd location in filename

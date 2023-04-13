@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""Main file for running the PyCam GUI"""
+
 import sys
 import os
 # # Make it possible to import iFit by updating path

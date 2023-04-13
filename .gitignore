@@ -184,3 +184,17 @@ pycam/conf/cam_geom/default.txt
 pycam/Data/saved_objects/ld_lookups/
 
 pycam/Data/saved_objects/
+
+pycam/Data/Hawaii/
+
+pycam/conf/cam_geom/kilauea_permanent.txt
+
+pycam/scripts/clouduploaders/settings.yaml
+
+pycam/scripts/clouduploaders/credentials.json
+
+pycam/scripts/clouduploaders/client_secrets.json
+
+pycam/tests/test_data/Lascar/
+
+pycam/scripts/clouduploaders/test/

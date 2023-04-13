@@ -10,7 +10,9 @@ import datetime
 import numpy as np
 
 # Directory of specific emission rate line you wish to plot
-line_dir = "C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Images\\2022-05-20\\Seq_2\\Processed_7\\line_0\\"
+# line_dir = "C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Images\\2022-05-20\\Seq_2\\Processed_7\\line_0\\"
+line_dir = "C:\\Users\\tw9616\\Documents\\PostDoc\\Hawaii\\Camera data\\Silver\\2022-07-26\\_AM\\later processing\\Processed_1\\line_0"
+# line_dir = "C:\\Users\\tw9616\\Documents\\PostDoc\\Hawaii\\Camera data\\Gold\\2022-07-27\\Seq_1\\Processed_2"
 
 
 
@@ -54,24 +56,24 @@ markers = ['.', 'x', '+', '2']
 
 
 # =========================================================
-# LOAD non-LD-corrected data too
-line_dir_no_LD = "C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Images\\2022-05-20\\Seq_2\\Processed_5\\line_0\\"
-flow_types_no_LD = [x for x in os.listdir(line_dir_no_LD) if os.path.isdir(os.path.join(line_dir_no_LD, x))]
-flow_dir = os.path.join(line_dir_no_LD, 'flow_glob')
-# Find all data files
-data_files = os.listdir(flow_dir)
-
-# Loop through data files and read to data_frame
-dfs_no_LD = []
-for data_file in data_files:
-    file_path = os.path.join(flow_dir, data_file)
-
-    dfs_no_LD.append(pd.read_csv(file_path))
-
-df_no_LD = pd.concat(dfs_no_LD)
-
-df_no_LD.index = pd.to_datetime(df_no_LD['Unnamed: 0'])
-df_no_LD['_phi'] = df_no_LD['_phi'] / 1000
+# # LOAD non-LD-corrected data too
+# line_dir_no_LD = "C:\\Users\\tw9616\\Documents\\PostDoc\\Permanent Camera\\PyCamPermanent\\pycam\\Data\\Images\\2022-05-20\\Seq_2\\Processed_5\\line_0\\"
+# flow_types_no_LD = [x for x in os.listdir(line_dir_no_LD) if os.path.isdir(os.path.join(line_dir_no_LD, x))]
+# flow_dir = os.path.join(line_dir_no_LD, 'flow_glob')
+# # Find all data files
+# data_files = os.listdir(flow_dir)
+#
+# # Loop through data files and read to data_frame
+# dfs_no_LD = []
+# for data_file in data_files:
+#     file_path = os.path.join(flow_dir, data_file)
+#
+#     dfs_no_LD.append(pd.read_csv(file_path))
+#
+# df_no_LD = pd.concat(dfs_no_LD)
+#
+# df_no_LD.index = pd.to_datetime(df_no_LD['Unnamed: 0'])
+# df_no_LD['_phi'] = df_no_LD['_phi'] / 1000
 # =========================================================
 
 
@@ -153,7 +155,7 @@ ylim[0] = 0
 axes[1].set_ylim(ylim)
 
 # axes[0].plot(df_no_LD.index, df_no_LD['_phi'], label='No LD corr.', lw=1, color='gray', linestyle='solid', zorder=4)
-axes[0].fill_between(df_no_LD.index, df_no_LD['_phi'], mass_loading, alpha=0.2)
+# axes[0].fill_between(df_no_LD.index, df_no_LD['_phi'], mass_loading, alpha=0.2)
 
 axes[0].legend(loc='best', fancybox=True, framealpha=0.5)
 

@@ -481,6 +481,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.img_canvas.draw()
         self.img_canvas.get_tk_widget().grid(row=1, column=0, columnspan=2, sticky='nsew')
 
+        frame_toolbar = ttk.Frame(self.frame_fig)
+        frame_toolbar.grid(row=2, column=0, columnspan=2, sticky='nsew')
+        self.toolbar_A = NavigationToolbar2Tk(self.img_canvas, frame_toolbar)
+        self.toolbar_A.update()
+        self.toolbar_A.pack(side=tk.BOTTOM)
+
         # Bind click event to figure
         self.line_draw = self.fig.canvas.callbacks.connect('button_press_event', self.ica_draw)
 
@@ -632,6 +638,8 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Only update roi_abs if use_roi is true
         self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
         self.gather_vars()
+
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
         self.q.put(1)
 
@@ -1878,6 +1886,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
     """
     Generates plume background image figure and settings to adjust parameters
     """
+    # TODO I think manually setting the lines gets overwritten some times after rerunning the bakground model.
+    # TODO It might have somethign to do with reloading the sequence when Run is clicked, whichmight redo the background modelling??
     def __init__(self, pyplis_work=pyplis_worker, generate_frame=False, gui_setts=gui_setts):
         super().__init__()
         self.pyplis_worker = pyplis_work
@@ -1889,6 +1899,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.dpi = gui_setts.dpi
         self.q = queue.Queue()
         self.canvases = [None] * 3
+        self.ones_mask = FileLocator.ONES_MASK
 
         if generate_frame:
             self.initiate_variables()
@@ -1907,15 +1918,29 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.main_gui = main_gui
         self.vars = {'bg_mode': int,
                      'auto_param': int,
+                     'vign_corr': int,
                      'polyfit_2d_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
-                     'auto_bg_cmap': int}
+                     'auto_bg_cmap': int,
+                     'ygrad_line_colnum_A': int,
+                     'ygrad_line_startrow_A': int,
+                     'ygrad_line_stoprow_A': int,
+                     'xgrad_line_rownum_A': int,
+                     'xgrad_line_startcol_A': int,
+                     'xgrad_line_stopcol_A': int,
+                     'ygrad_line_colnum_B': int,
+                     'ygrad_line_startrow_B': int,
+                     'ygrad_line_stoprow_B': int,
+                     'xgrad_line_rownum_B': int,
+                     'xgrad_line_startcol_B': int,
+                     'xgrad_line_stopcol_B': int}
 
 
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
+        self._vign_corr = tk.IntVar()
         self._polyfit_2d_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
@@ -1925,6 +1950,23 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.tau_max = 0.1
         self._tau_min = tk.DoubleVar()
         self.tau_min = -0.1
+
+        self._ygrad_line_colnum_A = tk.IntVar()
+        self._ygrad_line_startrow_A = tk.IntVar()
+        self._ygrad_line_stoprow_A = tk.IntVar()
+        self._xgrad_line_rownum_A = tk.IntVar()
+        self._xgrad_line_startcol_A = tk.IntVar()
+        self._xgrad_line_stopcol_A = tk.IntVar()
+
+        self._ygrad_line_colnum_B = tk.IntVar()
+        self._ygrad_line_startrow_B = tk.IntVar()
+        self._ygrad_line_stoprow_B = tk.IntVar()
+        self._xgrad_line_rownum_B = tk.IntVar()
+        self._xgrad_line_startcol_B = tk.IntVar()
+        self._xgrad_line_stopcol_B = tk.IntVar()
+
+        self.line_col = {'A': None, 'B': None}
+        self.line_row = {'A': None, 'B': None}
 
         self.load_defaults()
 
@@ -1963,10 +2005,11 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.mode_opt = ttk.OptionMenu(self.opt_frame, self._bg_mode, self.bg_mode, *pyplis_worker.BG_CORR_MODES)
         self.mode_opt.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
-        # Automatic reference areas
+        # Vignette correction
         row += 1
-        self.auto = ttk.Checkbutton(self.opt_frame, text='Automatic reference areas', variable=self._auto_param)
-        self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
+        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction', variable=self._vign_corr,
+                                command=self.set_vignette_correction)
+        check.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Reference are check
         row += 1
@@ -2011,11 +2054,131 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
+        # -----------------------------
+        # Reference areas
+        # -----------------------------
+        # Automatic reference areas
+        self.ref_area_frame = ttk.LabelFrame(self.top_frame, text='Reference regions')
+        self.ref_area_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
+
+        row = 0
+        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas', variable=self._auto_param,
+                                    command=self.update_draw)
+        self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
+
+        # Radiobuttons for reference area drawing
+        self.rect_selector = tk.IntVar()
+        self.rect_selector.set(0)
+        self.rect_colours = ['lime', 'b', 'c']
+        self.rect_labels = ['scale_rect', 'ygrad_rect', 'xgrad_rect']
+        self.scale_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw scale_rect', variable=self.rect_selector,
+                                         value=0, command=self.update_draw)
+        self.ygrad_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw ygrad_rect', variable=self.rect_selector,
+                                         value=1, command=self.update_draw)
+        self.xgrad_rect_rad = ttk.Radiobutton(self.ref_area_frame, text='Draw xgrad_rect', variable=self.rect_selector,
+                                         value=2, command=self.update_draw)
+        row += 1
+        self.scale_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+        row += 1
+        self.ygrad_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+        row += 1
+        self.xgrad_rect_rad.grid(row=row, column=0, stick='w', padx=2, pady=2)
+
+        # Line profiles
+        row += 1
+        prof_frame_A = tk.LabelFrame(self.ref_area_frame, text='Profiles')
+        prof_frame_A.grid(row=row, column=0, sticky='nsew', padx=2, pady=2)
+
+        notebook = ttk.Notebook(prof_frame_A, style='One.TNotebook.Tab')
+        notebook.pack(fill='both', expand=1, padx=5, pady=5)
+
+        on_band_frame = ttk.Frame(notebook)
+        off_band_frame = ttk.Frame(notebook)
+        notebook.add(on_band_frame, text='On-band')
+        notebook.add(off_band_frame, text='Off-band')
+
+        # Row profile
+        row_frame = tk.LabelFrame(on_band_frame, relief=tk.RAISED, text='Row')
+        row_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(row_frame, text='Row number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum_A, command=self.update_ref_lines_A,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(row_frame, text='Start col:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol_A, command=self.update_ref_lines_A,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(row_frame, text='End col:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol_A, command=self.update_ref_lines_A,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Column profile
+        col_frame = tk.LabelFrame(on_band_frame, relief=tk.RAISED, text='Column')
+        col_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(col_frame, text='Column number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum_A, command=self.update_ref_lines_A,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin_col.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(col_frame, text='Start row:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow_A, command=self.update_ref_lines_A,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(col_frame, text='End row:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow_A, command=self.update_ref_lines_A,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Row profile
+        row_frame = tk.LabelFrame(off_band_frame, relief=tk.RAISED, text='Row')
+        row_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(row_frame, text='Row number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_row = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_rownum_B, command=self.update_ref_lines_B,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin_row.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(row_frame, text='Start col:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_startcol_B, command=self.update_ref_lines_B,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(row_frame, text='End col:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(row_frame, textvariable=self._xgrad_line_stopcol_B, command=self.update_ref_lines_B,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+
+        # Column profile
+        col_frame = tk.LabelFrame(off_band_frame, relief=tk.RAISED, text='Column')
+        col_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        lab_1 = ttk.Label(col_frame, text='Column number:')
+        lab_1.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        spin_col = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_colnum_B, command=self.update_ref_lines_B,
+                               from_=0, to=self.pyplis_worker.cam_specs.pix_num_x-1, increment=1, width=4)
+        spin_col.grid(row=0, column=1, sticky='w', padx=2, pady=2)
+        lab = ttk.Label(col_frame, text='Start row:')
+        lab.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_startrow_B, command=self.update_ref_lines_B,
+                           from_=0, to=self.pyplis_worker.cam_specs.pix_num_y-2, increment=1, width=4)
+        spin.grid(row=1, column=1, padx=2, pady=2, sticky='ew')
+        lab = ttk.Label(col_frame, text='End row:')
+        lab.grid(row=2, column=0, padx=2, pady=2, sticky='w')
+        spin = ttk.Spinbox(col_frame, textvariable=self._ygrad_line_stoprow_B, command=self.update_ref_lines_B,
+                           from_=1, to=self.pyplis_worker.cam_specs.pix_num_y-1, increment=1, width=4)
+        spin.grid(row=2, column=1, padx=2, pady=2, sticky='ew')
+        # ------------------------------
+
         # ---------------
         # Figure settings
         # ---------------
         self.fig_sett_frame = ttk.LabelFrame(self.top_frame, text='Figure settings')
-        self.fig_sett_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
+        self.fig_sett_frame.grid(row=0, column=2, sticky='nw', padx=5, pady=5)
 
         row = 0
         check = ttk.Checkbutton(self.fig_sett_frame, text='Auto limits', variable=self._auto_bg_cmap,
@@ -2035,12 +2198,15 @@ class PlumeBackground(LoadSaveProcessingSettings):
                            from_=-1, to=0, increment=0.01, format='%.2f', font=self.main_gui.main_font)
         spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
+        # -------------------------------------------
 
         # Build figures
         self._build_figures()
 
         # Run current background model to load up figures
         self.run_process(reload_seq=False)
+        self.draw_lines()
+        self.update_draw()
 
         # I'm not sure why, but the program was crashing after run_process and exiting the mainloop.
         # But a call to mainloop here prevents the crash
@@ -2084,6 +2250,199 @@ class PlumeBackground(LoadSaveProcessingSettings):
         if hasattr(self, 'tau_A'):
             self.update_plots(self.tau_A, self.tau_B)
 
+    def update_ref_lines_A(self):
+        """
+        Updates all relevant reference areas in the plots and in pyplis backend
+        """
+        # Do a few checks to ensure we have valid numbers
+        if self.ygrad_line_stoprow_A <= self.ygrad_line_startrow_A:
+            if self.ygrad_line_startrow_A == pyplis_worker.cam_specs.pix_num_y - 1:
+                self.ygrad_line_startrow_A = pyplis_worker.cam_specs.pix_num_y - 2
+                self.ygrad_line_stoprow_A = pyplis_worker.cam_specs.pix_num_y - 1
+            else:
+                self.ygrad_line_stoprow_A = self.ygrad_line_startrow_A + 1
+
+        if self.xgrad_line_stopcol_A <= self.xgrad_line_startcol_A:
+            if self.xgrad_line_startcol_A == pyplis_worker.cam_specs.pix_num_x - 1:
+                self.xgrad_line_startcol_A = pyplis_worker.cam_specs.pix_num_x - 2
+                self.xgrad_line_stopcol_A = pyplis_worker.cam_specs.pix_num_x - 1
+            else:
+                self.xgrad_line_stopcol_A = self.xgrad_line_startcol_A + 1
+
+        # Draw lines on figures
+        self.draw_lines(bands=['A'])
+
+        # Create update dictionary
+        update_dict = {'ygrad_line_colnum_A': self.ygrad_line_colnum_A,
+                       'ygrad_line_startrow_A': self.ygrad_line_startrow_A,
+                       'ygrad_line_stoprow_A': self.ygrad_line_stoprow_A,
+                       'xgrad_line_rownum_A': self.xgrad_line_rownum_A,
+                       'xgrad_line_startcol_A': self.xgrad_line_startcol_A,
+                       'xgrad_line_stopcol_A': self.xgrad_line_stopcol_A}
+
+        # Update PlumeBackground objects
+        self.pyplis_worker.plume_bg_A.update(**update_dict)
+
+    def update_ref_lines_B(self):
+        """
+        Updates all relevant reference areas in the plots and in pyplis backend
+        """
+        # Do a few checks to ensure we have valid numbers
+        if self.ygrad_line_stoprow_B <= self.ygrad_line_startrow_B:
+            if self.ygrad_line_startrow_B == pyplis_worker.cam_specs.pix_num_y - 1:
+                self.ygrad_line_startrow_B = pyplis_worker.cam_specs.pix_num_y - 2
+                self.ygrad_line_stoprow_B = pyplis_worker.cam_specs.pix_num_y - 1
+            else:
+                self.ygrad_line_stoprow_B = self.ygrad_line_startrow_B + 1
+
+        if self.xgrad_line_stopcol_B <= self.xgrad_line_startcol_B:
+            if self.xgrad_line_startcol_B == pyplis_worker.cam_specs.pix_num_x - 1:
+                self.xgrad_line_startcol_B = pyplis_worker.cam_specs.pix_num_x - 2
+                self.xgrad_line_stopcol_B = pyplis_worker.cam_specs.pix_num_x - 1
+            else:
+                self.xgrad_line_stopcol_B = self.xgrad_line_startcol_B + 1
+
+        # Draw lines on figures
+        self.draw_lines(bands='B')
+
+        # Create update dictionary
+        update_dict = {'ygrad_line_colnum_B': self.ygrad_line_colnum_B,
+                       'ygrad_line_startrow_B': self.ygrad_line_startrow_B,
+                       'ygrad_line_stoprow_B': self.ygrad_line_stoprow_B,
+                       'xgrad_line_rownum_B': self.xgrad_line_rownum_B,
+                       'xgrad_line_startcol_B': self.xgrad_line_startcol_B,
+                       'xgrad_line_stopcol_B': self.xgrad_line_stopcol_B}
+
+        # Update PlumeBackground objects
+        self.pyplis_worker.plume_bg_B.update(**update_dict)
+
+    def draw_lines(self, draw=True, bands=['A', 'B']):
+        """Draws scale lnes on plots"""
+
+        for band in bands:
+            fig = getattr(self, 'fig_tau_{}'.format(band))
+            ax = fig.axes[0]
+            try:
+                self.line_col[band].pop(0).remove()
+                self.line_row[band].pop(0).remove()
+            except AttributeError:
+                pass
+
+            self.line_col[band] = ax.plot([getattr(self, 'ygrad_line_colnum_{}'.format(band)),
+                                        getattr(self, 'ygrad_line_colnum_{}'.format(band))],
+                                       [getattr(self, 'ygrad_line_startrow_{}'.format(band)),
+                                        getattr(self, 'ygrad_line_stoprow_{}'.format(band))], lw=4, color='limegreen')
+
+            self.line_row[band] = ax.plot([getattr(self, 'xgrad_line_startcol_{}'.format(band)),
+                                        getattr(self, 'xgrad_line_stopcol_{}'.format(band))],
+                                       [getattr(self, 'xgrad_line_rownum_{}'.format(band)),
+                                        getattr(self, 'xgrad_line_rownum_{}'.format(band))], lw=4, color='pink')
+
+            if draw:
+                getattr(self, 'fig_canvas_{}'.format(band)).draw()
+
+    def update_draw(self):
+        """
+        Edits bindings on figure to change what is being drawn based on self.rect_selector:
+        0 = scale_rect
+        1 = ygrad_rect
+        2 = xgrad_rect
+        """
+        if self.auto_param:
+            self.scale_rect_rad.configure(state=tk.DISABLED)
+            self.ygrad_rect_rad.configure(state=tk.DISABLED)
+            self.xgrad_rect_rad.configure(state=tk.DISABLED)
+            #TODO unbind all drawing from figures then return here, so no drawing gets bound later in method
+            try:
+                self.rs_A.disconnect_events()
+                self.rs_B.disconnect_events()
+            except AttributeError:
+                pass
+            return
+        else:
+            self.scale_rect_rad.configure(state=tk.NORMAL)
+            self.ygrad_rect_rad.configure(state=tk.NORMAL)
+            self.xgrad_rect_rad.configure(state=tk.NORMAL)
+
+        rect_dict = dict(fc=self.rect_colours[self.rect_selector.get()], ec=self.rect_colours[self.rect_selector.get()],
+                         alpha=0.3, fill=True)
+
+        self.rs_A = widgets.RectangleSelector(self.fig_tau_A.axes[0], self.draw_roi_A, drawtype='box',
+                                              rectprops=rect_dict)
+
+        self.rs_B = widgets.RectangleSelector(self.fig_tau_B.axes[0], self.draw_roi_B, drawtype='box',
+                                              rectprops=rect_dict)
+
+    def draw_roi_A(self, eclick, erelease):
+        """Draws ROI"""
+        ax = self.fig_tau_A.axes[0]
+
+        # Delete previous rectangle, if it exists - making sure it is the Rectangle with the correct colour
+        try:
+            label = self.rect_labels[self.rect_selector.get()]
+            for child in ax.get_children():
+                if isinstance(child, patches.Rectangle):
+                    if child._label == label:
+                        child.remove()
+        except AttributeError:
+            pass
+
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+
+        col = self.rect_colours[self.rect_selector.get()]
+        ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y), crop_X, crop_Y,
+                                        facecolor=col, edgecolor=col, fill=True, alpha=0.3, label=label))
+
+        # Update figure canvas
+        self.fig_canvas_A.draw()
+
+        # Update the plumebackground model to hold this rectangle
+        update_dict = {label: [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]}
+        self.pyplis_worker.plume_bg_A.update(**update_dict)
+        # TODO get this to actually work as at them moent I don't think the above code actually correctly changes the
+        #  TODO rectangle if I try to rerun the background modelling
+
+    def draw_roi_B(self, eclick, erelease):
+        """Draws ROI"""
+        ax = self.fig_tau_B.axes[0]
+
+        # Delete previous rectangle, if it exists - making sure it is the Rectangle with the correct colour
+        try:
+            label = self.rect_labels[self.rect_selector.get()]
+            for child in ax.get_children():
+                if isinstance(child, patches.Rectangle):
+                    if child._label == label:
+                        child.remove()
+        except AttributeError:
+            pass
+
+        if eclick.ydata > erelease.ydata:
+            eclick.ydata, erelease.ydata = erelease.ydata, eclick.ydata
+        if eclick.xdata > erelease.xdata:
+            eclick.xdata, erelease.xdata = erelease.xdata, eclick.xdata
+        self.roi_start_y, self.roi_end_y = int(eclick.ydata), int(erelease.ydata)
+        self.roi_start_x, self.roi_end_x = int(eclick.xdata), int(erelease.xdata)
+        crop_Y = erelease.ydata - eclick.ydata
+        crop_X = erelease.xdata - eclick.xdata
+
+        col = self.rect_colours[self.rect_selector.get()]
+        ax.add_patch(patches.Rectangle((self.roi_start_x, self.roi_start_y), crop_X, crop_Y,
+                                       facecolor=col, edgecolor=col, fill=True, alpha=0.3, label=label))
+
+        # Update figure canvas
+        self.fig_canvas_B.draw()
+
+        # Update the plumebackground model to hold this rectangle
+        update_dict = {label: [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]}
+        self.pyplis_worker.plume_bg_B.update(**update_dict)
+
     @property
     def bg_mode(self):
         return self._bg_mode.get()
@@ -2099,6 +2458,14 @@ class PlumeBackground(LoadSaveProcessingSettings):
     @auto_param.setter
     def auto_param(self, value):
         self._auto_param.set(value)
+
+    @property
+    def vign_corr(self):
+        return self._vign_corr.get()
+
+    @vign_corr.setter
+    def vign_corr(self, value):
+        self._vign_corr.set(value)
 
     @property
     def polyfit_2d_thresh(self):
@@ -2156,6 +2523,123 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def tau_min(self, value):
         self._tau_min.set(value)
 
+    @property
+    def ygrad_line_colnum_A(self):
+        return self._ygrad_line_colnum_A.get()
+
+    @ygrad_line_colnum_A.setter
+    def ygrad_line_colnum_A(self, value):
+        self._ygrad_line_colnum_A.set(value)
+
+    @property
+    def ygrad_line_startrow_A(self):
+        return self._ygrad_line_startrow_A.get()
+
+    @ygrad_line_startrow_A.setter
+    def ygrad_line_startrow_A(self, value):
+        self._ygrad_line_startrow_A.set(value)
+
+    @property
+    def ygrad_line_stoprow_A(self):
+        return self._ygrad_line_stoprow_A.get()
+
+    @ygrad_line_stoprow_A.setter
+    def ygrad_line_stoprow_A(self, value):
+        self._ygrad_line_stoprow_A.set(value)
+
+    @property
+    def xgrad_line_rownum_A(self):
+        return self._xgrad_line_rownum_A.get()
+
+    @xgrad_line_rownum_A.setter
+    def xgrad_line_rownum_A(self, value):
+        self._xgrad_line_rownum_A.set(value)
+
+    @property
+    def xgrad_line_startcol_A(self):
+        return self._xgrad_line_startcol_A.get()
+
+    @xgrad_line_startcol_A.setter
+    def xgrad_line_startcol_A(self, value):
+        self._xgrad_line_startcol_A.set(value)
+
+    @property
+    def xgrad_line_stopcol_A(self):
+        return self._xgrad_line_stopcol_A.get()
+
+    @xgrad_line_stopcol_A.setter
+    def xgrad_line_stopcol_A(self, value):
+        self._xgrad_line_stopcol_A.set(value)
+
+    @property
+    def ygrad_line_colnum_B(self):
+        return self._ygrad_line_colnum_B.get()
+
+    @ygrad_line_colnum_B.setter
+    def ygrad_line_colnum_B(self, value):
+        self._ygrad_line_colnum_B.set(value)
+
+    @property
+    def ygrad_line_startrow_B(self):
+        return self._ygrad_line_startrow_B.get()
+
+    @ygrad_line_startrow_B.setter
+    def ygrad_line_startrow_B(self, value):
+        self._ygrad_line_startrow_B.set(value)
+
+    @property
+    def ygrad_line_stoprow_B(self):
+        return self._ygrad_line_stoprow_B.get()
+
+    @ygrad_line_stoprow_B.setter
+    def ygrad_line_stoprow_B(self, value):
+        self._ygrad_line_stoprow_B.set(value)
+
+    @property
+    def xgrad_line_rownum_B(self):
+        return self._xgrad_line_rownum_B.get()
+
+    @xgrad_line_rownum_B.setter
+    def xgrad_line_rownum_B(self, value):
+        self._xgrad_line_rownum_B.set(value)
+
+    @property
+    def xgrad_line_startcol_B(self):
+        return self._xgrad_line_startcol_B.get()
+
+    @xgrad_line_startcol_B.setter
+    def xgrad_line_startcol_B(self, value):
+        self._xgrad_line_startcol_B.set(value)
+
+    @property
+    def xgrad_line_stopcol_B(self):
+        return self._xgrad_line_stopcol_B.get()
+
+    @xgrad_line_stopcol_B.setter
+    def xgrad_line_stopcol_B(self, value):
+        self._xgrad_line_stopcol_B.set(value)
+
+    def set_vignette_correction(self):
+        """
+        Sets vignette correction. If no correction is requested the masks are set as arrays of ones, so no adjustment
+        to the images will be made
+        :return:
+        """
+        if not self.vign_corr:
+            pyplis_worker.use_vign_corr = False
+            # Save the old path so we can revert back to it
+            if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
+                pyplis_worker.bg_A_path_old = pyplis_worker.bg_A_path
+                pyplis_worker.bg_B_path_old = pyplis_worker.bg_B_path
+            pyplis_worker.load_BG_img(self.ones_mask, band='A', ones=True)
+            pyplis_worker.load_BG_img(self.ones_mask, band='B', ones=True)
+
+        else:
+            pyplis_worker.use_vign_corr = True
+            if pyplis_worker.bg_A_path_old is not None:
+                pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
+                pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
+
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
@@ -2179,6 +2663,23 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.frame.attributes('-topmost', 0)
         if reload_seq:
             pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        self.get_current_settings()
+
+    def get_current_settings(self):
+        # Update GUI settings with current background setting
+        self.ygrad_line_colnum_A = pyplis_worker.plume_bg_A.ygrad_line_colnum
+        self.ygrad_line_startrow_A = pyplis_worker.plume_bg_A.ygrad_line_startrow
+        self.ygrad_line_stoprow_A = pyplis_worker.plume_bg_A.ygrad_line_stoprow
+        self.xgrad_line_rownum_A = pyplis_worker.plume_bg_A.xgrad_line_rownum
+        self.xgrad_line_startcol_A = pyplis_worker.plume_bg_A.xgrad_line_startcol
+        self.xgrad_line_stopcol_A = pyplis_worker.plume_bg_A.xgrad_line_stopcol
+
+        self.ygrad_line_colnum_B = pyplis_worker.plume_bg_B.ygrad_line_colnum
+        self.ygrad_line_startrow_B = pyplis_worker.plume_bg_B.ygrad_line_startrow
+        self.ygrad_line_stoprow_B = pyplis_worker.plume_bg_B.ygrad_line_stoprow
+        self.xgrad_line_rownum_B = pyplis_worker.plume_bg_B.xgrad_line_rownum
+        self.xgrad_line_startcol_B = pyplis_worker.plume_bg_B.xgrad_line_startcol
+        self.xgrad_line_stopcol_B = pyplis_worker.plume_bg_B.xgrad_line_stopcol
 
     def set_cmap(self, draw=True):
         """Sets colourmap of figures"""
@@ -2263,6 +2764,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Set colourmaps
         self.set_cmap(draw=False)
+
+        # Draw lines
+        self.draw_lines(draw=False)
+
+        # Reattach bindings to new figure
+        self.update_draw()
 
         if self.in_frame:
             self.q.put(1)
@@ -2732,14 +3239,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
         :return:
         """
         pyplis_worker.plot_iter = self.plot_iter
+        doas_worker.plot_iter = self.plot_iter
         pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
         pyplis_worker.cal_type = self.cal_type_int
         pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
-        pyplis_worker.load_BG_img(self.bg_A, band='A')
-        pyplis_worker.load_BG_img(self.bg_B, band='B')
+        if pyplis_worker.use_vign_corr:
+            pyplis_worker.load_BG_img(self.bg_A, band='A')
+            pyplis_worker.load_BG_img(self.bg_B, band='B')
         pyplis_worker.min_cd = self.min_cd
         pyplis_worker.img_buff_size = self.buff_size
         pyplis_worker.save_opt_flow = self.save_opt_flow
@@ -2788,6 +3297,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.dpi = fig_setts.dpi
         self.fig_size_doas_calib_img = fig_setts.fig_doas_calib_img
         self.fig_size_doas_calib_fit = fig_setts.fig_doas_calib_fit
+        self.fig_size_doas_calib_params = fig_setts.fig_doas_calib_params
 
         # Correlation image
         self.img_corr = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_y])
@@ -2814,13 +3324,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         :return:
         """
         self.main_gui = main_gui
-        self.vars = {'remove_doas_mins': int,
+        self.vars = {'doas_cal_adjust_offset': int,
+                     'remove_doas_mins': int,
                      'doas_recal': int,
                      'doas_fov_recal_mins': int,
                      'doas_fov_recal': int,
                      'max_doas_cam_dif': int,
                      'fix_fov': int,
-                     'maxrad_doas': float}          # Maximum radius in pixels, not degrees, so depends on distance!
+                     'maxrad_doas': float,
+                     'polyorder_cal': int}          # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
         # self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
@@ -2830,6 +3342,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         # unless changing FOV, actually what I want to define is a limit to the time that a DOAS point contributes to
         # the scatter plot - so eseentially as we step forward in time we lose the oldest DOAS points, as they are
         # less likely to represent the current calibration conditions
+        self._doas_cal_adjust_offset = tk.IntVar()
         self._remove_doas_mins = tk.IntVar()
         self._doas_recal = tk.BooleanVar()          # If False, DOAS data is never removed (until next day). Otherwise data is removed based on remove_doas_mins
         self._doas_fov_recal_mins = tk.IntVar()     # Recalibration time [minutes] for FOV recalibration
@@ -2839,18 +3352,27 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self._fov_rad = tk.DoubleVar()
         self._fix_fov = tk.BooleanVar()             # Fixes the FOV - no FOV re-calibration at all will occur
 
+        self._polyorder_cal = tk.IntVar()
+
         self.load_defaults()
 
     def gather_vars(self, message=False):
         """Updates pyplis worker settings"""
+        self.pyplis_worker.doas_cal_adjust_offset = self.doas_cal_adjust_offset
         self.pyplis_worker.maxrad_doas = self.maxrad_doas
-
         self.pyplis_worker.remove_doas_mins = self.remove_doas_mins
         self.pyplis_worker.doas_recal = self.doas_recal
         self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
         self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
-        self.pyplis_worker.fix_fov = self.fix_fov
         self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
+        self.pyplis_worker.polyorder_cal = self.polyorder_cal
+        self.pyplis_worker.fix_fov = self.fix_fov
+        if self.fix_fov:
+            self.pyplis_worker.doas_fov_x = self.centre_pix_x
+            self.pyplis_worker.doas_fov_y = self.centre_pix_y
+            self.pyplis_worker.doas_fov_extent = self.fov_rad
+            self.pyplis_worker.generate_doas_fov()
+
 
         if message:
             messagebox.showinfo('Settings updated',
@@ -2880,7 +3402,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
         self.frame_ui.grid(row=0, column=0, sticky='nsew')
         self.frame_scat.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
-        self.frame_img.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
+        self.frame_plots.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
         self.frame_ui.grid_columnconfigure(1, weight=1)
 
     def _build_opts(self):
@@ -2894,6 +3416,12 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.frame_opts.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
+
+        # Offset options
+        check = ttk.Checkbutton(self.frame_opts, text='Include calibration offset', variable=self._doas_cal_adjust_offset,
+                                command=self.gather_vars)
+        check.grid(row=row, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+        row += 1
 
         # Maximum accepted radius for FOV search
         lab = ttk.Label(self.frame_opts, text='Maximum FOV radius [°]:', font=self.main_gui.main_font)
@@ -2934,6 +3462,13 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         check_frame.grid(row=row, column=2, sticky='w', padx=2)
         check = ttk.Checkbutton(check_frame, text='On', variable=self._doas_fov_recal)
         check.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        row += 1
+
+        lab = ttk.Label(self.frame_opts, text='Calibration polynomial order:', font=self.main_gui.main_font)
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
+        spin = ttk.Spinbox(self.frame_opts, textvariable=self._polyorder_cal, from_=1, to=10, increment=1,
+                           width=5, font=self.main_gui.main_font)
+        spin.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
         row += 1
 
         butt_frame = ttk.Frame(self.frame_opts)
@@ -2987,26 +3522,30 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         row += 1
 
         # Fixing parameters (no calibration will be performed
-        check = ttk.Checkbutton(self.frame_info, text='Fix FOV parameters (no calibration run)', variable=self._fix_fov)
+        check = ttk.Checkbutton(self.frame_info, text='Fix FOV parameters (no calibration run)', variable=self._fix_fov,
+                                command=self.gather_vars)
         check.grid(row=row, column=0, columnspan=2, sticky='e', padx=2, pady=2)
 
         # ---------------------------------------------------------------
 
     def _build_figures(self):
         """Builds figures for DOAS FOV"""
+        self.frame_plots = ttk.Frame(self.frame)
+
         # Create figure
         self.fig_img = plt.Figure(figsize=self.fig_size_doas_calib_img, dpi=self.dpi)
         self.ax_img = self.fig_img.subplots(1, 1)
         self.ax_img.set_aspect(1)
-        self.fig_img.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
+        # self.fig_img.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
 
-        self.frame_img = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_img = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
         self.img_canvas = FigureCanvasTkAgg(self.fig_img, master=self.frame_img)
         self.img_canvas.get_tk_widget().pack(side=tk.LEFT)
         # Add toolbar so figures can be saved
         toolbar = NavigationToolbar2Tk(self.img_canvas, self.frame_img)
         toolbar.update()
         self.img_canvas._tkcanvas.pack(side=tk.TOP)
+        self.frame_img.pack(side=tk.TOP)
 
         # Create figure
         self.fig_fit = plt.Figure(figsize=self.fig_size_doas_calib_fit, dpi=self.dpi)
@@ -3021,11 +3560,37 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         toolbar.update()
         self.fit_canvas._tkcanvas.pack(side=tk.TOP)
 
+        # Create figure for calibration gradient and r2 of fit
+        self.fig_cal_params = plt.Figure(figsize=self.fig_size_doas_calib_params, dpi=self.dpi)
+        self.ax_cal_params_1 = self.fig_cal_params.subplots(1, 1)
+        self.ax_cal_params_2 = self.ax_cal_params_1.twinx()
+        # self.fig_cal_params.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
+        self.ax_cal_params_1.set_ylabel('Fit 1st order')
+        self.ax_cal_params_2.set_ylabel('Fit error')
+
+        self.frame_cal_params = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
+        self.cal_params_canvas = FigureCanvasTkAgg(self.fig_cal_params, master=self.frame_cal_params)
+        self.cal_params_canvas.get_tk_widget().pack(side=tk.LEFT)
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.cal_params_canvas, self.frame_cal_params)
+        toolbar.update()
+        self.cal_params_canvas._tkcanvas.pack(side=tk.TOP)
+        self.frame_cal_params.pack(side=tk.TOP)
+
         # If there is a calibration already available we can plot it
         if self.pyplis_worker.calib_pears is not None:
             self.update_plot()
         else:
             self.q.put(1)
+
+    @property
+    def doas_cal_adjust_offset(self):
+        """Access to tk variable _doas_cal_adjust_offsets. Defines whether offset in CD-tau calibration is used"""
+        return self._doas_cal_adjust_offset.get()
+
+    @doas_cal_adjust_offset.setter
+    def doas_cal_adjust_offset(self, value):
+        self._doas_cal_adjust_offset.set(value)
 
     @property
     def maxrad_doas(self):
@@ -3141,6 +3706,14 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def max_doas_cam_dif(self, value):
         self._max_doas_cam_dif.set(value)
 
+    @property
+    def polyorder_cal(self):
+        return self._polyorder_cal.get()
+
+    @polyorder_cal.setter
+    def polyorder_cal(self, value):
+        self._polyorder_cal.set(value)
+
     def update_vars(self):
         """Updates FOV variables based on pyplis worker"""
         try:
@@ -3149,7 +3722,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         except AttributeError:
             pass
 
-    def update_plot(self, update_scat=True, update_img=True):
+    def update_plot(self, update_scat=True, update_img=True, update_params=True):
         """
         Updates plot
         :return:
@@ -3169,6 +3742,24 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             except (AttributeError, ValueError):
                 pass
 
+        # Update calibration parameters plot
+        if update_params:
+            try:
+                #TODO This plotting isn't working as I want - not updating. Maybe just save each data point to an array
+                #TODO in pyplis_worker and then update the plot each time by clearing the axes and replotting the full
+                #TODO arrays, rather than doing one by one? This would also mean I could save the full arrays later
+                print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
+                print('Calib coeff: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs[1]))
+                print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
+                self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
+                                          self.pyplis_worker.calib_pears.calib_coeffs[1], color='red', marker='o')
+                self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
+                                          self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
+                self.ax_cal_params_1.margins(0.05)
+                self.ax_cal_params_2.margins(0.05)
+            except (AttributeError, ValueError, TypeError) as e:
+                print('Error in calibration parameter fit plot: {}'.format(e))
+
         # Update correlation image plot
         if update_img:
             try:
@@ -3183,6 +3774,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
             except AttributeError:
                 return
+
+
 
         self.q.put(1)
 
@@ -3201,6 +3794,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
         self.fix_fov = self.pyplis_worker.fix_fov
         self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
+        self.polyorder_cal = self.pyplis_worker.polyorder_cal
+        self.update_vars()
 
         self.in_frame = False
         self.frame.destroy()
@@ -3847,7 +4442,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.in_frame = True
 
         self.frame = tk.Toplevel()
-        self.frame.title('Optical flow settings')
+        self.frame.title('Plume velocity settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
         # -------------------------
@@ -4848,7 +5443,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             grid_path = filedialog.askopenfilename(initialdir=FileLocator.LD_LOOKUP, title='Select clear spectrum',
                                                    filetypes=(("NumPy arrays", "*.npy"), ("Text files", "*.txt"),
                                                               ("All files", "*.*")))
-        self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num)
+            # We only want to have the worker set this new fit indow as standard if we load in the LD line through GUI
+            # i.e. not on start-up
+            use_new_window = True
+        else:
+            use_new_window = False
+        self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num, use_new_window=use_new_window)
         setattr(self, 'grid_{}_path'.format(grid_num), grid_path)
         if self.in_frame:
             getattr(self, 'name_grid_{}'.format(grid_num)).configure(text=getattr(self,

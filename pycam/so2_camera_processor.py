@@ -6,7 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
-from pycam.utils import make_circular_mask_line, calc_dt
+from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
@@ -20,6 +20,7 @@ from pyplis.plumespeed import OptflowFarneback, LocalPlumeProperties, find_signa
 from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 from pyplis.doascalib import DoasCalibData, DoasFOV
+from pyplis.exceptions import ImgMetaError
 import pydoas
 
 import pandas as pd
@@ -113,7 +114,7 @@ class PyplisWorker:
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
         self.PCS_lines = []
-        self.PCS_lines_all = []
+        self.PCS_lines_all = [] # TODO not sure the difference between these two - there may be one but it isn't clear...
         self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
                                  'old': None}           # Old plume LineOnImage for cross-correlation
         self.cross_corr_series = {'time': [],           # datetime list
@@ -175,8 +176,9 @@ class PyplisWorker:
 
         # Calibration attributes
         self.doas_worker = None                 # DOASWorker object
-        sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
-        self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=sens_mask)     # Pyplis object holding functions to plot results
+        self.sens_mask = pyplis.Img(np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
+        self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=self.sens_mask)     # Pyplis object holding functions to plot results
+        self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
         self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
         self.doas_fov_y = None                  # Y FOV of DOAS
@@ -192,9 +194,11 @@ class PyplisWorker:
         self.doas_recal_num = 200               # Number of imgs before recalibration (should be smaller or the same as img_buff_size)
         self.max_doas_cam_dif = 5               # Difference (seconds) between camera and DOAS time - any difference larger than this and the data isn't added to the calibration
         self.fix_fov = False                    # If True, FOV calibration is not performed and current FOV is used
+        self.had_fix_fov_cal = False            # If True, it means we have performed the first full calibration from fixed DOAS FOV (i.e. enough time has passed to have a dataset for a calibration)
         self.save_doas_cal = False              # If True, DOAS calibration is saved every remove_doas_mins minutes
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
+        self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
 
         self.img_dir = img_dir
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -249,12 +253,15 @@ class PyplisWorker:
         self.vign_A = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_A_path = None
+        self.bg_A_path_old = None       # Old path to vign image - used if ones mask is used
+        self.use_vign_corr = True
 
         # Load background image if we are provided with one
         self.bg_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vign_B = np.ones([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.vigncorr_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
         self.bg_B_path = None
+        self.bg_A_path_old = None
 
         self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
                           'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
@@ -477,6 +484,7 @@ class PyplisWorker:
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.got_doas_fov = False
+        self.had_fix_fov_cal = False
         self.got_cal_cell = False
         self.got_light_dil = False
         self.dil_recal_last = 0
@@ -652,11 +660,12 @@ class PyplisWorker:
         except IndexError:
             pass
 
-    def load_BG_img(self, bg_path, band='A'):
+    def load_BG_img(self, bg_path, band='A', ones=False):
         """Loads in background file
 
         :param bg_path: Path to background sky image
-        :param band: Defines whether image is for on or off band (A or B)"""
+        :param band: Defines whether image is for on or off band (A or B)
+        :param ones:  bool  If True, dark image is not subtracted as this image is simply an array of ones"""
         if not os.path.exists(bg_path):
             raise ValueError('File path specified for background image does not exist: {}'.format(bg_path))
         if band not in ['A', 'B']:
@@ -665,16 +674,17 @@ class PyplisWorker:
         # Create image object
         img = pyplis.image.Img(bg_path, self.load_img_func)
 
-        # Dark subtraction - first extract ss then hunt for dark image
-        ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        if not ones:
+            # Dark subtraction - first extract ss then hunt for dark image
+            ss = str(int(img.texp * 10 ** 6))
+            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
 
-        if dark_img is not None:
-            img.subtract_dark_image(dark_img)
-            img.img[img.img <= 0] = np.finfo(float).eps
-        else:
-            warnings.warn('No dark image provided for background image.\n '
-                          'Background image has not been corrected for dark current.')
+            if dark_img is not None:
+                img.subtract_dark_image(dark_img)
+                img.img[img.img <= 0] = np.finfo(float).eps
+            else:
+                warnings.warn('No dark image provided for background image.\n '
+                              'Background image has not been corrected for dark current.')
 
         # Set variables
         setattr(self, 'bg_{}'.format(band), img)
@@ -734,8 +744,11 @@ class PyplisWorker:
         img.pathname = img_path
 
         # Dark subtraction - first extract ss then hunt for dark image
-        ss = str(int(img.texp * 10 ** 6))
-        dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        try:
+            ss = str(int(img.texp * 10 ** 6))
+            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+        except ImgMetaError:
+            dark_img = None
 
         if dark_img is not None:
             img.subtract_dark_image(dark_img)
@@ -1598,14 +1611,19 @@ class PyplisWorker:
             self.update_meta(self.vigncorr_B_warped, self.vigncorr_B)
             self.vigncorr_B_warped.edit_log['vigncorr'] = True
 
+        # Find clear sky regions if requested
         if self.auto_param_bg and params_A is None:
             # Find reference areas using vigncorr, to avoid issues caused by sensor smudges etc
             self.background_params_A = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_A)
             self.background_params_B = pyplis.plumebackground.find_sky_reference_areas(self.vigncorr_B)
             params_A = self.background_params_A
             params_B = self.background_params_B
-        self.plume_bg_A.update(**params_A)
-        self.plume_bg_B.update(**params_B)
+
+        # Update params if we have some
+        if params_A is not None:
+            self.plume_bg_A.update(**params_A)
+        if params_B is not None:
+            self.plume_bg_B.update(**params_B)
 
         if mode == 7:
             self.bg_pycam = True
@@ -1901,7 +1919,14 @@ class PyplisWorker:
 
         # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
         if self.got_doas_fov and self.cal_type in [1, 2]:
-            cal_img = self.calib_pears.calibrate(img)
+            if self.fix_fov and not self.had_fix_fov_cal:
+                pass
+            else:
+                cal_img = self.calib_pears.calibrate(img)
+
+                # If we want to adjust for the offset in the calibration curve we add y_offset back to the image here
+                if self.doas_cal_adjust_offset:
+                    cal_img.img = cal_img.img + self.calib_pears.y_offset
 
         elif self.cal_type == 0:
             if isinstance(img, pyplis.Img):
@@ -1925,6 +1950,7 @@ class PyplisWorker:
         :return:
         """
         print('Performing DOAS FOV search')
+        # TODO May want to initiate this DoasFOVEng with info on camera?
         s = pyplis.doascalib.DoasFOVEngine(img_stack, doas_results)
         s.maxrad = self.maxrad_doas  # Set maximum radius of FOV to close to that expected from optical calculations
         s.g2dasym = False  # Allow only circular FOV (not eliptical)
@@ -1952,6 +1978,7 @@ class PyplisWorker:
                 while os.path.exists(full_path):
                     self.doas_file_num += 1
                     full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                # TODO I don't think this line actually saves data...
                 self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
 
                 # Set new time of most recent save
@@ -1961,6 +1988,28 @@ class PyplisWorker:
         if plot:
             print('Updating DOAS FOV plot')
             self.fig_doas_fov.update_plot()
+
+    def generate_doas_fov(self):
+        """
+        Generates clibpears object from fixed DOAS FOV parameters
+        :return:
+        """
+        self.calib_pears = DoasCalibData(polyorder=self.polyorder_cal, camera=self.cam,
+                                         senscorr_mask=self.sens_mask)  # includes DoasCalibData class
+
+        # self.calib_pears.update_search_settings(method='pearson')
+        # self.calib_pears.merge_data(merge_type=self._settings["mergeopt"])
+        self.calib_pears.fov.result_pearson['cx_rel'] = self.doas_fov_x
+        self.calib_pears.fov.result_pearson['cy_rel'] = self.doas_fov_y
+        self.calib_pears.fov.result_pearson['rad_rel'] = self.doas_fov_extent
+        self.calib_pears.fov.img_prep['pyrlevel'] = 1
+        self.calib_pears.fov.search_settings['method'] = 'pearson'
+        mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
+                                  self.doas_fov_x, self.doas_fov_y, self.doas_fov_extent)
+        self.calib_pears.fov.fov_mask_rel = mask.astype(np.float64)
+        self.fov = self.calib_pears.fov
+        self.got_doas_fov = True
+        self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
     def update_doas_calibration(self, img_tau=None, force_fov_cal=False):
         """
@@ -1988,7 +2037,10 @@ class PyplisWorker:
 
             # Update calibration data - on startup there is not calib data, so if have none we just catch the exception
             try:
-                self.rem_doas_cal_data(oldest_time, recal=True)
+                # self.rem_doas_cal_data(oldest_time, recal=True)
+                # EDITED TO THIS ON 13/01/2023 BECAUSE WE RUN RECAL WHEN WE ADD DATA TOO  -DON'T NEED TO KEEP RECALIBRATING
+                # AND THIS RECAL MESSES WITH THE FIXED FOV CAL
+                self.rem_doas_cal_data(oldest_time, recal=False)
             except ValueError:
                 pass
 
@@ -2017,7 +2069,7 @@ class PyplisWorker:
                     #                                                               stds=self.test_doas_stds)
                     # TODO ==========================================
 
-                    self.doas_fov_search(stack, self.doas_worker.results)
+                    self.doas_fov_search(stack, self.doas_worker.results, polyorder=self.polyorder_cal)
 
                     # Once we have a calibration we need to go back through buffer and get emission rates
                     # Overwrite any emission rates since last calibration, as they require new FOV calibration
@@ -2092,7 +2144,26 @@ class PyplisWorker:
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
-            self.add_doas_cal_data(cal_dict)
+
+            # Rerun fit if we have enough data
+            # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
+            # we're always calibrating with the same number of data points. Once we get this number, we calibrate and
+            # go back thorugh buffer to get all emission rates. After that we flag that we've had a fixed FOV
+            # calibration so from then on don't need to get emission rate from buffer - just proceed normally.
+            if self.fix_fov and not self.had_fix_fov_cal:
+                oldest_time = img_time - datetime.timedelta(minutes=self.remove_doas_mins)
+                if oldest_time < self.doas_last_fov_cal:
+                    self.add_doas_cal_data(cal_dict, recal=False)
+                else:
+                    self.add_doas_cal_data(cal_dict, recal=True)
+                    self.had_fix_fov_cal = True
+
+                    # Get emission rate from buffer
+                    last_cal = copy.deepcopy(self.doas_last_fov_cal)
+                    recal = True
+                    self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+            else:
+                self.add_doas_cal_data(cal_dict, recal=True)
 
             # Update doas figure, but no need to change the correlation image as we haven't changed that
             self.fig_doas_fov.update_plot(update_img=False)
@@ -2107,7 +2178,7 @@ class PyplisWorker:
         self.calib_pears.cd_vec_err = np.append(self.calib_pears.cd_vec_err, cal_dict['cd_err'])
         self.calib_pears.time_stamps = np.append(self.calib_pears.time_stamps, cal_dict['time'])
 
-        # Rerun fit
+        # Recalibrate
         if recal:
             self.calib_pears.fit_calib_data()
 
@@ -2124,6 +2195,8 @@ class PyplisWorker:
             calib_dat = copy.deepcopy(self.calib_pears)
 
         # Edit all vectors
+        if time_obj > datetime.datetime(year=2022, month=5, day=20, hour=16, minute=5, second=10):
+            pass        # Useful for debugging as I can put a breakpoint here and only interrogate after a time I define above
         calib_dat.tau_vec = calib_dat.tau_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec = calib_dat.cd_vec[calib_dat.time_stamps >= time_obj]
         calib_dat.cd_vec_err = calib_dat.cd_vec_err[calib_dat.time_stamps >= time_obj]
@@ -2364,11 +2437,12 @@ class PyplisWorker:
             if key == 'roi_abs':
                 self.opt_flow.settings.roi_rad_abs = settings[key]
 
-    def generate_opt_flow(self, img_tau=None, img_tau_next=None, plot=False):
+    def generate_opt_flow(self, img_tau=None, img_tau_next=None, plot=False, save_horizontal_stats=False):
         """
         Generates optical flow vectors for current and previous image
         :param img_tau:         pyplis.Img  First image
         :param img_tau_next:    pyplis.Img  Subesequent image
+        :param save_horizontal_stats    bool    Just used for Frontier In article to calculate horizontal velocities and save them
         :return:
         """
         if img_tau is None:
@@ -2391,6 +2465,16 @@ class PyplisWorker:
             self.fig_tau.update_plot(img_tau_next, img_cal=self.img_cal)
             if self.fig_opt.in_frame:
                 self.fig_opt.update_plot()
+
+        # Just for Frontier in manuscript really
+        if save_horizontal_stats:
+            for i, line in enumerate(self.PCS_lines_all):
+                if isinstance(line, LineOnImage):
+                    dirname = os.path.join(self.processed_dir, 'line_{}'.format(i))
+                    if not os.path.exists(dirname):
+                        os.mkdir(dirname)
+                    filename = os.path.join(dirname, 'horizontal_speed.txt')
+                    get_horizontal_plume_speed(self.opt_flow, self.dist_img_step, self.PCS_lines_all[0], filename=filename)
 
         return self.flow, self.velo_img
 
@@ -2423,12 +2507,12 @@ class PyplisWorker:
             # This image
             if self.ref_check_mode:
                 if not self.ref_check_lower < avg < self.ref_check_upper:
-                    warnings.warn("Image contains CDs in ambient region above designated acceptable limit"
-                                  "Processing of this image is not being performed")
+                    print("Image contains CDs in ambient region above designated acceptable limit"
+                          "Processing of this image is not being performed")
                     return None
         except BaseException:
-            warnings.warn("Failed to retrieve data within background ROI (bg_roi)"
-                 "writing NaN")
+            print("Failed to retrieve data within background ROI (bg_roi)"
+                  "writing NaN")
             self.bg_std.append(np.nan)
             self.bg_mean.append(np.nan)
             # If we are in check mode, then we return if we failed to check the CD of the ambient ROI
@@ -2626,7 +2710,10 @@ class PyplisWorker:
                         # get bool mask for indices along the pcs
                         bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
 
-                        frac_bad = sum(bad) / float(len(bad))
+                        try:
+                            frac_bad = sum(bad) / float(len(bad))
+                        except ZeroDivisionError:
+                            frac_bad = 0
                         indices = np.arange(len(bad))[bad]
                         # now check impact of ill-constraint motion vectors
                         # on ICA
@@ -2950,6 +3037,11 @@ class PyplisWorker:
             self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
+        # Fix FOV if we are using DOAS calibration
+        if self.cal_type in [1,2]:
+            if self.fix_fov:
+                self.generate_doas_fov()
+
         time_proc = time.time()
 
         # Loop through img_list and process data
@@ -2977,6 +3069,7 @@ class PyplisWorker:
                     force_cal = True
 
             # Process image pair
+            print('SO2 cam processor: Processing pair: {}'.format(self.img_list[i][0]))
             self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
                               plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
 
@@ -3023,6 +3116,11 @@ class PyplisWorker:
         # TODO I may need to think about whether I use this to look for images and perform load_sequence() - whihc also
         # TODO sets the processing directory with set_processing_directory(). Otherwise i need the watcher function
         # TODO to be checking for changes in directory and then controlling the current working directory of the object etc
+
+        # Fix FOV if we are using DOAS calibration
+        if self.cal_type in [1,2]:
+            if self.fix_fov:
+                self.generate_doas_fov()
 
         while True:
             # Get the next images in the list
@@ -3186,7 +3284,12 @@ class PyplisWorker:
         # Processing settings save
         settings = os.path.join(self.processed_dir, 'processing_settings.txt')
         with open(settings, 'a') as f:
-            f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+            if self.bg_pycam:
+                f.write('BG_mode={}\n'.format(7))
+            else:
+                f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+            if self.cal_type in [1, 2]:
+                f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
             f.write('ambient_roi={}\n'.format(self.ambient_roi))
             f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
             f.write('DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y))

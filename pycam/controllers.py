@@ -12,7 +12,6 @@ import os
 import time
 import datetime
 import numpy as np
-import cv2
 import threading
 
 from .setupclasses import CameraSpecs, SpecSpecs, FileLocator
@@ -26,6 +25,10 @@ try:
     import picamera
 except ModuleNotFoundError:
     warnings.warn('Working on machine without picamera, functionality of some classes will be lost')
+try:
+    import cv2
+except ModuleNotFoundError:
+    warnings.warn('OpenCV could not be imported, there may be some issues caused by this')
 
 
 class Camera(CameraSpecs):
@@ -625,7 +628,7 @@ class Spectrometer(SpecSpecs):
             Time string containing date and time
         """
         return time_str + '_' + self.file_ss.format(int(self.int_time)) + '_' \
-               + str(self.coadd) + 'coadd_' + spec_type + self.file_ext
+               + str(self.coadd) + self.file_coadd + '_' + spec_type + self.file_ext
 
     def get_spec(self):
         """Acquire spectrum from spectrometer"""
