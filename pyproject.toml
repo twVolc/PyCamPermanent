@@ -9,7 +9,7 @@ dependencies = [
     "astropy==5.2.1",
     "geonum==1.4.5",
     "LatLon23",
-    "matplotlib==3.7.1",
+    "matplotlib==3.5",
     "numpy==1.23",
     "opencv-python",
     "pandas==1.5.3",
@@ -18,13 +18,13 @@ dependencies = [
     "Pillow==9.4.0",
     "pydoas==1.2.4",
 #    "pyinotify==0.9.6",
-    "pyplis==1.4.4",
     "scipy==1.10.1",
 #    "seabreeze==2.0.3",
     "Shapely==2.0.1",
     "ttkthemes==3.2.2",
     "scikit-image==0.18.3",
     "srtm.py",
+    "pyplis @ git+https://github.com/ubdbra001/pyplis.git@sources_fix",
     "iFit @ git+https://github.com/ubdbra001/iFit.git@make-pip-install",
 ]
 
