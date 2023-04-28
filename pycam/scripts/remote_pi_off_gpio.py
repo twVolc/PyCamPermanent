@@ -7,11 +7,7 @@ import sys
 sys.path.append('/home/pi/')
 
 import RPi.GPIO as GPIO
-import os
 import time
-from pycam.utils import read_file
-from pycam.setupclasses import FileLocator, ConfigInfo
-import datetime
 
 # Use BCM rather than board numbers
 GPIO.setmode(GPIO.BCM)

@@ -431,4 +431,3 @@ class StorageMount:
                 # Extract number value - one letter (usually G) is at the end so we need to slice the string
                 space = int(details[mem_loc][0:-1])
         return space
-

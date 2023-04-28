@@ -55,7 +55,7 @@ def read_network_file(filename):
             if 'port=' in line:
                 port = int(line.split('=')[1].split('#')[0].strip('\n').strip())
 
-    return ip_addr, port
+    return port
 
 
 class SocketNames:

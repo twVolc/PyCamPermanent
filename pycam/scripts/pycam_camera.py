@@ -13,7 +13,7 @@ sys.path.append('/home/pi/')
 from pycam.controllers import Camera
 from pycam.networking.sockets import PiSocketCam, PiSocketCamComms, read_network_file, recv_comms, send_imgs, \
     CommConnection, ImgSendConnection
-from pycam.setupclasses import FileLocator
+from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
 
 import threading
@@ -23,6 +23,7 @@ import atexit
 
 # Read config file
 config = read_file(FileLocator.CONFIG_CAM)
+host_ip = config[ConfigInfo.host_ip]
 
 # -----------------------------------------------------------------
 # Setup camera object
@@ -66,8 +67,8 @@ if len(sys.argv) > 1:
 
 # ----------------------------------------------------------------
 # Setup image transfer socket
-serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
-sock_trf = PiSocketCam(serv_ip, port, camera=cam)
+port = read_network_file(FileLocator.NET_TRANSFER_FILE)
+sock_trf = PiSocketCam(host_ip, port, camera=cam)
 print('pycam_camera: Connecting transfer socket')
 sock_trf.connect_socket()
 print('pycam_camera: Connected transfer socket')
@@ -85,8 +86,8 @@ trf_conn.thread_func()
 
 # ----------------------------------------------------------------
 # Setup comms socket
-serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
-sock_comms = PiSocketCamComms(serv_ip, port, camera=cam)
+port = read_network_file(FileLocator.NET_COMM_FILE)
+sock_comms = PiSocketCamComms(host_ip, port, camera=cam)
 print('pycam_camera: Connecting comms socket')
 sock_comms.connect_socket()
 print('pycam_camera: Connected comms socket')

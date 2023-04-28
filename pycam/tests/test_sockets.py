@@ -24,9 +24,9 @@ class TestSockets:
         write_file(filename, sock_data)
 
         # Read network file
-        ip_addr, port = read_network_file(filename)
+        port = read_network_file(filename)
 
-        assert ip_addr == sock_data['ip_address'] and port == sock_data['port']
+        assert port == sock_data['port']
 
     def open_sockets(self, cli='cam'):
         """Open host and client sockets for use in tests

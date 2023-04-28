@@ -9,7 +9,7 @@ from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg,
     opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, automated_acq_handler,\
     calibration_wind, instrument_cfg, temp_log
 from pycam.gui.misc import About, LoadSaveProcessingSettings
-from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line
+from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line, create_video
 import pycam.gui.settings as settings
 from pycam.networking.FTP import FileTransferGUI
 from pycam.cfg import pyplis_worker
@@ -74,6 +74,11 @@ class PyMenu:
         self.submenu_save = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
+
+        # Export
+        self.submenu_export = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_cascade(label='Export', menu=self.submenu_export)
+        self.submenu_export.add_command(label='Export image sequence to video', command=self.export_video)
         self.menus[tab].add_separator()
 
         self.menus[tab].add_command(label='Settings', command=lambda: Settings(self.parent))
@@ -226,6 +231,22 @@ class PyMenu:
         thread = threading.Thread(target=doas_worker.start_processing_threadless, args=())
         thread.daemon = True
         thread.start()
+
+    def export_video(self):
+        """Controls generation of video from image sequence"""
+        frame = tk.Toplevel()
+        frame.title('Select band')
+
+        bands = ['on', 'off']
+        _bands = tk.StringVar()
+        _bands.set(bands[0])
+
+        ttk.Label(frame, text='Band:').grid(row=0, column=0, padx=5, pady=5)
+        band_opts = ttk.OptionMenu(frame, _bands, 'on', *bands)
+        band_opts.grid(row=0, column=1, padx=5, pady=5)
+
+        button = ttk.Button(frame, text='Select', command=lambda: create_video(band=_bands.get()))
+        button.grid(row=1, column=1, sticky='e', padx=5, pady=5)
 
     def set_display_mode(self):
         """Sets the display mode on click of checkbutton"""

@@ -3,9 +3,9 @@
 import sys
 sys.path.append('/home/pi/')
 
-from pycam.utils import read_file
 from pycam.setupclasses import FileLocator
 from pycam.scripts.clouduploaders.dropbox_io import DropboxIO
+
 import subprocess
 import os
 import time

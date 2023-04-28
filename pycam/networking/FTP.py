@@ -364,6 +364,10 @@ class FTPClient:
             self.connection.login(user=username, passwd=password)
             self.connection.cwd(self.dir_data_remote)
             print('Got FTP connection from {}. File transfer now available.'.format(ip))
+
+            # Transfer wittypi file and script schedule file to local, so GUI is accurate when it's opened
+            # TODO THIS HASN'T BEEN TESTED!!!!! (18/04/2023)
+            self.retrieve_schedule_files()
             return True
         except BaseException as e:
             print('FTP connection encountered error - file transfer is inactive')
@@ -396,6 +400,13 @@ class FTPClient:
 
         # Test the new connection
         self.test_connection()
+
+    def retrieve_schedule_files(self):
+        """Retrieves witty pi and crontab schedule files"""
+        # TODO THIS HASN'T BEEN TESTED!!!!! (18/04/2023)
+        self.get_file(FileLocator.SCRIPT_SCHEDULE_PI, FileLocator.SCRIPT_SCHEDULE, rm=False)
+        self.get_file(FileLocator.SCHEDULE_FILE_PI, FileLocator.SCHEDULE_FILE, rm=False)
+        print('Retrieved instrument schedule files')
 
     def move_file_to_instrument(self, local_file, remote_file):
         """Move specific file from local_file location to remote_file location"""

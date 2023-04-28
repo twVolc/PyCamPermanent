@@ -10,8 +10,7 @@ sys.path.append('/home/pi/')
 
 from pycam.networking.sockets import SocketServer, CommsFuncs, recv_save_imgs, recv_save_spectra, recv_comms, \
     acc_connection, SaveSocketError, ImgRecvConnection, SpecRecvConnection, CommConnection, MasterComms, SocketNames
-from pycam.controllers import CameraSpecs, SpecSpecs
-from pycam.setupclasses import FileLocator, ConfigInfo
+from pycam.setupclasses import FileLocator, ConfigInfo, CameraSpecs, SpecSpecs
 from pycam.utils import read_file, write_file, StorageMount, kill_all
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
 

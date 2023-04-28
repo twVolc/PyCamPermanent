@@ -25,12 +25,13 @@ def check_data(sleep=150, storage_mount=StorageMount(), date_fmt="%Y-%m-%d"):
     time.sleep(10)
 
     # Check we can look for new data on the SSD - don't want to look in the pycam/Images folder as this will be being
-    # deleted as tge pi_dbx_upload.py moves files to the cloud
+    # deleted as the pi_dbx_upload.py moves files to the cloud
     if not storage_mount.is_mounted:
-        with open(FileLocator.ERROR_LOG_PI, 'a') as f:
-            f.write('{} ERROR! check_run.py: Storage is not mounted, cannot check for new data\n'.format(datetime.datetime.now()))
-        print('ERROR! check_run.py: Storage is not mounted, cannot check for new data\n')
-        raise Exception
+        # with open(FileLocator.ERROR_LOG_PI, 'a') as f:
+        #     f.write('{} ERROR! check_run.py: Storage is not mounted. Drive will now be mounted\n'.format(datetime.datetime.now()))
+        # print('ERROR! check_run.py: Storage is not mounted, cannot check for new data\n')
+        # raise Exception
+        storage_mount.mount_dev()
 
     # Get specifications of spectrometer and camera settings
     spec_specs = SpecSpecs()

@@ -3,16 +3,14 @@
 import sys
 sys.path.append('/home/pi/')
 
-from pycam.utils import read_file
+from pycam.utils import read_file, get_img_time, get_spec_time
 from pycam.setupclasses import FileLocator, CameraSpecs, SpecSpecs
 from pycam.directory_watcher import can_watch_directories, create_dir_watcher
-from pycam.utils import get_img_time, get_spec_time
+
 import os
 import time
 import queue
 import threading
-import datetime
-
 import dropbox
 from dropbox.exceptions import AuthError
 from dropbox import DropboxOAuth2FlowNoRedirect
@@ -209,6 +207,9 @@ class DropboxIO:
             time_1 = time.time()
             while os.path.exists(lock_file) and time.time() - time_1 < self.timeout:
                 time.sleep(0.05)
+            # If the lock file is still there we ignore this file as there might be issues
+            if os.path.exists(lock_file):
+                return
         else:
             return
 
