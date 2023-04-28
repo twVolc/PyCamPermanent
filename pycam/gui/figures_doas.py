@@ -612,7 +612,7 @@ class CDSeries:
             if isinstance(child, matplotlib.spines.Spine):
                 child.set_color(axes_colour)
         self.ax.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
-        self.ax.set_xlabel('Time [HH:MM]')
+        self.ax.set_xlabel('Time [UTC + {}]'.format(self.doas_worker.time_zone))
         self.ax.set_ylabel('Column density [ppm.m]')
         self.ax_ldf.set_ylabel('LDF', color=self.ldf_colour)
         self.ax_ldf.set_ylim([0, 1])

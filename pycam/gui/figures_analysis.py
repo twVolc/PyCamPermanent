@@ -1163,7 +1163,7 @@ class TimeSeriesFigure:
             plt.setp(self.axes[i + 1].get_xticklabels(), visible=False)
         self.axes[0].xaxis.tick_top()
         self.fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
-        self.axes[-1].set_xlabel('Time')
+        self.axes[-1].set_xlabel('Time [UTC + {}]'.format(self.pyplis_worker.time_zone))
 
         # Finalise canvas and gridding
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.fig_frame)
@@ -2856,7 +2856,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'use_light_dilution': int,
                      'min_cd': float,
                      'buff_size': int,
-                     'save_opt_flow': int       # If True, optical flow is saved to buffer (takes up more space)
+                     'save_opt_flow': int,       # If True, optical flow is saved to buffer (takes up more space)
+                     'time_zone': int
                      }
 
         self.main_gui = main_gui
@@ -2873,6 +2874,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._min_cd = tk.DoubleVar()
         self._buff_size = tk.IntVar()
         self._save_opt_flow = tk.IntVar()
+        self._time_zone = tk.IntVar()
 
         # Load defaults from file
         self.load_defaults()
@@ -2951,6 +2953,13 @@ class ProcessSettings(LoadSaveProcessingSettings):
         settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
         settings_frame.grid(row=1, column=0, sticky='nsw', padx=5, pady=5)
         row = 0
+
+        ttk.Label(settings_frame, text='Time Zone [relative to UTC]:').grid(row=row, column=0,  sticky='w',
+                                                                            padx=self.pdx, pady=self.pdy)
+        self.time_zone_spin = ttk.Spinbox(settings_frame, textvariable=self._time_zone, from_=-12, to=12, increment=1,
+                                          width=2, font=self.main_gui.main_font)
+        self.time_zone_spin.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
 
         # Optical flow to buffer checkbutton
         self.opt_check = ttk.Checkbutton(settings_frame, text='Save optical flow to buffer',
@@ -3158,6 +3167,14 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def save_opt_flow(self, value):
         self._save_opt_flow.set(value)
 
+    @property
+    def time_zone(self):
+        return self._time_zone.get()
+
+    @time_zone.setter
+    def time_zone(self, value):
+        self._time_zone.set(value)
+
     def update_sens_mask(self, val=None):
         """Updates sensitivity mask depending on currently selected calibration option"""
         if self.cal_type == 'Cell':
@@ -3252,6 +3269,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.min_cd = self.min_cd
         pyplis_worker.img_buff_size = self.buff_size
         pyplis_worker.save_opt_flow = self.save_opt_flow
+        pyplis_worker.time_zone - self.time_zone
 
     def save_close(self):
         """Gathers all variables and then closes"""
@@ -3275,6 +3293,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.min_cd = pyplis_worker.min_cd
         self.buff_size = pyplis_worker.img_buff_size
         self.save_opt_flow = pyplis_worker.save_opt_flow
+        self.time_zone = pyplis_worker.time_zone
 
         self.in_frame = False
         self.frame.destroy()
@@ -5490,6 +5509,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                                         self.doas_worker.clear_spec_raw,
                                                         spec_date=spec_time,
                                                         is_corr=False)  # Flags that dark/stray corrections are needed
+        self.draw_grid()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
 

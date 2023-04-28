@@ -64,6 +64,8 @@ class IFitWorker:
         # ======================================================================================================================
         # Initial Definitions
         # ======================================================================================================================
+        self.time_zone = 0              # Time zone for adjusting data times on load-in (relative to UTC)
+
         self.ppmm_conversion = 2.7e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
         self._conversion_factor = 2.663 * 1e-6  # Conversion for ppm.m into Kg m-2
         MOL_MASS_SO2 = 64.0638  # g/mol
@@ -385,10 +387,11 @@ class IFitWorker:
 
     # -------------------------------------------
 
-    def get_spec_time(self, filename):
+    def get_spec_time(self, filename, adj_time_zone=True):
         """
         Gets time from filename and converts it to datetime object
         :param filename:
+        :param adj_time_zone: bool      If true, the file time is adjusted for the timezone
         :return spec_time:
         """
         # Make sure filename only contains file and not larger pathname
@@ -399,6 +402,10 @@ class IFitWorker:
 
         # Turn time string into datetime object
         spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
+
+        # Adjust for time zone
+        if adj_time_zone:
+            spec_time = spec_time + datetime.timedelta(hours=self.time_zone)
 
         return spec_time
 
