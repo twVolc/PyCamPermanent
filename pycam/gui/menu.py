@@ -692,7 +692,7 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         if len(filename) > 0:
             # Update lookup
-            setattr(self, 'ld_lookup_{}'.format(num))
+            setattr(self, 'ld_lookup_{}'.format(num + 1), filename)
             self.spec_dil_labs[num].configure(text=self.ld_lookup_short[num])
 
     def set_ld_lookups(self):
