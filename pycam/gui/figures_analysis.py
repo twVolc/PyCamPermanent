@@ -5505,10 +5505,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         # Run generator
         spec_time = self.doas_worker.get_spec_time(self.clear_filename)
         self.doas_worker.update_grid(self.grid_max_ppmm, self.grid_increment_ppmm)
-        self.doas_worker.light_diluiton_curve_generator(self.doas_worker.wavelengths,
+        self.doas_worker.light_dilution_curve_generator(self.doas_worker.wavelengths,
                                                         self.doas_worker.clear_spec_raw,
                                                         spec_date=spec_time,
-                                                        is_corr=False)  # Flags that dark/stray corrections are needed
+                                                        is_corr=False, # Flags that dark/stray corrections are needed
+                                                        so2_lims=[0, self.grid_max_ppmm * self.doas_worker.ppmm_conversion],
+                                                        so2_step=self.grid_increment_ppmm * self.doas_worker.ppmm_conversion)
         self.draw_grid()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)

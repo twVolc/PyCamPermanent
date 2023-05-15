@@ -22,7 +22,8 @@ import time
 import atexit
 
 # Read config file
-config = read_file(FileLocator.CONFIG_CAM)
+config_cam = read_file(FileLocator.CONFIG_CAM)
+config = read_file(FileLocator.CONFIG)
 host_ip = config[ConfigInfo.host_ip]
 
 # -----------------------------------------------------------------

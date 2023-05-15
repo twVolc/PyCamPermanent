@@ -38,6 +38,9 @@ from pycam.ifit_ld.ifit_mod.synthetic_suite import Analyser_ld
 from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
 
+import shapely
+shapely.speedups.disable()
+
 try:
     from scipy.constants import N_A
 except BaseException:
@@ -66,7 +69,7 @@ class IFitWorker:
         # ======================================================================================================================
         self.time_zone = 0              # Time zone for adjusting data times on load-in (relative to UTC)
 
-        self.ppmm_conversion = 2.7e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
+        self.ppmm_conversion = 2.652e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
         self._conversion_factor = 2.663 * 1e-6  # Conversion for ppm.m into Kg m-2
         MOL_MASS_SO2 = 64.0638  # g/mol
         self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (
@@ -241,7 +244,7 @@ class IFitWorker:
         self.grid_max_ppmm = 5000
         self.grid_increment_ppmm = 20
         self.so2_grid_ppmm = np.arange(0, self.grid_max_ppmm, self.grid_increment_ppmm)
-        self.so2_grid = np.multiply(self.so2_grid_ppmm, 2.652e+15)    # Convert SO2 in ppmm to molecules/cm2
+        self.so2_grid = np.multiply(self.so2_grid_ppmm, self.ppmm_conversion)    # Convert SO2 in ppmm to molecules/cm2
         self.ldf_grid = np.arange(0, 1.00, 0.005)
         self.analyser0 = None
         self.analyser1 = None
@@ -1338,7 +1341,7 @@ class IFitWorker:
 
     def update_ld_analysers(self, force_both=False):
         """
-        Updates the 2 fit window analysers based on current it window definitions. This could be invoked by a button to
+        Updates the 2 fit window analysers based on current fit window definitions. This could be invoked by a button to
         prevent it being run every time the fit window is change, saving time - preventing lag in the GUI. Should only
         need to update this every time the light dilution curve generator is run, so could do it then
         :return:
@@ -1364,10 +1367,14 @@ class IFitWorker:
         if not np.array_equal(self.so2_grid_ppmm, new_so2_grid_ppmm):
             print('Changing SO2 grid for light dilution correction. If preloading grids, ensure both match this grid.')
         self.so2_grid_ppmm = new_so2_grid_ppmm
-        np.multiply(self.so2_grid_ppmm, 2.652e+15)
+        self.so2_grid = np.multiply(self.so2_grid_ppmm, self.ppmm_conversion)
 
-    def light_diluiton_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True,
-                                       ldf_lims=[0, 0.9], ldf_step=0.1, so2_lims=[0, 1e19], so2_step=5e17,):
+    def update_grid_ldf(self, increment):
+        """Updates ldf range and resolution for light dilution lookup grid"""
+        self.ldf_grid = np.arange(0, 1, increment)
+
+    def light_dilution_curve_generator(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True,
+                                       ldf_lims=[0, 1], ldf_step=0.01, so2_lims=[0, 1e19], so2_step=5e17):
         """
         Generates light dilution curves from the clear spectrum it is passed. Based on Varnam et al. (2020).
         :param wavelengths:
@@ -1380,6 +1387,8 @@ class IFitWorker:
 
         # TODO FOR SOME REASON THIS ISN@T WORKING PROPERLY - JUST GENERATING STRAIGHT LINES
         # TODO NEED TO WORK OUT WHAT IS WRONG!!
+
+        # TODO need to get all of the options to work - SO2 step etc
 
         if not is_corr:
             self.clear_spec_raw = spec
@@ -1452,12 +1461,14 @@ class IFitWorker:
         # --------------------
         # Define filenames
         date_str = spec_date.strftime(self.spec_specs.file_datestr)
-        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave)),
-                                                                 int(np.round(self.end_fit_wave)),
-                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
-        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
-                                                                 int(np.round(self.end_fit_wave_2)),
-                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
+        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm_ldf-0-1-{}.npy'.format(date_str, int(np.round(self.start_fit_wave)),
+                                                                             int(np.round(self.end_fit_wave)),
+                                                                             self.grid_max_ppmm, self.grid_increment_ppmm,
+                                                                             ldf_step)
+        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm_ldf-0-1-{}.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
+                                                                             int(np.round(self.end_fit_wave_2)),
+                                                                             self.grid_max_ppmm, self.grid_increment_ppmm,
+                                                                             ldf_step)
         file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
         file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
 
@@ -1474,7 +1485,7 @@ class IFitWorker:
         for i, file in enumerate([file_path_0, file_path_1]):
             self.load_ld_lookup(file, fit_num=i)
 
-    def light_diluiton_curve_generator_old(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
+    def light_dilution_curve_generator_old(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
         """
         Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
         Code in ld_curve_generator.py on light_dilution branch of ifit.
@@ -1571,8 +1582,8 @@ class IFitWorker:
                 ifit_err_0[i, j] = fit.params['SO2'].fit_err
 
         #Create new ifit_so2 with units in ppm.m
-        ifit_so2_ppmm0 = np.divide(ifit_so2_0, 2.652e15)
-        ifit_err_ppmm0 = np.divide(ifit_err_0, 2.652e15)
+        ifit_so2_ppmm0 = np.divide(ifit_so2_0, self.ppmm_conversion)
+        ifit_err_ppmm0 = np.divide(ifit_err_0, self.ppmm_conversion)
 
         # =============================================================================
         # Analyse spectra in second waveband
@@ -1599,8 +1610,8 @@ class IFitWorker:
                 ifit_err_1[i, j] = fit.params['SO2'].fit_err
 
         #Create new ifit_so2 with units in ppm.m
-        ifit_so2_ppmm1 = np.divide(ifit_so2_1, 2.652e15)
-        ifit_err_ppmm1 = np.divide(ifit_err_1, 2.652e15)
+        ifit_so2_ppmm1 = np.divide(ifit_so2_1, self.ppmm_conversion)
+        ifit_err_ppmm1 = np.divide(ifit_err_1, self.ppmm_conversion)
 
         # Store lookup tables as attributes
         self.ifit_so2_0, self.ifit_err_0 = ifit_so2_0, ifit_err_0
@@ -1641,6 +1652,8 @@ class IFitWorker:
         :param use_new_window   bool    If False, we revert back to the previous fit window after loading in the LD data
         :return:
         """
+        print('IFitWorker: Loading light dilution lookup grid: {}'.format(file_path))
+
         dat = np.load(file_path)
         x, y = dat  # unpack data into cd and error grids
         setattr(self, 'ifit_so2_{}'.format(fit_num), x)
@@ -1649,10 +1662,25 @@ class IFitWorker:
 
         # Extract grid info from filename
         filename = os.path.split(file_path)[-1]
-        fit_windows, grid = filename.split('_')[-2:]
+        fit_windows, grid, ldf_grid = filename.split('_')[-3:]
+
+        # Older ldf grids don't include ldf info so need rearranging (then we will use old settings)
+        has_ldf_incr = True
+        if 'ppmm' in ldf_grid:
+            fit_windows = grid
+            grid = ldf_grid
+            has_ldf_incr = False
+
         grid = grid.split('ppmm')[0]
         grid_max_ppmm, grid_increment_ppmm = grid.split('-')[-2:]
         self.update_grid(int(grid_max_ppmm), int(grid_increment_ppmm))
+
+        if has_ldf_incr:
+            grid_increment_ldf = ldf_grid.split('-')[-1].split(self.spec_specs.file_ext)[0]
+            grid_increment_ldf = float(grid_increment_ldf)
+        else:
+            grid_increment_ldf = 0.005      # Old setting was always this
+        self.update_grid_ldf(grid_increment_ldf)
 
         if not use_new_window:
             start_wave_old, end_wave_old = self.start_fit_wave, self.end_fit_wave

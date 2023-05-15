@@ -57,7 +57,7 @@ if spec.spec is not None:
 # ----------------------------------------------------------------
 # Setup image transfer socket
 # Read config file
-config = read_file(FileLocator.CONFIG_CAM)
+config = read_file(FileLocator.CONFIG)
 host_ip = config[ConfigInfo.host_ip]
 port = read_network_file(FileLocator.NET_TRANSFER_FILE)
 sock_trf = PiSocketSpec(host_ip, port, spectrometer=spec)
