@@ -64,6 +64,10 @@ class Camera(CameraSpecs):
         # Create empty image array after we have got pix_num_x/y from super()
         self.image = np.array([self.pix_num_x, self.pix_num_y])  # Image array
 
+        # Initialise with manual capture
+        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+            f.write('manual')
+
     def __del__(self):
         """Whenever this object is deleted (such as end of script) the camera must be closed to free it up for next
         time"""
@@ -380,6 +384,9 @@ class Camera(CameraSpecs):
         capt_q: Queue-like object, such as <queue.Queue> or <multiprocessing.Queue>
             Camera controlled parameters are externally passed to this object and checked in this function"""
         self.continuous_capture = True
+        # Update file saying we are in automated capture (for check_run.py)
+        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+            f.write('automated')
 
         # Initialise camera if not already done
         if not self.cam_init:
@@ -408,6 +415,9 @@ class Camera(CameraSpecs):
                 if 'exit_cont' in mess:
                     if mess['exit_cont']:
                         self.continuous_capture = False
+                        # Update file saying we are no longer in automated capture (for check_run.py)
+                        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+                            f.write('manual')
                         return
 
                 if 'auto_ss' in mess:

@@ -81,6 +81,8 @@ class FileLocator:
     REMOVED_FILES_LOG = 'removed_files.log'
     REMOVED_FILES_LOG_PI = LOG_PATH_PI + REMOVED_FILES_LOG
     REMOVED_FILES_LOG_WINDOWS = LOG_PATH_WINDOWS + REMOVED_FILES_LOG
+    RUN_STATUS_PI = LOG_PATH_PI + 'run_status.log'
+    RUN_STATUS_WINDOWS = LOG_PATH_WINDOWS + 'run_status.log'
 
     # Images
     GREEN_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/green-led.png'

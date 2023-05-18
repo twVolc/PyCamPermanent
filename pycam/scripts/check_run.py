@@ -98,6 +98,19 @@ if count > 1:
     print('check_run.py already running, so exiting...')
     sys.exit()
 # ------------------------------------------------------
+# Check if instrument is in manual or automated mode (if in manual, we don't want to check data acquisition as the user
+# may not want to be acquiring data)
+with open(FileLocator.RUN_STATUS_PI, 'r') as f:
+    info = f.readlines()
+    if len(info) != 1:
+        print('Unexpected format in {}. Continuing without using this file.'.format(FileLocator.RUN_STATUS_PI))
+    else:
+        if 'automated' in info[0]:
+            pass
+        elif 'manual' in info[0]:
+            print('Instrument is not in automated capture mode, check_run.py is not required.')
+            sys.exit()
+
 
 # Setups storage mount to know where to look for data
 storage_mount = StorageMount()
