@@ -634,7 +634,7 @@ class PyplisWorker:
                 for img_name in [img_A, img_B]:
                     self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
                 self.fig_tau.update_plot(img_tau)
-                # TODO plot image
+                # TODO plot optical flow image
                 if opt_flow is not None:
                     pass
 
@@ -3481,7 +3481,8 @@ class ImageRegistration:
                 print('No Control Point object is available to save. Please run registration first')
                 return
             pathname = pathname.split('.')[0] + '.pkl'
-            pickle.dump(self.cp_tform, pathname, pickle.HIGHEST_PROTOCOL)
+            with open(pathname, 'wb') as pickle_file:
+                pickle.dump(self.cp_tform, pickle_file, pickle.HIGHEST_PROTOCOL)
 
     def load_registration(self, pathname, img_reg_frame=None, rerun=True):
         """
