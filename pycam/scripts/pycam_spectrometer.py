@@ -92,7 +92,6 @@ sock_comms.comm_connection = comm_connection
 
 """Final loop where all processes are carried out - mainly comms, spectrometer is doing work in background"""
 while True:
-
     # --------------------------------------------------------------------------------------------
     # Receive comms message and act on it if we have something
     try:

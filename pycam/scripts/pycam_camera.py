@@ -28,7 +28,7 @@ host_ip = config[ConfigInfo.host_ip]
 
 # -----------------------------------------------------------------
 # Setup camera object
-cam = Camera(band=config['band'], filename=FileLocator.CONFIG_CAM)
+cam = Camera(band=config_cam['band'], filename=FileLocator.CONFIG_CAM)
 
 # -----------------------------------------------------------------
 # Setup shutdown procedure
