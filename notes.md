@@ -84,8 +84,12 @@ IP addresses are read in from config files. A few locations need to be changed (
 > ./pycam/conf/config.txt
 > ./pycam/conf/network_transfer.txt
 > ./pycam/conf/network_comm.txt
-> ./pycam/conf/network_ext.txt
+> ./pycam/conf/network_external.txt
 In config.txt you need to change the host_ip (master) and pi_ip (slave) IPs.
+> EDIT (04/04/2023). New pi software should only retrieve IP addresses from config.txt so should no longer have to edit
+> network_*.txt files. But this edit may not be rolled out onto all instruments... can check read_network_file() in 
+> sockets.py to see if edits have been made on the instrument - if only "port" is returned, rather than ip_addr and port
+> then the edits have been made.
 You then need to make changes on the Pi operating system itself, since we have set it up to have a static IP address
 May find online help useful for setting up the static IPs https://elinux.org/RPi_Setting_up_a_static_IP_in_Debian
 Pi 1 (Witty Pi):

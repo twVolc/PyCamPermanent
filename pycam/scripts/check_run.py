@@ -20,17 +20,34 @@ from pycam.io_py import read_script_crontab, write_script_crontab, reboot_remote
 from pycam.utils import read_file, StorageMount
 
 
+def check_acq_mode():
+    """Checks acquisition mode. If it is in manual, this function closes the program"""
+    # Check if instrument is in manual or automated mode (if in manual, we don't want to check data acquisition as the user
+    # may not want to be acquiring data)
+    with open(FileLocator.RUN_STATUS_PI, 'r') as f:
+        info = f.readlines()
+        if len(info) != 1:
+            print('Unexpected format in {}. Continuing without using this file.'.format(FileLocator.RUN_STATUS_PI))
+        else:
+            if 'automated' in info[0]:
+                pass
+            elif 'manual' in info[0]:
+                print('Instrument is not in automated capture mode, check_run.py is not required.')
+                sys.exit()
+
+
 def check_data(sleep=150, storage_mount=StorageMount(), date_fmt="%Y-%m-%d"):
     """Check if data exists"""
     time.sleep(10)
 
     # Check we can look for new data on the SSD - don't want to look in the pycam/Images folder as this will be being
-    # deleted as tge pi_dbx_upload.py moves files to the cloud
+    # deleted as the pi_dbx_upload.py moves files to the cloud
     if not storage_mount.is_mounted:
-        with open(FileLocator.ERROR_LOG_PI, 'a') as f:
-            f.write('{} ERROR! check_run.py: Storage is not mounted, cannot check for new data\n'.format(datetime.datetime.now()))
-        print('ERROR! check_run.py: Storage is not mounted, cannot check for new data\n')
-        raise Exception
+        # with open(FileLocator.ERROR_LOG_PI, 'a') as f:
+        #     f.write('{} ERROR! check_run.py: Storage is not mounted. Drive will now be mounted\n'.format(datetime.datetime.now()))
+        # print('ERROR! check_run.py: Storage is not mounted, cannot check for new data\n')
+        # raise Exception
+        storage_mount.mount_dev()
 
     # Get specifications of spectrometer and camera settings
     spec_specs = SpecSpecs()
@@ -97,6 +114,8 @@ if count > 1:
     print('check_run.py already running, so exiting...')
     sys.exit()
 # ------------------------------------------------------
+# Check acquisition mode
+check_acq_mode()
 
 # Setups storage mount to know where to look for data
 storage_mount = StorageMount()
@@ -150,6 +169,8 @@ if check_data(storage_mount=storage_mount):
     print('check_run.py: Got all data types, instrument is running correctly')
     sys.exit()
 
+# Check mode hasn't changed to manual
+check_acq_mode()
 
 # If there are not all data types, we need to connect to the system and correct it
 # Socket client

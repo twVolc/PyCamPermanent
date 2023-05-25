@@ -10,6 +10,7 @@ import numpy as np
 import os
 import datetime
 import time
+from tkinter import filedialog
 try:
     import RPi.GPIO as GPIO
 except ImportError:
@@ -80,6 +81,63 @@ def load_spectrum(filename):
     wavelengths = spec_array[0, :]
     spectrum = spec_array[1, :]
     return wavelengths, spectrum
+
+
+def create_video(directory=None, band='on', save_dir=None, fps=60):
+    """
+    Generates video from image sequence.
+    :param directory: str   Directory to take images from
+    :param band: str        'on' or 'off' band to tgenerate video for
+    :param save_dir: str    Save directory of video
+    :return:
+    """
+    if directory is None:
+        directory = filedialog.askdirectory(initialdir='./')
+
+    cam_spec = CameraSpecs()
+    band_str = cam_spec.file_filterids[band]
+
+    # Get all data
+    data = [x for x in os.listdir(directory) if cam_spec.file_ext in x]
+    band_files = [x for x in data if x.split('_')[cam_spec.file_fltr_loc] == band_str]
+    band_files.sort()
+    num_frames = len(band_files)
+
+    # Setup video writer
+    frame_size = (int(cam_spec.pix_num_x), int(cam_spec.pix_num_y))
+    # frame_size = (int(cam_spec.pix_size_y), int(cam_spec.pix_size_x))
+    start_datetime = band_files[0].split('_')[cam_spec.file_date_loc]
+    end_datetime = band_files[-1].split('_')[cam_spec.file_date_loc]
+
+    # Setup filename to save to
+    if save_dir is None:
+        save_dir = directory
+    filename = '{}/{}_{}_{}.mp4'.format(save_dir, start_datetime, end_datetime, band_str)
+    filename = '{}/{}_{}_{}.avi'.format(save_dir, start_datetime, end_datetime, band_str)
+
+    # Setup video writer object
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    # fourcc = cv2.VideoWriter_fourcc(*'MPEG')
+    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+    out = cv2.VideoWriter(filename, fourcc, fps, frame_size, 0)
+
+    # Loop through image files, loading them then writing them to the video object
+    for i, filename in enumerate(band_files):
+        if i % 50 == 0:
+            print('Writing frame {} of {}'.format(i+1, num_frames))
+        file_path = os.path.join(directory, filename)
+        img = np.array(cv2.imread(file_path, -1))
+        img = np.round((img / ((2**cam_spec.bit_depth)-1) * 255))
+        img = np.array(img, dtype=np.uint8)
+        # img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+        # Add frame to image
+        out.write(img)
+
+    out.release()
+    print('Video write completed!')
 
 
 def spec_txt_2_npy(directory):

@@ -13,7 +13,7 @@ sys.path.append('/home/pi/')
 from pycam.controllers import Spectrometer, SpectrometerConnectionError
 from pycam.networking.sockets import PiSocketSpec, PiSocketSpecComms, read_network_file, recv_comms, send_spectra, \
     CommConnection, SpecSendConnection
-from pycam.setupclasses import FileLocator
+from pycam.setupclasses import FileLocator, ConfigInfo
 from pycam.utils import read_file
 
 import threading
@@ -21,8 +21,6 @@ import queue
 import time
 import atexit
 
-# # Read config file
-# config = read_file(FileLocator.CONFIG_SPEC)
 
 try:
     # Setup camera object
@@ -58,8 +56,11 @@ if spec.spec is not None:
 
 # ----------------------------------------------------------------
 # Setup image transfer socket
-serv_ip, port = read_network_file(FileLocator.NET_TRANSFER_FILE)
-sock_trf = PiSocketSpec(serv_ip, port, spectrometer=spec)
+# Read config file
+config = read_file(FileLocator.CONFIG)
+host_ip = config[ConfigInfo.host_ip]
+port = read_network_file(FileLocator.NET_TRANSFER_FILE)
+sock_trf = PiSocketSpec(host_ip, port, spectrometer=spec)
 sock_trf.connect_socket()
 
 # Create spectra sending object and start spectra sending thread
@@ -75,8 +76,8 @@ trf_conn.thread_func()
 
 # ----------------------------------------------------------------
 # Setup comms socket
-serv_ip, port = read_network_file(FileLocator.NET_COMM_FILE)
-sock_comms = PiSocketSpecComms(serv_ip, port, spectrometer=spec)
+port = read_network_file(FileLocator.NET_COMM_FILE)
+sock_comms = PiSocketSpecComms(host_ip, port, spectrometer=spec)
 sock_comms.connect_socket()
 
 # Setup CommConnection object
@@ -91,7 +92,6 @@ sock_comms.comm_connection = comm_connection
 
 """Final loop where all processes are carried out - mainly comms, spectrometer is doing work in background"""
 while True:
-
     # --------------------------------------------------------------------------------------------
     # Receive comms message and act on it if we have something
     try:

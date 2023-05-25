@@ -63,6 +63,8 @@ class PyplisWorker:
 
         self.wait_time = 0.2
 
+        self.time_zone = 0  # Time zone for adjusting data times on load-in (relative to UTC)
+
         # Setup memory allocation for images (need to keep a large number for DOAS fov image search).
         self.img_buff_size = 200         # Buffer size for images (this number of images are held in memory)
         # New style, list of dictionaries for buffer. TODO Initiate with all required keys and memory, perhaps
@@ -365,10 +367,11 @@ class PyplisWorker:
         self.geom_fig = self.meas.meas_geometry.draw_map_2d()
         self.geom_fig.fig.show()
 
-    def get_img_time(self, filename):
+    def get_img_time(self, filename, adj_time_zone=True):
         """
         Gets time from filename and converts it to datetime object
         :param filename:
+        :param adj_time_zone: bool      If true, the file time is adjusted for the timezone
         :return img_time:
         """
         # Make sure filename only contains file and not larger pathname
@@ -379,6 +382,10 @@ class PyplisWorker:
 
         # Turn time string into datetime object
         img_time = datetime.datetime.strptime(time_str, self.cam_specs.file_datestr)
+
+        # Adjust for timezone if requested
+        if adj_time_zone:
+            img_time = img_time - datetime.timedelta(hours=self.time_zone)
 
         return img_time
 
@@ -627,7 +634,7 @@ class PyplisWorker:
                 for img_name in [img_A, img_B]:
                     self.load_img(self.img_dir + '\\' + img_name, plot=True, temporary=True)
                 self.fig_tau.update_plot(img_tau)
-                # TODO plot image
+                # TODO plot optical flow image
                 if opt_flow is not None:
                     pass
 
@@ -3474,7 +3481,8 @@ class ImageRegistration:
                 print('No Control Point object is available to save. Please run registration first')
                 return
             pathname = pathname.split('.')[0] + '.pkl'
-            pickle.dump(self.cp_tform, pathname, pickle.HIGHEST_PROTOCOL)
+            with open(pathname, 'wb') as pickle_file:
+                pickle.dump(self.cp_tform, pickle_file, pickle.HIGHEST_PROTOCOL)
 
     def load_registration(self, pathname, img_reg_frame=None, rerun=True):
         """

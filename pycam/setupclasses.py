@@ -81,6 +81,8 @@ class FileLocator:
     REMOVED_FILES_LOG = 'removed_files.log'
     REMOVED_FILES_LOG_PI = LOG_PATH_PI + REMOVED_FILES_LOG
     REMOVED_FILES_LOG_WINDOWS = LOG_PATH_WINDOWS + REMOVED_FILES_LOG
+    RUN_STATUS_PI = LOG_PATH_PI + 'run_status.log'
+    RUN_STATUS_WINDOWS = LOG_PATH_WINDOWS + 'run_status.log'
 
     # Images
     GREEN_LED = PYCAM_ROOT_WINDOWS + '/gui/icons/green-led.png'
@@ -169,10 +171,10 @@ class CameraSpecs:
         self.pix_size_y = 5.6e-6    # Pixel height in m
         self.pix_num_x = 648        # Number of pixels in horizontal
         self.pix_num_y = 486        # Number of pixels in vertical
-        # self.fov_x = 28             # Field of view in x
-        # self.fov_y = 22             # FOV in y
-        self.fov_x = 23.1           # FOV for old lenses
-        self.fov_y = 17.3           # FOV for old lenses
+        self.fov_x = 28             # Field of view in x
+        self.fov_y = 21             # FOV in y
+        # self.fov_x = 23.1           # FOV for old lenses
+        # self.fov_y = 17.3           # FOV for old lenses
         self.bit_depth = 10         # Bit depth of images (set by property
 
         # Filename info
@@ -201,7 +203,7 @@ class CameraSpecs:
                                        np.arange(10000, 50000, 5000),
                                        np.arange(50000, 100000, 10000),
                                        np.arange(100000, 500000, 50000),
-                                       np.arange(500000, 1000000, 100000), [1000000], [1500000]))
+                                       np.arange(500000, 1000000, 100000), [1000000]))
 
         # Acquisition settings
         self.shutter_speed = 10000  # Camera shutter speeds (us)

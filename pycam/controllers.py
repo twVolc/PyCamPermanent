@@ -64,6 +64,10 @@ class Camera(CameraSpecs):
         # Create empty image array after we have got pix_num_x/y from super()
         self.image = np.array([self.pix_num_x, self.pix_num_y])  # Image array
 
+        # Initialise with manual capture
+        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+            f.write('manual')
+
     def __del__(self):
         """Whenever this object is deleted (such as end of script) the camera must be closed to free it up for next
         time"""
@@ -124,13 +128,16 @@ class Camera(CameraSpecs):
         self.cam.framerate = 1
         self.cam.close()
 
-    def set_shutter_speed(self, ss):
+    def set_shutter_speed(self, ss, timeout=1.5):
         """Sets camera shutter speed and will wait until exposure speed has settled close to requested shutter speed
 
         Parameters
         ----------
         ss: int
-            Shutter speed (in microseconds)"""
+            Shutter speed (in microseconds)
+        timeout: float
+            Passed to check_exposure_speed (see usage therein)
+        """
         self.shutter_speed = ss
 
         # Set framerate as this affects shutter speed
@@ -142,7 +149,8 @@ class Camera(CameraSpecs):
         self.cam.shutter_speed = ss
 
         # Wait for camera exposure speed to settle on new value
-        self.exposure_speed = self.check_exposure_speed()
+        self.exposure_speed = self.check_exposure_speed(timeout=timeout)
+        # print('Exposure speed set for ss {}: {}'.format(ss, self.exposure_speed))
 
         # Set ss_idx
         self.ss_idx = np.argmin(np.absolute(ss - self.ss_list))
@@ -163,16 +171,20 @@ class Camera(CameraSpecs):
             pass
         self.cam.framerate = framerate
 
-    def check_exposure_speed(self):
-        """Checks that exposure speed is within reasonable limits of shutter speed"""
+    def check_exposure_speed(self, timeout=1.5):
+        """
+        Checks that exposure speed is within reasonable limits of shutter speed
+        :param timeout float    Length of time to wait for exposure_speed to adjust before just leaving it (stops
+                                everything locking up if exposure_speed can never be achieved.
+        """
         start_time = time.time()
         self.cam.shutter_speed = self.shutter_speed
-        timeout = 1.5
         while self.cam.exposure_speed < 0.93 * self.shutter_speed or self.cam.exposure_speed > self.shutter_speed:
             time_taken = time.time() - start_time
             self.cam.shutter_speed = self.shutter_speed
             # print('Exposure speed: {}   Shutter speed: {}'.format(self.cam.exposure_speed, self.shutter_speed))
             if time_taken > timeout:
+                print('check_exposure_speed timing out')
                 break
             time.sleep(0.01)  # Sleep until camera exposure speed is set close enough to requested ss
 
@@ -372,6 +384,9 @@ class Camera(CameraSpecs):
         capt_q: Queue-like object, such as <queue.Queue> or <multiprocessing.Queue>
             Camera controlled parameters are externally passed to this object and checked in this function"""
         self.continuous_capture = True
+        # Update file saying we are in automated capture (for check_run.py)
+        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+            f.write('automated')
 
         # Initialise camera if not already done
         if not self.cam_init:
@@ -400,6 +415,9 @@ class Camera(CameraSpecs):
                 if 'exit_cont' in mess:
                     if mess['exit_cont']:
                         self.continuous_capture = False
+                        # Update file saying we are no longer in automated capture (for check_run.py)
+                        with open(FileLocator.RUN_STATUS_PI, 'w') as f:
+                            f.write('manual')
                         return
 
                 if 'auto_ss' in mess:
@@ -470,11 +488,12 @@ class Camera(CameraSpecs):
         if not self.cam_init:
             self.initialise_camera()
 
+        time_start = time.time()
         # Loop through shutter speeds in ss_list
         for ss in self.ss_list:
 
-            # Set camera shutter speed
-            self.set_shutter_speed(ss)
+            # Set camera shutter speed with long timeout (should mean all exposure speeds are correctly set)
+            self.set_shutter_speed(ss, timeout=10)
 
             # Get time for stamping
             time_str = format_time(datetime.datetime.now(), self.file_datestr)
@@ -490,6 +509,7 @@ class Camera(CameraSpecs):
             # Put images in q
             self.img_q.put([filename, self.image])
 
+        print('Dark capture time: {}'.format(time.time() - time_start))
         self.in_dark_capture = False
 
 
@@ -603,6 +623,11 @@ class Spectrometer(SpecSpecs):
     @int_time_idx.setter
     def int_time_idx(self, value):
         """Update integration time to value in int_list defined by int_time_idx when int_time_idx is changed"""
+        # If index exceeds list length then we set it to the maximum
+        if value < 0:
+            value = 0
+        elif value > len(self.int_list) - 1:
+            value = len(self.int_list) - 1
         self._int_time_idx = value
         self.int_time = self.int_list[self.int_time_idx]
 
@@ -860,7 +885,6 @@ class Spectrometer(SpecSpecs):
                             # idx error, so we catch this and continue with same int if there are no higher/lower options
                             try:
                                 self.int_time_idx += adj_saturation # Adjusting this property automatically updates self.int_time
-                                # self.int_time = self.int_list[self.int_time_idx]
                             except IndexError:
                                 pass
 

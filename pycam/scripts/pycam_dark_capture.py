@@ -12,18 +12,17 @@ Also the Raspberry Pi must be turned on at the time that this script is schedule
 
 import sys
 sys.path.append('/home/pi/')
-import os
-import subprocess
-import time
-import queue
-import socket
+
 from pycam.utils import read_file, StorageMount, write_file
 from pycam.setupclasses import FileLocator, ConfigInfo, CameraSpecs, SpecSpecs
 from pycam.networking.sockets import SocketClient, SocketServer, ImgRecvConnection, SpecRecvConnection, \
     SocketNames, CommConnection, MasterComms, CommsFuncs
 from pycam.networking.ssh import open_ssh, close_ssh, ssh_cmd, file_upload
-import atexit
 
+import atexit
+import os
+import subprocess
+import time
 
 # Read configuration file which contains important information for various things
 config = read_file(FileLocator.CONFIG)

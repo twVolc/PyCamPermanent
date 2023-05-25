@@ -51,8 +51,9 @@ def close_pycam(ip, port):
 
 
 # Read configuration file which contains important information for various things
-host_ip, port = read_network_file(FileLocator.NET_EXT_FILE)
 config = read_file(FileLocator.CONFIG)
+host_ip = config[ConfigInfo.host_ip]
+port = read_network_file(FileLocator.NET_EXT_FILE)
 
 # Start_script
 start_script = config[ConfigInfo.master_script]
