@@ -557,7 +557,7 @@ class FTPClient:
                 ignore_list = self.connection.nlst()
                 ignore_list.sort()
                 # print('Ignoring files already on instrument: {}'.format(ignore_list))
-            except ftplib.error_perm as e:
+            except (ftplib.error_perm, EOFError) as e:
                 print(e)
                 ignore_list = []
 
@@ -590,7 +590,7 @@ class FTPClient:
             # Get file list from host machine
             try:
                 file_list = self.connection.nlst()
-            except ftplib.error_perm as e:
+            except (ftplib.error_perm, EOFError) as e:
                 print(e)
                 continue
 
