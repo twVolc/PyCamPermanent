@@ -39,7 +39,6 @@ from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
 
 import shapely
-shapely.speedups.disable()
 
 try:
     from scipy.constants import N_A
@@ -1938,7 +1937,7 @@ class SpectraError(Exception):
 
 if __name__ == '__main__':
     # Calibration paths
-    ils_path = './pycam/calibration/2019-07-03_302nm_ILS.txt'
+    ils_path = './pycam/doas/calibration/2019-07-03_302nm_ILS.txt'
     # ils_path = './calibration/2019-07-03_313nm_ILS.txt'
     frs_path = './pycam/doas/calibration/sao2010.txt'
     ref_paths = {'SO2': {'path': './pycam/doas/calibration/SO2_295K.txt', 'value': 1.0e16},  # Value is the inital estimation of CD
@@ -1952,7 +1951,7 @@ if __name__ == '__main__':
     # }
 
     # Spectra path
-    spec_path = '/pycam/Data/Spectra/test_data'
+    spec_path = './pycam/tests/test_data/test_spectra/'
 
     # Create ifit object
     ifit_worker = IFitWorker(frs_path=frs_path, species=ref_paths, dark_dir=spec_path)
