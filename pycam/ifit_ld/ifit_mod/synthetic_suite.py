@@ -10,7 +10,7 @@ import numpy as np
 from scipy.interpolate import griddata
 
 from pycam.ifit_ld.ifit.make_ils import make_ils
-from pycam.ifit_ld.ifit.spectral_analysis import Analyser
+from ifit.spectral_analysis import Analyser
 
 class Analyser_ld(Analyser):
     def __init__(self, params, fit_window, frs_path, model_padding=1.0, 
