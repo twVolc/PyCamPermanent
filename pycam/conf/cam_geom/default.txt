@@ -1,1 +1,1 @@
-./conf/cam_geom/villarrica_26-03-2018.txt
+./pycam/conf/cam_geom/villarrica_26-03-2018.txt

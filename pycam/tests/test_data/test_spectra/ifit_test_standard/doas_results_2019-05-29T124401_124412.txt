@@ -1,0 +1,5 @@
+DOAS processing parameters
+Stray range=293:296
+Fit window=308:318
+Light dilution correction=1
+Light dilution recal time [mins]=0
