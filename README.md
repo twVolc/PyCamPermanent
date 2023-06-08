@@ -10,7 +10,7 @@
 
 1. If you have `git` installed then clone the `standalone` branch of the repo and move into the PyCamPermanent directory:
 ```
-git clone -b standalone https://github.com/twVolc/PyCamPermanent.git
+git clone https://github.com/twVolc/PyCamPermanent.git
 cd PyCamPermanent
 ```
 
@@ -20,7 +20,7 @@ cd PyCamPermanent
 2. Create a new `python 3.8` conda environment and activate it:
 ```
 conda create -n pycam python=3.8
-conda activate pycam_standalone
+conda activate pycam
 ```
 
 3. Install dependencies from the requirements.txt file:
