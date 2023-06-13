@@ -8,7 +8,7 @@
 
 ## Installation instructions
 
-1. If you have `git` installed then clone the `standalone` branch of the repo and move into the PyCamPermanent directory:
+1. If you have `git` installed then clone the PyCamPermanent repo and move into the PyCamPermanent directory:
 ```
 git clone https://github.com/twVolc/PyCamPermanent.git
 cd PyCamPermanent
