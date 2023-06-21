@@ -266,7 +266,7 @@ class DropboxIO:
 
                     # Download file
                     self.dbx.files_download_to_file(os.path.join(save_path, entry.name), entry.path_lower)
-                    print('Downloaded file: {}'.format(entry.name))
+                    print('Downloaded file ({}): {}'.format(self.root_folder, entry.name))
 
                     if self.delete_after:
                         self.dbx.files_delete_v2(entry.path_lower)
