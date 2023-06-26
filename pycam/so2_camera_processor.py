@@ -2899,10 +2899,7 @@ class PyplisWorker:
         # throughout)
         img_buff_timespan = frame_gap * self.img_buff_size
 
-        if img_buff_timespan >= datetime.timedelta(self.doas_fov_recal_mins):
-            return True
-        else:
-            return False
+        return img_buff_timespan >= datetime.timedelta(minutes = self.doas_fov_recal_mins)
 
     def get_emission_rate_from_buffer(self, after=None, overwrite=False):
         """
