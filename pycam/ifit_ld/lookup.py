@@ -29,6 +29,8 @@ from glob import glob
 #Import shapely to create easily queryable objects
 from shapely.geometry import Point, Polygon
 from shapely.strtree  import STRtree
+import shapely
+shapely.speedups.disable()
 
 # =============================================================================
 # Create new functions
