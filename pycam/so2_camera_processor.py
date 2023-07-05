@@ -288,6 +288,8 @@ class PyplisWorker:
         self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
 
+        self.tau_vals = []
+
     @property
     def location(self):
         return self._location
@@ -2081,6 +2083,11 @@ class PyplisWorker:
                     # Once we have a calibration we need to go back through buffer and get emission rates
                     # Overwrite any emission rates since last calibration, as they require new FOV calibration
                     self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+                    self.tau_vals = np.column_stack(
+                        (self.calib_pears.time_stamps, 
+                        self.calib_pears.tau_vec,
+                        self.calib_pears.cd_vec,
+                        self.calib_pears.cd_vec_err))
                 except Exception as e:
                     print('Error when attempting to update DOAS calibration: {}'.format(e))
 
@@ -2151,6 +2158,8 @@ class PyplisWorker:
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
+            tau_vals = np.column_stack((img_time, tau, cd, cd_err))
+            self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
 
             # Rerun fit if we have enough data
             # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
