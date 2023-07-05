@@ -288,6 +288,7 @@ class PyplisWorker:
         self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
 
+        self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
 
     @property
@@ -3091,6 +3092,14 @@ class PyplisWorker:
 
             # Save all images that have been requested
             self.save_imgs()
+
+            if self.calib_pears.calib_coeffs is not None:
+                # Save fit statistics
+                mse = np.mean(self.calib_pears.residual ** 2)
+                r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
+
+                fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
+                self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
             # Once first image is processed we update the first_image bool
             if i == 0:
