@@ -2991,6 +2991,7 @@ class PyplisWorker:
         # Save the final emission rates
         save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
         self.save_processing_params()
+        self.save_calibration()
         if save_doas:
             self.doas_worker.save_results()
 
@@ -3337,6 +3338,17 @@ class PyplisWorker:
                 f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
                 f.write('orientation={}\n'.format(line.normal_orientation))
 
+    def save_calibration(self):
+        path = os.path.join(self.processed_dir, "full_calibration.csv")
+
+        coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+
+        tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
+        fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
+
+        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+
+        full_df.to_csv(path)
 
 
 class ImageRegistration:
