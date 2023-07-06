@@ -37,7 +37,7 @@ while True:
             volc_dict[cam]['thread'].start()
         else:
             if not volc_dict[cam]['dbx'].is_downloading:
-                volc_dict[cam]['dbx'].join()
+                volc_dict[cam]['thread'].join()
                 del volc_dict[cam]['dbx']
             else:
                 time.sleep(0.2)

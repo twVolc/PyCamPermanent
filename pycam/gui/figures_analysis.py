@@ -3768,10 +3768,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 #TODO in pyplis_worker and then update the plot each time by clearing the axes and replotting the full
                 #TODO arrays, rather than doing one by one? This would also mean I could save the full arrays later
                 print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
-                print('Calib coeff: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs[1]))
+                print('Calib coeffs: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs))
                 print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
                 self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.calib_coeffs[1], color='red', marker='o')
+                                          self.pyplis_worker.calib_pears.calib_coeffs[0], color='red', marker='o')
                 self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
                                           self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
                 self.ax_cal_params_1.margins(0.05)
@@ -3793,8 +3793,6 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 self.pyplis_worker.calib_pears.fov.plot(ax=self.ax_img)
             except AttributeError:
                 return
-
-
 
         self.q.put(1)
 
@@ -3828,6 +3826,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                     if self.in_frame:
                         self.img_canvas.draw()
                         self.fit_canvas.draw()
+                        self.cal_params_canvas.draw()
                 else:
                     pass
         except queue.Empty:
