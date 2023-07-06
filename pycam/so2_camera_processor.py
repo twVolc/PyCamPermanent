@@ -3094,13 +3094,9 @@ class PyplisWorker:
             # Save all images that have been requested
             self.save_imgs()
 
+            # If a fit has been produced then save the statistics
             if self.calib_pears.calib_coeffs is not None:
-                # Save fit statistics
-                mse = np.mean(self.calib_pears.residual ** 2)
-                r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
-
-                fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
-                self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
+                self.record_fit_data()
 
             # Once first image is processed we update the first_image bool
             if i == 0:
@@ -3349,6 +3345,14 @@ class PyplisWorker:
         full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
 
         full_df.to_csv(path)
+
+    def record_fit_data(self):
+        # Save fit statistics
+        mse = np.mean(self.calib_pears.residual ** 2)
+        r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
+
+        fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
+        self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
 
 class ImageRegistration:
