@@ -3345,6 +3345,8 @@ class PyplisWorker:
         path = os.path.join(self.processed_dir, "full_calibration.csv")
 
         with open(path, "w") as file:
+            fov_string = self.generate_DOAS_FOV_info()
+            file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
             file.write(self.generate_DOAS_FOV_info())
 
         coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
