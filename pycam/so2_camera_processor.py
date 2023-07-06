@@ -3355,6 +3355,9 @@ class PyplisWorker:
     def save_calibration(self):
         path = os.path.join(self.processed_dir, "full_calibration.csv")
 
+        with open(path, "w") as file:
+            file.write(self.generate_DOAS_FOV_info())
+
         coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
 
         tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
@@ -3362,7 +3365,7 @@ class PyplisWorker:
 
         full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
 
-        full_df.to_csv(path)
+        full_df.to_csv(path, mode = "a")
 
     def record_fit_data(self):
         # Save fit statistics
