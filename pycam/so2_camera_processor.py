@@ -3334,6 +3334,24 @@ class PyplisWorker:
                 f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
                 f.write('orientation={}\n'.format(line.normal_orientation))
 
+    def generate_DOAS_FOV_info(self):
+
+        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y)
+        rad_string = 'DOAS_FOV_radius={}\n'.format(self.doas_fov_extent)
+        
+        if self.doas_recal:
+            remove_string = 'DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins)
+        else:
+            remove_string = 'DOAS_remove_data [minutes]=False\n'
+        
+        if self.doas_fov_recal:
+            recal_string = 'DOAS_fov_recal [minutes]={}\n'.format(self.doas_fov_recal_mins)
+        else:
+            recal_string = 'DOAS_fov_recal [minutes]=False\n'
+
+        return pos_string + rad_string + remove_string + recal_string
+
+
     def save_calibration(self):
         path = os.path.join(self.processed_dir, "full_calibration.csv")
 
