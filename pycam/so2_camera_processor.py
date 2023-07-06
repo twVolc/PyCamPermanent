@@ -288,6 +288,9 @@ class PyplisWorker:
         self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
 
+        self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
+        self.tau_vals = []
+
     @property
     def location(self):
         return self._location
@@ -2081,6 +2084,11 @@ class PyplisWorker:
                     # Once we have a calibration we need to go back through buffer and get emission rates
                     # Overwrite any emission rates since last calibration, as they require new FOV calibration
                     self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+                    self.tau_vals = np.column_stack(
+                        (self.calib_pears.time_stamps, 
+                        self.calib_pears.tau_vec,
+                        self.calib_pears.cd_vec,
+                        self.calib_pears.cd_vec_err))
                 except Exception as e:
                     print('Error when attempting to update DOAS calibration: {}'.format(e))
 
@@ -2151,6 +2159,8 @@ class PyplisWorker:
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
+            tau_vals = np.column_stack((img_time, tau, cd, cd_err))
+            self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
 
             # Rerun fit if we have enough data
             # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
@@ -2899,10 +2909,7 @@ class PyplisWorker:
         # throughout)
         img_buff_timespan = frame_gap * self.img_buff_size
 
-        if img_buff_timespan >= datetime.timedelta(self.doas_fov_recal_mins):
-            return True
-        else:
-            return False
+        return img_buff_timespan >= datetime.timedelta(minutes = self.doas_fov_recal_mins)
 
     def get_emission_rate_from_buffer(self, after=None, overwrite=False):
         """
@@ -2981,6 +2988,7 @@ class PyplisWorker:
         # Save the final emission rates
         save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
         self.save_processing_params()
+        self.save_calibration()
         if save_doas:
             self.doas_worker.save_results()
 
@@ -3082,6 +3090,10 @@ class PyplisWorker:
 
             # Save all images that have been requested
             self.save_imgs()
+
+            # If a fit has been produced then save the statistics
+            if self.calib_pears.calib_coeffs is not None:
+                self.record_fit_data()
 
             # Once first image is processed we update the first_image bool
             if i == 0:
@@ -3299,16 +3311,8 @@ class PyplisWorker:
                 f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
             f.write('ambient_roi={}\n'.format(self.ambient_roi))
             f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
-            f.write('DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y))
-            f.write('DOAS_FOV_radius={}\n'.format(self.doas_fov_extent))
-            if self.doas_recal:
-                f.write('DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins))
-            else:
-                f.write('DOAS_remove_data [minutes]=False\n')
-            if self.doas_fov_recal:
-                f.write('DOAS_fov_recal [minutes]={}\n'.format(self.doas_fov_recal_mins))
-            else:
-                f.write('DOAS_fov_recal [minutes]=False\n')
+
+            f.write(self.generate_DOAS_FOV_info())
 
         # Save PCS lines info
         lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
@@ -3319,6 +3323,48 @@ class PyplisWorker:
                 f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
                 f.write('orientation={}\n'.format(line.normal_orientation))
 
+    def generate_DOAS_FOV_info(self):
+
+        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y)
+        rad_string = 'DOAS_FOV_radius={}\n'.format(self.doas_fov_extent)
+        
+        if self.doas_recal:
+            remove_string = 'DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins)
+        else:
+            remove_string = 'DOAS_remove_data [minutes]=False\n'
+        
+        if self.doas_fov_recal:
+            recal_string = 'DOAS_fov_recal [minutes]={}\n'.format(self.doas_fov_recal_mins)
+        else:
+            recal_string = 'DOAS_fov_recal [minutes]=False\n'
+
+        return pos_string + rad_string + remove_string + recal_string
+
+
+    def save_calibration(self):
+        path = os.path.join(self.processed_dir, "full_calibration.csv")
+
+        with open(path, "w") as file:
+            fov_string = self.generate_DOAS_FOV_info()
+            file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
+            file.write(self.generate_DOAS_FOV_info())
+
+        coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+
+        tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
+        fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
+
+        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+
+        full_df.to_csv(path, mode = "a")
+
+    def record_fit_data(self):
+        # Save fit statistics
+        mse = np.mean(self.calib_pears.residual ** 2)
+        r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
+
+        fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
+        self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
 
 class ImageRegistration:
