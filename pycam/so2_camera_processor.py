@@ -3314,16 +3314,8 @@ class PyplisWorker:
                 f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
             f.write('ambient_roi={}\n'.format(self.ambient_roi))
             f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
-            f.write('DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y))
-            f.write('DOAS_FOV_radius={}\n'.format(self.doas_fov_extent))
-            if self.doas_recal:
-                f.write('DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins))
-            else:
-                f.write('DOAS_remove_data [minutes]=False\n')
-            if self.doas_fov_recal:
-                f.write('DOAS_fov_recal [minutes]={}\n'.format(self.doas_fov_recal_mins))
-            else:
-                f.write('DOAS_fov_recal [minutes]=False\n')
+
+            f.write(self.generate_DOAS_FOV_info())
 
         # Save PCS lines info
         lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
