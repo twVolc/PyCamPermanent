@@ -2045,7 +2045,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.opt_frame)
         butt_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
-        butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
+        butt = ttk.Button(butt_frame, text='OK', command=self.save_and_close)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
