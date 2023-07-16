@@ -212,9 +212,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         self._current_ica = tk.IntVar()
         self.current_ica = 1
         self._xcorr_ica_old = tk.IntVar()
-        self.xcorr_ica_old = 0
+        self.xcorr_ica_old = 2
         self._xcorr_ica_young = tk.IntVar()
-        self.xcorr_ica_young = 0
+        self.xcorr_ica_young = 1
         self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
@@ -697,22 +697,28 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update time series lines
         self.fig_series.update_lines()
 
-    def update_ica_num(self):
-        """Makes necessary changes to update the number of ICA lines"""
-
+    def update_ica_num(self, reset_xcorr_lines=False):
+        """
+        Makes necessary changes to update the number of ICA lines
+        :param reset_xcorr_lines bool   If True, when there are fewer lines than the xcorr line designations the xcorr
+                                        line designations are reset to 0. Not typically used.
+        """
         # Edit 'to' of ica_edit_spin spinbox and if current ICA is above number of ICAs we update current ICA
         self.ica_edit_spin.configure(to=self.num_ica)
         self.current_ica = self.num_ica
 
-        # Edit cross-correlation ICA
+        # Fix the line number the spinbox can go up to (based on number fo lines we currently have)
         self.x_corr_spin_old.configure(to=self.num_ica)
-        if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
-            self.xcorr_ica_old = 0
-
-        # Edit cross-correlation ICA (young)
         self.x_corr_spin_young.configure(to=self.num_ica)
-        if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
-            self.xcorr_ica_young = 0
+
+        if reset_xcorr_lines:
+            # Edit cross-correlation ICA
+            if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
+                self.xcorr_ica_old = 0
+
+            # Edit cross-correlation ICA (young)
+            if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
+                self.xcorr_ica_young = 0
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
