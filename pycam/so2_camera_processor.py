@@ -1989,7 +1989,7 @@ class PyplisWorker:
                     self.doas_file_num += 1
                     full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
                 # TODO I don't think this line actually saves data...
-                self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                #self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
 
                 # Set new time of most recent save
                 self.doas_last_save = self.img_A.meta['start_acq']
