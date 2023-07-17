@@ -3764,6 +3764,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             try:
                 self.ax_fit.cla()
                 self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
+                self.ax_fit.get_children()[2].set_zorder(1.9)
             except (AttributeError, ValueError):
                 pass
 
