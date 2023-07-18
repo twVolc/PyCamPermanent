@@ -598,6 +598,7 @@ class SocketClient(SocketMeths):
             self.port_list = port_list
 
         for port_num in self.port_list:
+            self.close_socket()
             self.update_address(self.host_ip, port_num)
             try:
                 print('Testing connection to port: {}'.format(self.port))
