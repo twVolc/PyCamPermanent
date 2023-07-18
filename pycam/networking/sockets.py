@@ -525,6 +525,7 @@ class SocketClient(SocketMeths):
 
         self.host_ip = host_ip                          # IP address of server
         self.port = port                                # Communication port
+        self.port_list = None                           # List of ports that can be used
         self.server_addr = (self.host_ip, self.port)    # Tuple packaging for later use
         self.connect_stat = False                       # Bool for defining if object has a connection
         self.id = {'IDN':  'EXN'}
@@ -541,6 +542,7 @@ class SocketClient(SocketMeths):
         self.host_ip = host_ip
         self.port = port
         self.server_addr = (self.host_ip, self.port)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def connect_socket(self, event=threading.Event()):
         """Opens socket by attempting to make connection with host"""
@@ -555,9 +557,7 @@ class SocketClient(SocketMeths):
                     self.connect_stat = True
                 except OSError as e:
                     # If the socket was previously closed we may need to create a new socket object to connect
-                    if 'WinError 10038' in '{}'.format(e):
-                        print('Creating new socket for connection attempt')
-                        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     continue
 
                 # Perform handshake to send identity to server
@@ -591,6 +591,25 @@ class SocketClient(SocketMeths):
 
         # If we get to allotted time and no connection has been made we raise a connection error
         raise ConnectionError
+
+    def connect_socket_try_all(self, timeout=None, port_list=None):
+        """Trys all possible socket ports form a list of port numbers"""
+        if port_list is not None:
+            self.port_list = port_list
+
+        for port_num in self.port_list:
+            self.update_address(self.host_ip, port_num)
+            try:
+                print('Testing connection to port: {}'.format(self.port))
+                self.connect_socket_timeout(timeout=timeout)
+                break
+            except ConnectionError:
+                pass
+
+    def get_ports(self, key, file_path=FileLocator.NET_PORTS_FILE_WINDOWS):
+        """Gets list of all ports that might be used for comms"""
+        info = read_file(file_path)
+        self.port_list = [int(x) for x in info[key].split(',')]
 
     def send_handshake(self):
         """Send client identity information to server"""
