@@ -19,7 +19,6 @@ config = read_file(FileLocator.CONFIG_WINDOWS)
 
 # Socket client
 sock = SocketClient(host_ip=config[ConfigInfo.host_ip], port=int(config[ConfigInfo.port_ext]))
-sock.get_ports(ConfigInfo.ext_ports)
 
 # Setup recv comms connection object
 recv_comms = ExternalRecvConnection(sock=sock, acc_conn=False)
