@@ -59,7 +59,7 @@ sock_serv_comm.get_port()           # Check which port is available from port li
 
 # port_ext = int(config['port_ext'])
 sock_serv_ext = SocketServer(host_ip, None)
-sock_serv_ext.get_port_list(ConfigInfo.ext_ports)
+sock_serv_ext.get_port_list('ext_ports')
 sock_serv_ext.get_port()
 
 # Write port info to file
