@@ -3590,8 +3590,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.ax_cal_params_1 = self.fig_cal_params.subplots(1, 1)
         self.ax_cal_params_2 = self.ax_cal_params_1.twinx()
         # self.fig_cal_params.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
-        self.ax_cal_params_1.set_ylabel('Fit 1st order')
-        self.ax_cal_params_2.set_ylabel('Fit error')
+        self.ax_cal_params_1.set_ylabel('1st order coefficient', color = "red")
+        self.ax_cal_params_2.set_ylabel('R squared', color = "blue")
+        self.ax_cal_params_2.set_yticks([0,0.2,0.4,0.6,0.8,1])
+        self.ax_cal_params_2.set_ylim(0, 1)
 
         self.frame_cal_params = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
         self.cal_params_canvas = FigureCanvasTkAgg(self.fig_cal_params, master=self.frame_cal_params)
@@ -3777,10 +3779,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
                 print('Calib coeffs: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs))
                 print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
-                self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.calib_coeffs[0], color='red', marker='o')
-                self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
+
+                # Plot slope coefficient
+                self.ax_cal_params_1.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 2],
+                                          color='red', marker='o', linestyle='none', markersize=3)
+                # Plot R squared value for fit
+                self.ax_cal_params_2.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 4],
+                                          color='blue', marker='o', linestyle='none', markersize=3)
                 self.ax_cal_params_1.margins(0.05)
                 self.ax_cal_params_2.margins(0.05)
             except (AttributeError, ValueError, TypeError) as e:

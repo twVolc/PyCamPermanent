@@ -1966,6 +1966,7 @@ class PyplisWorker:
         s.g2dasym = False  # Allow only circular FOV (not eliptical)
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=polyorder)
+        self.record_fit_data()
         self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
         self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
@@ -2198,6 +2199,7 @@ class PyplisWorker:
         # Recalibrate
         if recal:
             self.calib_pears.fit_calib_data()
+            self.record_fit_data()
 
     def rem_doas_cal_data(self, time_obj, inplace=True, recal=True):
         """
@@ -3090,10 +3092,6 @@ class PyplisWorker:
 
             # Save all images that have been requested
             self.save_imgs()
-
-            # If a fit has been produced then save the statistics
-            if self.calib_pears.calib_coeffs is not None:
-                self.record_fit_data()
 
             # Once first image is processed we update the first_image bool
             if i == 0:
