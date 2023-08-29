@@ -40,6 +40,7 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
+import yaml
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -51,7 +52,7 @@ class PyplisWorker:
     :param  cam_specs:  CameraSpecs     Object containing all details of the camera/images
     :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
-    def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, config_path, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self._conversion_factor = 2.663 * 1e-6     # Conversion for ppm.m into Kg m-2
         self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
@@ -290,6 +291,15 @@ class PyplisWorker:
 
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
+
+        self.config= {}
+        self.load_config(config_path)
+
+    def load_config(self, path):
+        with open(path, "r") as file:
+            config = yaml.safe_load(file)
+
+        self.config.update(config)
 
     @property
     def location(self):
