@@ -294,28 +294,9 @@ class LoadSaveProcessingSettings:
 
     def load_defaults(self):
         """Loads default settings"""
-        filename = FileLocator.PROCESS_DEFAULTS
+        config = self.pyplis_worker.config
 
-        with open(filename, 'r') as f:
-            for line in f:
-                if line[0] == '#':
-                    continue
-
-                # Try to split line into key and value, if it fails this line is not used
-                try:
-                    key, value = line.split('=')
-                except ValueError:
-                    continue
-
-                # If the value is one we edit, we extract the value
-                if key in self.vars.keys():
-                    if self.vars[key] is str:
-                        value = value.split('\'')[1]
-                    elif self.vars[key] is list:
-                        value = [int(x) for x in value.split('[')[1].split(']')[0].split(',')]
-                    else:
-                        value = self.vars[key](value.split('\n')[0].split('#')[0])
-                    setattr(self, key, value)
+        [setattr(self, key, config[key]) for key in self.vars.keys() if key in config.keys()]
 
         # Update all objects finally
         self.gather_vars()
