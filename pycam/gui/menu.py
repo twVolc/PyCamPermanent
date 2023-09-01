@@ -535,12 +535,12 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     @property
     def pcs_lines(self):
-        return self.sep.join([line for line in self._pcs_lines if line != self.no_line])
+        return [line for line in self._pcs_lines if line != self.no_line]
 
     @pcs_lines.setter
-    def pcs_lines(self, value):
+    def pcs_lines(self, lines):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
+        #lines = value.split(self.sep)
         for i, line in enumerate(lines):
             if i < self.num_pcs_lines:
                 if line == '':
