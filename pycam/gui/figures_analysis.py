@@ -2830,6 +2830,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.parent = parent
         self.frame = None
         self.in_frame = False
+        self.pyplis_worker = pyplis_worker
+
 
         self.path_str_length = 50
         self.path_widg_length = self.path_str_length + 2
