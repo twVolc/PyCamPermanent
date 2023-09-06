@@ -294,14 +294,16 @@ class PyplisWorker:
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
 
-        self.config= {}
-        self.load_config(config_path)
+        self.config = {}
+        self.raw_configs = {}
+        self.load_config(config_path, "default")
+        #self.apply_config()
 
-    def load_config(self, path):
-        with open(path, "r") as file:
-            config = yaml.safe_load(file)
+    def load_config(self, file_path, conf_name):
+        with open(file_path, "r") as file:
+            self.raw_configs[conf_name] = yaml.load(file)
 
-        self.config.update(config)
+        self.config.update(self.raw_configs[conf_name])
 
     @property
     def location(self):
