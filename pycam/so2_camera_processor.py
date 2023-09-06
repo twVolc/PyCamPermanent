@@ -40,9 +40,11 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
-import yaml
+from ruamel.yaml import YAML
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
+
+yaml = YAML()
 
 
 class PyplisWorker:
