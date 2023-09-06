@@ -308,34 +308,9 @@ class LoadSaveProcessingSettings:
 
         # Ask user to define filename for saving geometry settings
         filename = FileLocator.PROCESS_DEFAULTS
-        filename_temp = filename.replace('.txt', '_temp.txt')
+        filename_yml = filename.replace('.txt', '.yml')
 
-        # Open file object and write all attributes to it
-        with open(filename_temp, 'w') as f_temp:
-            with open(filename, 'r') as f:
-                for line in f:
-                    if line[0] == '#':
-                        f_temp.write(line)
-                        continue
-
-                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
-                    try:
-                        key, value = line.split('=')
-                    except ValueError:
-                        f_temp.write(line)
-                        continue
-
-                    # If the value is one we edit, we extract the value
-                    if key in self.vars.keys():
-                        if self.vars[key] is str:  # If string we need to write the value within quotes
-                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
-                        else:
-                            f_temp.write('{}={}\n'.format(key, self.vars[key](getattr(self, key))))
-                    else:
-                        f_temp.write(line)
-
-        # Finally, overwrite old default file with new file
-        os.replace(filename_temp, filename)
+        self.pyplis_worker.save_config(filename_yml, "default")
 
         kwargs = {}
         if parent is not None:
