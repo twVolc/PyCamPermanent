@@ -305,6 +305,11 @@ class PyplisWorker:
 
         self.config.update(self.raw_configs[conf_name])
 
+    def save_config(self, file_path, conf_name):
+        self.raw_configs[conf_name].update(self.config)
+        with open(file_path, "w") as file:
+            yaml.dump(self.raw_configs[conf_name], file)
+
     @property
     def location(self):
         return self._location
