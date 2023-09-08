@@ -123,6 +123,7 @@ class PyplisWorker:
                                   'young': [],          # Young plume series list
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
+        self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
@@ -130,7 +131,8 @@ class PyplisWorker:
         self.velo_modes = {"flow_glob": False,          # Cross-correlation
                            "flow_raw": False,           # Raw optical flow output
                            "flow_histo": True,          # Histogram analysis
-                           "flow_hybrid": False}        # Hybrid histogram
+                            "flow_hybrid": False,       # Hybrid histogram
+                           "flow_nadeau": False}        # Nadeau cross-correlation technique
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
         self.cross_corr_info = {}

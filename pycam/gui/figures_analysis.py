@@ -4197,6 +4197,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_setts = fig_setts
         self.dpi = self.fig_setts.dpi
         self.fig_size = self.fig_setts.fig_cross_corr
+        self.fig_size_nad = (6,6)   #TODO build in options to change size of this figure
+        self.nad_line_length = int(self.cam_specs.pix_num_y / 3)
 
         self.pdx = 5
         self.pdy = 5
@@ -4217,13 +4219,22 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.main_gui = main_gui
-        self.vars = {'cross_corr_recal': int
+        self.vars = {'cross_corr_recal': int,
+                     'automate_nadeau_line:': int,
+                     'source_x': int,
+                     'source_y': int,
+                     'nadeau_line_orientation': int
                      }
         self._cross_corr_recal = tk.IntVar()
+        self._auto_nadeau_line = tk.IntVar()
+        self._source_x = tk.IntVar()
+        self._source_y = tk.IntVar()
+        self._nadeau_line_orientation = tk.IntVar()
 
     def gather_vars(self):
         # Set cross-correlation recalibration
         self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+        self.pyplis_worker.auto_nadeau_line = self.auto_nadeau_line
 
     def generate_frame(self):
         """
@@ -4241,10 +4252,21 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.frame.title('Cross-correlation settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
+        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
+        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
+
+        self.frame_ica = ttk.Frame(self.windows)
+        self.frame_ica.pack()
+        self.frame_nadeau = ttk.Frame(self.windows)
+        self.frame_nadeau.pack()
+
+        self.windows.add(self.frame_ica, text='ICA cross-correlation')
+        self.windows.add(self.frame_nadeau, text='Nadeau cross-correlation')
+
         # -------------------------------------
         # Information frame
         row = 0
-        self.frame_info = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_info = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
         self.frame_info.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         label_1 = ttk.Label(self.frame_info, text='ICA gap [m]:')
@@ -4272,7 +4294,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Figure frame
         row += 1
-        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -------------------------------------------
@@ -4291,6 +4313,73 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
+        # ----------------------------------------------
+        # Building Nadeau frame
+        self.frame_opts_nad = ttk.LabelFrame(self.frame_nadeau, text='Options', relief=tk.RAISED, borderwidth=3)
+        self.frame_opts_nad.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_fig_nad = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig_nad.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        # Make frame for Nadeau options
+        row = 0
+        auto_nad_check = ttk.Checkbutton(self.frame_opts_nad, text="Automatic line generation",
+                                         variable=self._auto_nadeau_line, command=self.generate_nadeau_line)
+        auto_nad_check.grid(row=row, column=0, columnspan=2, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row+=1
+        lab = ttk.Label(self.frame_opts_nad, text='Gas source coordinates:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        frame_coords = ttk.Frame(self.frame_opts_nad)
+        frame_coords.grid(row=row, column=1, sticky='nsew')
+        lab = ttk.Label(frame_coords, text='x')
+        lab.grid(row=0, column=0, sticky='e', pady=self.pdy)
+        spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_x-1, increment=1,
+                           textvariable=self._source_x, width=4, command=self.update_source_plot)
+        spin.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(frame_coords, text='y')
+        lab.grid(row=0, column=2, sticky='e', pady=self.pdy)
+        spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_y-1, increment=1,
+                           textvariable=self._source_y, width=4, command=self.update_source_plot)
+        spin.grid(row=0, column=3, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row+=1
+        lab = ttk.Label(self.frame_opts_nad, text='Line orientation:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=359, increment=1,
+                           textvariable=self._nadeau_line_orientation, width=4, command=self.update_nad_line_plot)
+        spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        # -------------------------------------------
+        # Build figure displaying cross-correlation
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_nad'):
+            self.fig_nad = plt.Figure(figsize=self.fig_size_nad, dpi=self.dpi)
+
+        self.ax_nad = self.fig_nad.subplots(1, 1)
+        self.ax_nad.set_aspect(1)
+
+        # Figure colour
+        self.fig_nad.set_facecolor(fig_face_colour)
+        for child in self.ax_nad.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_nad.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+
+        # Image display
+        self.img_tau = self.pyplis_worker.img_tau_prev.img
+        self.img_disp = self.ax_nad.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
+                                           vmax=0.5, aspect='equal')
+
+        self.fig_canvas_nad = FigureCanvasTkAgg(self.fig_nad, master=self.frame_fig_nad)
+        self.fig_canvas_nad.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_nad.draw()
+
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.fig_canvas_nad, self.frame_fig_nad)
+        toolbar.update()
+        self.fig_canvas_nad._tkcanvas.pack(side=tk.TOP)
+
     @property
     def cross_corr_recal(self):
         """Time in minutes to rerun cross-correlation analysis"""
@@ -4299,6 +4388,65 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @cross_corr_recal.setter
     def cross_corr_recal(self, value):
         self._cross_corr_recal.set(value)
+
+    @property
+    def auto_nadeau_line(self):
+        """
+        Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        """
+        return self._auto_nadeau_line.get()
+
+    @auto_nadeau_line.setter
+    def auto_nadeau_line(self, value):
+        self._auto_nadeau_line.set(value)
+
+    @property
+    def nadeau_line_orientation(self):
+        """
+        Orientation of Nadeau line
+        """
+        return 180 - self._nadeau_line_orientation.get()    # Remove 180 so 0 is upwards on plot
+
+    @nadeau_line_orientation.setter
+    def nadeau_line_orientation(self, value):
+        self._nadeau_line_orientation.set(value)
+
+    @property
+    def source_x(self):
+        """Gas source x pixel coordinate"""
+        return self._source_x.get()
+
+    @source_x.setter
+    def source_x(self, value):
+        self._source_x.set(value)
+
+    @property
+    def source_y(self):
+        """Gas source y pixel coordinate"""
+        return self._source_y.get()
+
+    @source_y.setter
+    def source_y(self, value):
+        self._source_y.set(value)
+
+    @property
+    def source_coords(self):
+        """
+        Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        """
+        return (self._source_y.get(), self._source_x.get())
+
+    @source_coords.setter
+    def source_coords(self, value):
+        try:
+            if len(value) == 2:
+                self._source_x.set(value[0])
+                self._source_y.set(value[1])
+            else:
+                raise  IndexError
+        except (IndexError, TypeError):
+            print('Error when attempting to set gas source coordinates. Aborting setting.\n'
+                  'Expected list with length 2, got type: {}'.format(type(value)))
 
     def update_plot(self, ax, info=None):
         """Updates cross-correlation plot"""
@@ -4339,6 +4487,51 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         except KeyError:
             print('No cross-correlation info to update')
 
+    def update_source_plot(self):
+        """Draws source coordinate marker on plot"""
+        try:
+            self.source_scat.remove()
+        except AttributeError:
+            pass
+        self.source_scat = self.ax_nad.scatter(self.source_x, self.source_y, c='blue')
+        self.update_nad_line_plot(draw=False)
+
+        self.q.put(1)
+
+    def update_nad_line_plot(self, draw=True):
+        """
+        Updates drawing of Nadeau cross-correlation line
+        :param draw bool    If True, the canvas is asked to be drawn
+        """
+        # TODO work out how to draw nadeau line from orientation
+        orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        x_coord = self.source_x + (self.nad_line_length*np.sin(orientation_rad))
+        y_coord = self.source_y + (self.nad_line_length*np.cos(orientation_rad))
+
+        # Remove previous plot line then plot new line
+        try:
+            self.nadeau_line_plot.pop(0).remove()
+        except AttributeError:
+            pass
+        self.nadeau_line_plot = self.ax_nad.plot([self.source_x, x_coord], [self.source_y, y_coord], 'k-')
+
+        # Make suure even if line goes off the image the axes for the image remain the same
+        self.ax_nad.set_ylim([self.cam_specs.pix_num_y, 0])
+        self.ax_nad.set_xlim([0, self.cam_specs.pix_num_x])
+
+        if draw:
+            self.q.put(1)
+
+    def generate_nadeau_line(self):
+        """Instigates automatic generation of the Nadeau line"""
+        if self.auto_nadeau_line:
+            pass
+            # TODO run automatic generation of nadeau line and plot the result
+
+        else:
+            pass
+            # TODO revert back to manual line
+
     def close_frame(self):
         """
         Closes frame and makes sure current values are correct
@@ -4355,6 +4548,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             if update == 1:
                 if self.in_frame:
                     self.fig_canvas.draw()
+                    self.fig_canvas_nad.draw()
             else:
                 pass
         except queue.Empty:
@@ -4418,6 +4612,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'flow_raw': int,
                      'flow_histo': int,
                      'flow_hybrid': int,
+                     'flow_nadeau': int,
                      'use_multi_gauss': int,
                      'cross_corr_recal': int
                      }
@@ -4457,6 +4652,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._flow_raw = tk.IntVar()
         self._flow_histo = tk.IntVar()
         self._flow_hybrid = tk.IntVar()
+        self._flow_nadeau = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -4578,6 +4774,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         check_glob.grid(row=0, column=2, padx=2, pady=2, sticky='w')
         check_glob = ttk.Checkbutton(self.flow_frame, text='Hybrid', variable=self._flow_hybrid)
         check_glob.grid(row=0, column=3, padx=2, pady=2, sticky='w')
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Nadeau', variable=self._flow_nadeau)
+        check_glob.grid(row=0, column=4, padx=2, pady=2, sticky='w')
         # ----------------------------------
 
         # Set buttons
@@ -4722,6 +4920,14 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
     @flow_hybrid.setter
     def flow_hybrid(self, value):
         self._flow_hybrid.set(value)
+
+    @property
+    def flow_nadeau(self):
+        return self._flow_nadeau.get()
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self._flow_nadeau.set(value)
 
     @property
     def use_multi_gauss(self):
