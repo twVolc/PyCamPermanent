@@ -36,6 +36,7 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import os
 import cv2
 from skimage import transform as tf
@@ -2328,6 +2329,37 @@ class PyplisWorker:
 
         self.got_cross_corr = True
 
+    def generate_nadeau_plumespeed(self, img_current, img_next, line):
+        """
+        Uses two images and the nadeau line to calculate plume speed
+        :param  img_current pyplis.Img      Current optical depth (tau) image
+        :param  img_next    pyplis.Img      Next optical depth image
+        :param  line        LineOnImage     Nadeau line running parallel to plume motion
+        """
+        # Extract line profiles
+        profile_current = line.get_line_profile(img_current)
+        profile_next = line.get_line_profile(img_next)
+
+        # Get average distance of pixel in image line profile
+        pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
+
+        # Perform cross correlation, generating coeffieicients and finding lag of maximum correlation
+        coeffs = scipy.signal.correlate(profile_next, profile_current)
+        lags = scipy.signal.correlation_lags(len(profile_current), len(profile_next))
+        lag = lags[np.argmax(coeffs)]   # Find lag in pixels
+
+        # Scale the lag by line orientation (horizontal and vertical lines need no scaling, whilst diagonal lines do
+        # since their number of pixels wont match with the length of the line based on horizontal pixel width
+        relative_line_length = line.length() / len(profile_current)
+        lag_in_pixels = relative_line_length * lag
+        lag_length = pixel_dist * lag_in_pixels
+
+        # Calculate plume speed
+        time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
+        plume_speed = lag_length / time_step.total_seconds()
+
+        return plume_speed
+
     def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
         Retrieves cross-correlation emission rates from the cross-correlation buffer
@@ -2544,7 +2576,8 @@ class PyplisWorker:
         total_emissions = {'flow_glob': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_raw': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
-                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
+                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_nadeau': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
 
         # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
         lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
