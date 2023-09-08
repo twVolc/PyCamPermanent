@@ -4198,7 +4198,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.dpi = self.fig_setts.dpi
         self.fig_size = self.fig_setts.fig_cross_corr
         self.fig_size_nad = (6,6)   #TODO build in options to change size of this figure
-        self.nad_line_length = int(self.cam_specs.pix_num_y / 3)
+        self.h_ratio = 3
+        self.w_ratio = 25
 
         self.pdx = 5
         self.pdy = 5
@@ -4223,13 +4224,16 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                      'automate_nadeau_line:': int,
                      'source_x': int,
                      'source_y': int,
-                     'nadeau_line_orientation': int
+                     'nadeau_line_orientation': int,
+                     'nadeau_line_length': int
                      }
         self._cross_corr_recal = tk.IntVar()
         self._auto_nadeau_line = tk.IntVar()
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
         self._nadeau_line_orientation = tk.IntVar()
+        self._nadeau_line_length = tk.IntVar()
+        self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3)
 
     def gather_vars(self):
         # Set cross-correlation recalibration
@@ -4350,14 +4354,27 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                            textvariable=self._nadeau_line_orientation, width=4, command=self.update_nad_line_plot)
         spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
 
+        row+=1
+        lab = ttk.Label(self.frame_opts_nad, text='Line length:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=self.cam_specs.pix_num_x, increment=1,
+                           textvariable=self._nadeau_line_length, width=4, command=self.update_nad_line_plot)
+        spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
         # -------------------------------------------
         # Build figure displaying cross-correlation
         # Make empty figure if we don't have a figure to use
         if not hasattr(self, 'fig_nad'):
-            self.fig_nad = plt.Figure(figsize=self.fig_size_nad, dpi=self.dpi)
+            # Create figure
+            self.fig_nad, self.axes = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi,
+                                                   gridspec_kw={'height_ratios': [self.h_ratio, 1]})
+        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
 
-        self.ax_nad = self.fig_nad.subplots(1, 1)
+        self.ax_nad = self.axes[0]
         self.ax_nad.set_aspect(1)
+
+        self.ax_xsect = self.axes[1]
+        self.ax_xsect.grid()
 
         # Figure colour
         self.fig_nad.set_facecolor(fig_face_colour)
@@ -4365,6 +4382,13 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             if isinstance(child, matplotlib.spines.Spine):
                 child.set_color(axes_colour)
         self.ax_nad.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        for child in self.ax_xsect.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_xsect.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        self.ax_xsect.set_xlabel('Pixel')
+        self.ax_xsect.set_ylabel('\u03C4')
+        self.update_xsect_plot(draw=False)
 
         # Image display
         self.img_tau = self.pyplis_worker.img_tau_prev.img
@@ -4410,6 +4434,17 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @nadeau_line_orientation.setter
     def nadeau_line_orientation(self, value):
         self._nadeau_line_orientation.set(value)
+
+    @property
+    def nadeau_line_length(self):
+        """
+        Length of Nadeau line
+        """
+        return self._nadeau_line_length.get()    # Remove 180 so 0 is upwards on plot
+
+    @nadeau_line_length.setter
+    def nadeau_line_length(self, value):
+        self._nadeau_line_length.set(value)
 
     @property
     def source_x(self):
@@ -4505,8 +4540,19 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         # TODO work out how to draw nadeau line from orientation
         orientation_rad = np.deg2rad(self.nadeau_line_orientation)
-        x_coord = self.source_x + (self.nad_line_length*np.sin(orientation_rad))
-        y_coord = self.source_y + (self.nad_line_length*np.cos(orientation_rad))
+        x_coord = int(np.round(self.source_x + (self.nadeau_line_length*np.sin(orientation_rad))))
+        y_coord = int(np.round(self.source_y + (self.nadeau_line_length*np.cos(orientation_rad))))
+
+        # Ensure coordinates don't extend beyond image
+        if x_coord < 0:
+            x_coord = 0
+        elif x_coord > self.cam_specs.pix_num_x - 1:
+            x_coord = self.cam_specs.pix_num_x - 1
+
+        if y_coord < 0:
+            y_coord = 0
+        elif y_coord > self.cam_specs.pix_num_y - 1:
+            y_coord = self.cam_specs.pix_num_y - 1
 
         # Remove previous plot line then plot new line
         try:
@@ -4518,6 +4564,46 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         # Make suure even if line goes off the image the axes for the image remain the same
         self.ax_nad.set_ylim([self.cam_specs.pix_num_y, 0])
         self.ax_nad.set_xlim([0, self.cam_specs.pix_num_x])
+
+        try:
+            self.nadeau_line = LineOnImage(x0=x_coord, y0=y_coord, x1=self.source_x, y1=self.source_y,
+                                           normal_orientation='right', color='k', line_id='nadeau')
+            self.update_xsect_plot(draw=False)
+        except ValueError:
+            pass
+
+        if draw:
+            self.q.put(1)
+
+    def update_xsect_plot(self, draw=True):
+        """
+        Update plume transect plot
+        :return:
+        """
+        # Clear old line
+        self.ax_xsect.clear()
+
+        # Try to plot new line, if instance exists
+        try:
+            if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation == 180:
+                profile = self.nadeau_line.get_line_profile(self.img_tau)[::-1]
+            else:
+                profile = self.nadeau_line.get_line_profile(self.img_tau)
+            self.ax_xsect.plot(profile, color=self.nadeau_line.color,
+                               label=self.nadeau_line.line_id)
+        except AttributeError:
+            pass
+
+        # Set xsection aspect ratio
+        self.ax_xsect.autoscale(axis='x')
+        xlims = self.ax_xsect.get_xlim()
+        self.ax_xsect.set_xlim([0, xlims[-1]])
+        asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
+        asp /= np.abs(np.diff(self.ax_nad.get_xlim())[0] / np.diff(self.ax_nad.get_ylim())[0])
+        asp /= self.h_ratio
+        self.ax_xsect.set_aspect(asp)
+
+        self.ax_xsect.grid(b=True, which='major')
 
         if draw:
             self.q.put(1)
