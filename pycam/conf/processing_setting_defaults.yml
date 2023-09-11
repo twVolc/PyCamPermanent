@@ -6,8 +6,8 @@ init_img_dir: .\pycam\Data\Images\Villarrica\Seq_1\
 dark_img_dir: C:/Users/Daniel Brady/Documents/Lascar/darks
 spec_dir: .\pycam\tests\test_data\test_spectra\
 dark_spec_dir: C:/Users/Daniel Brady/Documents/Lascar/darks
-bg_A: C:/Users/Daniel Brady/Documents/Lascar/clears/2022-05-18T180309_fltrA_1ag_999904ss_Clear.png
-bg_B: C:/Users/Daniel Brady/Documents/Lascar/clears/2022-05-18T180311_fltrB_1ag_699997ss_Clear.png
+bg_A_path: C:/Users/Daniel Brady/Documents/Lascar/clears/2022-05-18T180309_fltrA_1ag_999904ss_Clear.png
+bg_B_path: C:/Users/Daniel Brady/Documents/Lascar/clears/2022-05-18T180311_fltrB_1ag_699997ss_Clear.png
 cell_cal_dir: .\pycam\Data\Images\Villarrica\Cal_1\
 cal_type_int: 1
 use_sensitivity_mask: 0

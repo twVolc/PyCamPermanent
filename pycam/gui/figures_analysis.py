@@ -2848,8 +2848,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """
         # List of all variables to be read in and saved
         self.vars = {'plot_iter': int,
-                     'bg_A': str,
-                     'bg_B': str,
+                     'bg_A_path': str,
+                     'bg_B_path': str,
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
@@ -3120,30 +3120,30 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._use_light_dilution.set(value)
 
     @property
-    def bg_A(self):
+    def bg_A_path(self):
         return self._bg_A.get()
 
-    @bg_A.setter
-    def bg_A(self, value):
+    @bg_A_path.setter
+    def bg_A_path(self, value):
         self._bg_A.set(value)
 
     @property
     def bg_A_short(self):
         """Returns shorter label for bg_A file"""
-        return '...' + self.bg_A[-self.path_str_length:]
+        return '...' + self.bg_A_path[-self.path_str_length:]
 
     @property
-    def bg_B(self):
+    def bg_B_path(self):
         return self._bg_B.get()
 
-    @bg_B.setter
-    def bg_B(self, value):
+    @bg_B_path.setter
+    def bg_B_path(self, value):
         self._bg_B.set(value)
 
     @property
     def bg_B_short(self):
         """Returns shorter label for bg_B file"""
-        return '...' + self.bg_B[-self.path_str_length:]
+        return '...' + self.bg_B_path[-self.path_str_length:]
 
     @property
     def min_cd(self):
@@ -3249,7 +3249,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
             self.frame.lift()
 
         if len(bg_file) > 0:
-            setattr(self, 'bg_{}'.format(band), bg_file)
+            setattr(self, 'bg_{}_path'.format(band), bg_file)
             getattr(self, 'bg_{}_label'.format(band)).configure(text=getattr(self, 'bg_{}_short'.format(band)))
 
     def gather_vars(self):
@@ -3266,8 +3266,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
         if pyplis_worker.use_vign_corr:
-            pyplis_worker.load_BG_img(self.bg_A, band='A')
-            pyplis_worker.load_BG_img(self.bg_B, band='B')
+            pyplis_worker.load_BG_img(self.bg_A_path, band='A')
+            pyplis_worker.load_BG_img(self.bg_B_path, band='B')
         pyplis_worker.min_cd = self.min_cd
         pyplis_worker.img_buff_size = self.buff_size
         pyplis_worker.save_opt_flow = self.save_opt_flow
@@ -3284,8 +3284,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
-        self.bg_A = pyplis_worker.bg_A_path
-        self.bg_B = pyplis_worker.bg_B_path
+        self.bg_A_path = pyplis_worker.bg_A_path
+        self.bg_B_path = pyplis_worker.bg_B_path
         self.dark_img_dir = pyplis_worker.dark_dir
         self.dark_spec_dir = doas_worker.dark_dir
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
