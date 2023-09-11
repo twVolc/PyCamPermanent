@@ -2857,7 +2857,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'use_sensitivity_mask': int,
                      'use_light_dilution': int,
                      'min_cd': float,
-                     'buff_size': int,
+                     'img_buff_size': int,
                      'save_opt_flow': int,       # If True, optical flow is saved to buffer (takes up more space)
                      'time_zone': int
                      }
@@ -3154,11 +3154,11 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._min_cd.set(value / 10 ** 16)
 
     @property
-    def buff_size(self):
+    def img_buff_size(self):
         return self._buff_size.get()
 
-    @buff_size.setter
-    def buff_size(self, value):
+    @img_buff_size.setter
+    def img_buff_size(self, value):
         self._buff_size.set(value)
 
     @property
@@ -3269,7 +3269,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
             pyplis_worker.load_BG_img(self.bg_A_path, band='A')
             pyplis_worker.load_BG_img(self.bg_B_path, band='B')
         pyplis_worker.min_cd = self.min_cd
-        pyplis_worker.img_buff_size = self.buff_size
+        pyplis_worker.img_buff_size = self.img_buff_size
         pyplis_worker.save_opt_flow = self.save_opt_flow
         pyplis_worker.time_zone - self.time_zone
 
@@ -3293,7 +3293,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.use_light_dilution = int(pyplis_worker.use_light_dilution)
         self.min_cd = pyplis_worker.min_cd
-        self.buff_size = pyplis_worker.img_buff_size
+        self.img_buff_size = pyplis_worker.img_buff_size
         self.save_opt_flow = pyplis_worker.save_opt_flow
         self.time_zone = pyplis_worker.time_zone
 
