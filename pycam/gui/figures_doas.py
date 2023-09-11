@@ -16,7 +16,7 @@ from pycam.doas.ifit_worker import IFitWorker
 from pycam.doas.cfg import doas_worker, species
 from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
 # from acquisition_gui import AcquisitionFrame
-from pycam.cfg import pyplis_worker, process_settings
+from pycam.cfg import pyplis_worker
 from pycam.setupclasses import SpecSpecs
 from pycam.gui.settings import GUISettings
 
@@ -899,7 +899,7 @@ class ILSFrame:
     Frame containing widgets for ILS extraction from a calibration spectrum
     """
     def __init__(self, parent=None, doas_work=DOASWorker(), spec_specs=SpecSpecs(), fig_setts=GUISettings(),
-                 config=process_settings, save_path='C:\\'):
+                 config=pyplis_worker.config, save_path='C:\\'):
         # Setup some main variables
         self.parent = parent
         self.frame = None
@@ -907,7 +907,7 @@ class ILSFrame:
         self.spec_specs = spec_specs
         self.save_path = save_path
         if 'ILS_path' in config.keys():
-            self.ILS_path = config['ILS_path'].split('\'')[1]
+            self.ILS_path = config['ILS_path']
         else:
             self.ILS_path = None
 
