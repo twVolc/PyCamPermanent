@@ -23,16 +23,16 @@ species = {'SO2': {'path': os.path.join(pwd, 'doas/calibration/SO2_293K.txt'), '
 
 
 # Load startup settings
-process_settings = read_file(FileLocator.PROCESS_DEFAULTS)
+process_settings = pyplis_worker.config
 
 # Global DOAS worker
 if process_settings['doas_method'] == 'doas':
-    doas_worker = DOASWorker(spec_dir=process_settings['init_spec_dir'].split('\'')[1],
-                             dark_dir=process_settings['dark_spec_dir'].split('\'')[1],
+    doas_worker = DOASWorker(spec_dir=process_settings['init_spec_dir'],
+                             dark_dir=process_settings['dark_spec_dir'],
                              q_doas=pyplis_worker.q_doas,
                              species=species)
 elif process_settings['doas_method'] == 'ifit':
-    doas_worker = IFitWorker(spec_dir=process_settings['init_spec_dir'].split('\'')[1],
-                             dark_dir=process_settings['dark_spec_dir'].split('\'')[1],
+    doas_worker = IFitWorker(spec_dir=process_settings['init_spec_dir'],
+                             dark_dir=process_settings['dark_spec_dir'],
                              q_doas=pyplis_worker.q_doas,
                              species=species)
