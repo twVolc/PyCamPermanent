@@ -3272,12 +3272,12 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
     def get_cal_series_path(self, set_var=False):
         """
-        Gives user options for retrieving cell calibration directory
+        Gives user options for retrieving calibration coefficients from file
         :param set_var: bool
             If true, this will set the pyplis_worker value automatically. This means that this function can be used
             from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is used by the
-            menu widget 'Load cell directory' submenu
+            requiring the OK click from the settings widget which usually instigates gather_vars. This is probably not
+            used anywhere currently
         """
         cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
 
