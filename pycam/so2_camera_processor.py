@@ -210,7 +210,7 @@ class PyplisWorker:
         self.processed_dir = None           # Full path for processing directory
         self.dark_dict = {'on': {},
                           'off': {}}        # Dictionary containing all retrieved dark images with their ss as the key
-        self.dark_dir = None
+        self.dark_img_dir = None
         self.img_list = None
         self.num_img_pairs = 0          # Total number of plume pairs
         self.num_img_tot = 0            # Total number of plume images
@@ -706,7 +706,7 @@ class PyplisWorker:
         if not ones:
             # Dark subtraction - first extract ss then hunt for dark image
             ss = str(int(img.texp * 10 ** 6))
-            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+            dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
 
             if dark_img is not None:
                 img.subtract_dark_image(dark_img)
@@ -775,7 +775,7 @@ class PyplisWorker:
         # Dark subtraction - first extract ss then hunt for dark image
         try:
             ss = str(int(img.texp * 10 ** 6))
-            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+            dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
         except ImgMetaError:
             dark_img = None
 
