@@ -283,7 +283,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
     def initiate_variables(self):
         """Initiates variables to be loaded"""
-        self.vars = {'amb_roi': list}
+        self.vars = {'ambient_roi': list}
 
         self.load_defaults()
 
@@ -292,7 +292,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         Update pyplis_worker for all attributes
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.pyplis_worker.ambient_roi = self.ambient_roi
 
         # Update full line list
         self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
@@ -471,9 +471,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.plt_opt_flow(draw=False)
 
         # Draw ambient roi
-        crop_X = self.amb_roi[2] - self.amb_roi[0]
-        crop_Y = self.amb_roi[3] - self.amb_roi[1]
-        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+        crop_X = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_Y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
                                                         crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
 
         # Finalise canvas and gridding
@@ -636,7 +636,7 @@ class ImageSO2(LoadSaveProcessingSettings):
                                                         crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
 
         # Only update roi_abs if use_roi is true
-        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
         self.gather_vars()
 
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
@@ -5029,7 +5029,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._draw_meth = tk.IntVar()
         self.draw_meth = 1
 
-        self.vars = {'amb_roi': list,
+        self.vars = {'ambient_roi': list,
                      'I0_MIN': int,
                      'tau_thresh': float,
                      'dil_recal_time': int,     # Time [minutes] until recalibration of light dilution
@@ -5039,7 +5039,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                      'spec_recal_time': int}
 
 
-        self.amb_roi = [0, 0, 0, 0]
+        self.ambient_roi = [0, 0, 0, 0]
         self._I0_MIN = tk.IntVar()
         self._tau_thresh = tk.DoubleVar()
         self._dil_recal_time = tk.IntVar()
@@ -5612,9 +5612,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         for i, line in enumerate(self.lines_pyplis):
             if isinstance(line, LineOnImage):
                 self.draw_line_obj(line, line_idx=i, draw=False)
-        crop_x = self.amb_roi[2] - self.amb_roi[0]
-        crop_y = self.amb_roi[3] - self.amb_roi[1]
-        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+        crop_x = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
                                                         crop_x, crop_y, edgecolor='green', fill=False, linewidth=3))
 
         # # Draw canvas
@@ -5777,8 +5777,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                                         crop_X, crop_Y, edgecolor='green', fill=False, linewidth=3))
 
         # Only update roi_abs if use_roi is true
-        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
-        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.pyplis_worker.ambient_roi = self.ambient_roi
 
         self.q.put(1)
 
@@ -5787,7 +5787,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Gathers all parameters and sets them to pyplis worker
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.pyplis_worker.ambient_roi = self.ambient_roi
         self.pyplis_worker.I0_MIN = self.I0_MIN
         self.pyplis_worker.tau_thresh = self.tau_thresh
         self.pyplis_worker.dil_recal_time = self.dil_recal_time
@@ -5863,7 +5863,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :return:
         """
         # Make sure any non-saved settings are reverted back to pyplis settings
-        self.amb_roi = self.pyplis_worker.ambient_roi
+        self.ambient_roi = self.pyplis_worker.ambient_roi
         self.I0_MIN = self.pyplis_worker.I0_MIN
         self.tau_thresh = self.pyplis_worker.tau_thresh
         self.dil_recal_time = self.pyplis_worker.dil_recal_time
