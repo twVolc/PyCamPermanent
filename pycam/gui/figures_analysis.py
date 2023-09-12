@@ -1918,7 +1918,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.main_gui = main_gui
         self.vars = {'bg_mode': int,
                      'auto_param_bg': int,
-                     'vign_corr': int,
+                     'use_vign_corr': int,
                      'polyfit_2d_mask_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
@@ -1940,7 +1940,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         self._bg_mode = tk.IntVar()
         self._auto_param_bg = tk.IntVar()
-        self._vign_corr = tk.IntVar()
+        self._use_vign_corr = tk.IntVar()
         self._polyfit_2d_mask_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
@@ -2007,8 +2007,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Vignette correction
         row += 1
-        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction', variable=self._vign_corr,
-                                command=self.set_vignette_correction)
+        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction',
+                                variable=self._use_vign_corr, command=self.set_vignette_correction)
         check.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Reference are check
@@ -2460,12 +2460,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._auto_param_bg.set(value)
 
     @property
-    def vign_corr(self):
-        return self._vign_corr.get()
+    def use_vign_corr(self):
+        return self._use_vign_corr.get()
 
-    @vign_corr.setter
-    def vign_corr(self, value):
-        self._vign_corr.set(value)
+    @use_vign_corr.setter
+    def use_vign_corr(self, value):
+        self._use_vign_corr.set(value)
 
     @property
     def polyfit_2d_mask_thresh(self):
@@ -2625,7 +2625,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         to the images will be made
         :return:
         """
-        if not self.vign_corr:
+        if not self.use_vign_corr:
             pyplis_worker.use_vign_corr = False
             # Save the old path so we can revert back to it
             if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
