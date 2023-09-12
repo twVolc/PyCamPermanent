@@ -2857,6 +2857,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
+                     'cal_series_path': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
                      'use_sensitivity_mask': int,
                      'use_light_dilution': int,
@@ -2873,8 +2874,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
         self._cell_cal_dir = tk.StringVar()
+        self._cal_series_path = tk.StringVar()
         self._cal_type = tk.StringVar()
-        self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
+        self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS', 'Preloaded']
         self._use_sensitivity_mask = tk.IntVar()
         self._use_light_dilution = tk.IntVar()
         self._min_cd = tk.DoubleVar()
@@ -2954,6 +2956,15 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_cell_cal_dir)
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
+
+        # Cell calibration directory
+        label = ttk.Label(path_frame, text='Calibration time series file:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.cal_series_label = ttk.Label(path_frame, text=self.cal_series_path_short, width=self.path_widg_length,
+                                        font=self.main_gui.main_font, anchor='e')
+        self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose File', command=self.get_cal_series_path)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Processing
         settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
@@ -3090,6 +3101,21 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def cell_cal_dir_short(self):
         """Returns shorter label for dark directory"""
         return '...' + self.cell_cal_dir[-self.path_str_length:]
+
+    @property
+    def cal_series_path(self):
+        return self._cal_series_path.get()
+
+    @cal_series_path.setter
+    def cal_series_path(self, value):
+        self._cal_series_path.set(value)
+        if hasattr(self, 'cal_series_label') and self.in_frame:
+            self.cal_series_label.configure(text=self.cal_series_path_short)
+
+    @property
+    def cal_series_path_short(self):
+        """Returns shorter label for dark directory"""
+        return '...' + self.cal_series_path[-self.path_str_length:]
 
     @property
     def cal_type(self):
@@ -3244,6 +3270,28 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_dir = cal_dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
 
+    def get_cal_series_path(self, set_var=False):
+        """
+        Gives user options for retrieving cell calibration directory
+        :param set_var: bool
+            If true, this will set the pyplis_worker value automatically. This means that this function can be used
+            from outside of the process_settings widget and the directory will automatically be updated, without
+            requiring the OK click from the settings widget which usually instigates gather_vars. This is used by the
+            menu widget 'Load cell directory' submenu
+        """
+        cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        if self.in_frame:
+            self.frame.lift()
+
+        if len(cal_series_path) > 0:
+            self.cal_series_path = cal_series_path
+
+        # Update pyplis worker value if requested (done when using submenu selection
+        if set_var:
+            pyplis_worker.cal_series_path = cal_series_path
+
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
         bg_file = filedialog.askopenfilename(initialdir=self.dark_img_dir)
@@ -3265,6 +3313,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         doas_worker.plot_iter = self.plot_iter
         pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
+        pyplis_worker.cal_series_path = self.cal_series_path
         pyplis_worker.cal_type = self.cal_type_int
         pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
@@ -3293,6 +3342,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_img_dir = pyplis_worker.dark_dir
         self.dark_spec_dir = doas_worker.dark_dir
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
+        self.cal_series_path = pyplis_worker.cal_series_path
         self.cal_type_int = pyplis_worker.cal_type
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.use_light_dilution = int(pyplis_worker.use_light_dilution)
