@@ -38,7 +38,7 @@ save_doas_cal: 0
 bg_mode: 7
 auto_param: 1
 vign_corr: 1
-polyfit_2d_thresh: 100
+polyfit_2d_mask_thresh: 100
 ref_check_lower: -9.0e+16
 ref_check_upper: 5.0e+16
 ref_check_mode: 0

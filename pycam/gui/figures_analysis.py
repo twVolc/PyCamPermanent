@@ -1919,7 +1919,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.vars = {'bg_mode': int,
                      'auto_param': int,
                      'vign_corr': int,
-                     'polyfit_2d_thresh': int,
+                     'polyfit_2d_mask_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
@@ -1941,7 +1941,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._bg_mode = tk.IntVar()
         self._auto_param = tk.IntVar()
         self._vign_corr = tk.IntVar()
-        self._polyfit_2d_thresh = tk.IntVar()
+        self._polyfit_2d_mask_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
         self._ref_check_mode = tk.IntVar()
@@ -1995,7 +1995,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         row = 0
         label = ttk.Label(self.opt_frame, text='Intensity threshold (mode 0):', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
-        spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_thresh, from_=0,
+        spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_mask_thresh, from_=0,
                            to=pyplis_worker.cam_specs._max_DN, increment=1, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
 
@@ -2468,12 +2468,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._vign_corr.set(value)
 
     @property
-    def polyfit_2d_thresh(self):
-        return self._polyfit_2d_thresh.get()
+    def polyfit_2d_mask_thresh(self):
+        return self._polyfit_2d_mask_thresh.get()
 
-    @polyfit_2d_thresh.setter
-    def polyfit_2d_thresh(self, value):
-        self._polyfit_2d_thresh.set(value)
+    @polyfit_2d_mask_thresh.setter
+    def polyfit_2d_mask_thresh(self, value):
+        self._polyfit_2d_mask_thresh.set(value)
 
     @property
     def ref_check_lower(self):
@@ -2650,7 +2650,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
             pyplis_worker.plume_bg_B.mode = self.bg_mode
             pyplis_worker.bg_pycam = False
         pyplis_worker.auto_param_bg = self.auto_param
-        pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_thresh
+        pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_mask_thresh
         pyplis_worker.ref_check_lower = self.ref_check_lower
         pyplis_worker.ref_check_upper = self.ref_check_upper
         pyplis_worker.ref_check_mode = self.ref_check_mode
@@ -2781,7 +2781,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         else:
             self.bg_mode = pyplis_worker.plume_bg_A.mode
         self.auto_param = pyplis_worker.auto_param_bg
-        self.polyfit_2d_thresh = pyplis_worker.polyfit_2d_mask_thresh
+        self.polyfit_2d_mask_thresh = pyplis_worker.polyfit_2d_mask_thresh
         self.ref_check_lower = pyplis_worker.ref_check_lower
         self.ref_check_upper = pyplis_worker.ref_check_upper
         self.ref_check_mode = pyplis_worker.ref_check_mode
