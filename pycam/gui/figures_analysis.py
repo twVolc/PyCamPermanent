@@ -1917,7 +1917,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         """Prepares all tk variables"""
         self.main_gui = main_gui
         self.vars = {'bg_mode': int,
-                     'auto_param': int,
+                     'auto_param_bg': int,
                      'vign_corr': int,
                      'polyfit_2d_mask_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
@@ -1939,7 +1939,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
 
         self._bg_mode = tk.IntVar()
-        self._auto_param = tk.IntVar()
+        self._auto_param_bg = tk.IntVar()
         self._vign_corr = tk.IntVar()
         self._polyfit_2d_mask_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
@@ -2062,8 +2062,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.ref_area_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
 
         row = 0
-        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas', variable=self._auto_param,
-                                    command=self.update_draw)
+        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas',
+                                    variable=self._auto_param_bg, command=self.update_draw)
         self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Radiobuttons for reference area drawing
@@ -2348,7 +2348,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         1 = ygrad_rect
         2 = xgrad_rect
         """
-        if self.auto_param:
+        if self.auto_param_bg:
             self.scale_rect_rad.configure(state=tk.DISABLED)
             self.ygrad_rect_rad.configure(state=tk.DISABLED)
             self.xgrad_rect_rad.configure(state=tk.DISABLED)
@@ -2452,12 +2452,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._bg_mode.set(value)
 
     @property
-    def auto_param(self):
-        return self._auto_param.get()
+    def auto_param_bg(self):
+        return self._auto_param_bg.get()
 
-    @auto_param.setter
-    def auto_param(self, value):
-        self._auto_param.set(value)
+    @auto_param_bg.setter
+    def auto_param_bg(self, value):
+        self._auto_param_bg.set(value)
 
     @property
     def vign_corr(self):
@@ -2649,7 +2649,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
             pyplis_worker.plume_bg_A.mode = self.bg_mode
             pyplis_worker.plume_bg_B.mode = self.bg_mode
             pyplis_worker.bg_pycam = False
-        pyplis_worker.auto_param_bg = self.auto_param
+        pyplis_worker.auto_param_bg = self.auto_param_bg
         pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_mask_thresh
         pyplis_worker.ref_check_lower = self.ref_check_lower
         pyplis_worker.ref_check_upper = self.ref_check_upper
@@ -2780,7 +2780,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
             self.bg_mode = 7
         else:
             self.bg_mode = pyplis_worker.plume_bg_A.mode
-        self.auto_param = pyplis_worker.auto_param_bg
+        self.auto_param_bg = pyplis_worker.auto_param_bg
         self.polyfit_2d_mask_thresh = pyplis_worker.polyfit_2d_mask_thresh
         self.ref_check_lower = pyplis_worker.ref_check_lower
         self.ref_check_upper = pyplis_worker.ref_check_upper

@@ -36,7 +36,7 @@ save_doas_cal: 0
 
 # Plume background model
 bg_mode: 7
-auto_param: 1
+auto_param_bg: 1
 vign_corr: 1
 polyfit_2d_mask_thresh: 100
 ref_check_lower: -9.0e+16
