@@ -128,6 +128,12 @@ class PyplisWorker:
         self.got_cross_corr = False
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
+        self.opt_flow_sett_keys = [
+            'pyr_scale', 'levels', 'winsize', 'iterations',         # Values which pertain directly to optical flow settings and are
+            'poly_n', 'poly_sigma', 'min_length', 'min_count_frac', # passed straight to the pyplis optical flow object
+            'hist_dir_gnum_max', 'hist_dir_binres',
+            'hist_sigma_tol', 'use_roi', 'roi_abs'
+        ]
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
         # Velocity modes
         self.velo_modes = {"flow_glob": False,          # Cross-correlation

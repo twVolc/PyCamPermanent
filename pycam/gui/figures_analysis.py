@@ -4410,21 +4410,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'cross_corr_recal': int
                      }
 
-        self.settings_vars = {'pyr_scale': float,       # Alternative vars dict containing only those values which
-                              'levels': int,            # pertain directly to optical flow settings which will be
-                              'winsize': int,           # passed straight to the pyplis optical flow object
-                              'iterations': int,
-                              'poly_n': int,
-                              'poly_sigma': float,
-                              'min_length': float,
-                              'min_count_frac': float,
-                              'hist_dir_gnum_max': int,
-                              'hist_dir_binres': int,
-                              'hist_sigma_tol': int,
-                              'use_roi': int,
-                              'roi_abs': list
-                              }
-
+        self.settings_vars = self.pyplis_worker.opt_flow_sett_keys
+      
         self._pyr_scale = tk.DoubleVar()
         self._levels = tk.IntVar()
         self._winsize = tk.IntVar()
