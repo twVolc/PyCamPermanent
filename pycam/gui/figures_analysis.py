@@ -2643,12 +2643,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
-        if self.bg_mode == 7:
-            pyplis_worker.bg_pycam = True
-        else:
-            pyplis_worker.plume_bg_A.mode = self.bg_mode
-            pyplis_worker.plume_bg_B.mode = self.bg_mode
-            pyplis_worker.bg_pycam = False
+        pyplis_worker.bg_mode = self.bg_mode
         pyplis_worker.auto_param_bg = self.auto_param_bg
         pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_mask_thresh
         pyplis_worker.ref_check_lower = self.ref_check_lower
@@ -2776,10 +2771,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def close_window(self):
         """Restore current settings"""
-        if pyplis_worker.bg_pycam:
-            self.bg_mode = 7
-        else:
-            self.bg_mode = pyplis_worker.plume_bg_A.mode
+        self.bg_mode = pyplis_worker.bg_mode
         self.auto_param_bg = pyplis_worker.auto_param_bg
         self.polyfit_2d_mask_thresh = pyplis_worker.polyfit_2d_mask_thresh
         self.ref_check_lower = pyplis_worker.ref_check_lower

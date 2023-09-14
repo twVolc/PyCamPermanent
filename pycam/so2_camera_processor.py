@@ -408,6 +408,22 @@ class PyplisWorker:
     def png_compression(self, value):
         self.save_dict['img_SO2']['compression'] = value
 
+    @property
+    def bg_mode(self):
+        if self.bg_pycam:
+            return 7
+        else:
+            return self.plume_bg_A.mode
+
+    @bg_mode.setter
+    def bg_mode(self, value):
+        if value == 7:
+            self.bg_pycam = True
+        else:
+            self.plume_bg_A.mode = value
+            self.plume_bg_B.mode = value
+            self.bg_pycam = False
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
 
