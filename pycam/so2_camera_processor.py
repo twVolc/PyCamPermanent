@@ -354,6 +354,54 @@ class PyplisWorker:
         self._cell_cal_dir = value
         self.perform_cell_calibration_pyplis(plot=True)
 
+    @property
+    def save_img_aa(self):
+        return self.save_dict['img_aa']['save']
+
+    @save_img_aa.setter
+    def save_img_aa(self, value):
+        self.save_dict['img_aa']['save'] = value
+
+    @property
+    def type_img_aa(self):
+        return self.save_dict['img_aa']['ext']
+
+    @type_img_aa.setter
+    def type_img_aa(self, value):
+        self.save_dict['img_aa']['ext'] = value
+    
+    @property
+    def save_img_cal(self):
+        return self.save_dict['img_cal']['save']
+
+    @save_img_cal.setter
+    def save_img_cal(self, value):
+        self.save_dict['img_cal']['save'] = value
+
+    @property
+    def type_img_cal(self):
+        return self.save_dict['img_cal']['ext']
+
+    @type_img_cal.setter
+    def type_img_cal(self, value):
+        self.save_dict['img_cal']['ext'] = value
+
+    @property
+    def save_img_so2(self):
+        return self.save_dict['img_SO2']['save']
+
+    @save_img_so2.setter
+    def save_img_so2(self, value):
+        self.save_dict['img_SO2']['save'] = value
+
+    @property
+    def png_compression(self):
+        return self.save_dict['img_SO2']['save']
+
+    @png_compression.setter
+    def png_compression(self, value):
+        self.save_dict['img_SO2']['compression'] = value
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
 

@@ -814,14 +814,14 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._save_doas_cal = tk.BooleanVar()
 
     def gather_vars(self):
-        self.pyplis_worker.save_dict['img_aa']['save'] = self.save_img_aa
-        self.pyplis_worker.save_dict['img_aa']['ext'] = self.type_img_aa
+        self.pyplis_worker.save_img_aa = self.save_img_aa
+        self.pyplis_worker.type_img_aa = self.type_img_aa
 
-        self.pyplis_worker.save_dict['img_cal']['save'] = self.save_img_cal
-        self.pyplis_worker.save_dict['img_cal']['ext'] = self.type_img_cal
+        self.pyplis_worker.save_img_cal = self.save_img_cal
+        self.pyplis_worker.type_img_cal = self.type_img_cal
 
-        self.pyplis_worker.save_dict['img_SO2']['save'] = self.save_img_so2
-        self.pyplis_worker.save_dict['img_SO2']['compression'] = self.png_compression
+        self.pyplis_worker.save_img_so2 = self.save_img_so2
+        self.pyplis_worker.png_compression = self.png_compression
 
         self.pyplis_worker.save_doas_cal = self.save_doas_cal
 
