@@ -234,7 +234,7 @@ class PyplisWorker:
         self.got_doas_fov = False
         self.got_cal_cell = False
         self._cell_cal_dir = None
-        self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
+        self.cal_type_int = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
         self.cell_dict_A = {}
         self.cell_dict_B = {}
         self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
@@ -1112,7 +1112,7 @@ class PyplisWorker:
         # TODO I have checked this with pacaya data too, and my implementation seems better, perhaps because I can use
         # TODO pyr_lvl 2, I think that is better than 1 used by pyplis. Also I only use one tau image, pyplis uses the
         # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
-        if self.cal_type in [1, 2] and self.got_doas_fov:
+        if self.cal_type_int in [1, 2] and self.got_doas_fov:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
             #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
             #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
@@ -1285,7 +1285,7 @@ class PyplisWorker:
 
             # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
             # DOAS FOV for normalisation region
-            if self.cal_type in [1, 2] and self.got_doas_fov:
+            if self.cal_type_int in [1, 2] and self.got_doas_fov:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
                                                                        pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
                                                                        radius=self.doas_fov_extent, pyr_lvl=2)
@@ -1986,7 +1986,7 @@ class PyplisWorker:
         # idx_current - 1, but because the idx starts at 0, we need idx + 1 to find when we should be calibrating,
         # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
         # Since this comes after
-        if self.cal_type in [1, 2]:
+        if self.cal_type_int in [1, 2]:
             # Perform any necessary DOAS calibration updates
             if doas_update:
                 self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
@@ -1995,7 +1995,7 @@ class PyplisWorker:
         cal_img = None
 
         # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
-        if self.got_doas_fov and self.cal_type in [1, 2]:
+        if self.got_doas_fov and self.cal_type_int in [1, 2]:
             if self.fix_fov and not self.had_fix_fov_cal:
                 pass
             else:
@@ -2005,7 +2005,7 @@ class PyplisWorker:
                 if self.doas_cal_adjust_offset:
                     cal_img.img = cal_img.img + self.calib_pears.y_offset
 
-        elif self.cal_type == 0:
+        elif self.cal_type_int == 0:
             if isinstance(img, pyplis.Img):
                 # cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
                 cal_img = img * self.cell_calib.calib_data['aa'].calib_coeffs[0]
@@ -3115,12 +3115,12 @@ class PyplisWorker:
         self.img_list = self.get_img_list()
 
         # Perform calibration work
-        if self.cal_type in [0, 2]:
+        if self.cal_type_int in [0, 2]:
             self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
         # Fix FOV if we are using DOAS calibration
-        if self.cal_type in [1,2]:
+        if self.cal_type_int in [1,2]:
             if self.fix_fov:
                 self.generate_doas_fov()
 
@@ -3147,7 +3147,7 @@ class PyplisWorker:
             # TODO number of images - I can then check in the same way but just look at time differnce using:
             # TODO self.doas_last_save
             if i == len(self.img_list) - 1:
-                if self.cal_type in [1, 2] and not self.got_doas_fov:
+                if self.cal_type_int in [1, 2] and not self.got_doas_fov:
                     force_cal = True
 
             # Process image pair
@@ -3204,7 +3204,7 @@ class PyplisWorker:
         # TODO to be checking for changes in directory and then controlling the current working directory of the object etc
 
         # Fix FOV if we are using DOAS calibration
-        if self.cal_type in [1,2]:
+        if self.cal_type_int in [1,2]:
             if self.fix_fov:
                 self.generate_doas_fov()
 
@@ -3374,7 +3374,7 @@ class PyplisWorker:
                 f.write('BG_mode={}\n'.format(7))
             else:
                 f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
-            if self.cal_type in [1, 2]:
+            if self.cal_type_int in [1, 2]:
                 f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
             f.write('ambient_roi={}\n'.format(self.ambient_roi))
             f.write('Light_dil_cam={}\n'.format(self.got_light_dil))

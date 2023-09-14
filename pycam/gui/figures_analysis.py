@@ -3261,7 +3261,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         doas_worker.plot_iter = self.plot_iter
         pyplis_worker.dark_img_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
-        pyplis_worker.cal_type = self.cal_type_int
+        pyplis_worker.cal_type_int = self.cal_type_int
         pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
@@ -3289,7 +3289,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_img_dir = pyplis_worker.dark_img_dir
         self.dark_spec_dir = doas_worker.dark_dir
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
-        self.cal_type_int = pyplis_worker.cal_type
+        self.cal_type_int = pyplis_worker.cal_type_int
         self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.use_light_dilution = int(pyplis_worker.use_light_dilution)
         self.min_cd = pyplis_worker.min_cd
