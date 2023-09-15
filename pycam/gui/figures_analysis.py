@@ -2846,7 +2846,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
-                     'use_sensitivity_mask': int,
                      'use_light_dilution': int,
                      'min_cd': float,
                      'img_buff_size': int,
@@ -2863,7 +2862,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._cell_cal_dir = tk.StringVar()
         self._cal_type = tk.StringVar()
         self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
-        self._use_sensitivity_mask = tk.IntVar()
         self._use_light_dilution = tk.IntVar()
         self._min_cd = tk.DoubleVar()
         self._buff_size = tk.IntVar()
@@ -2986,16 +2984,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Calibration type
         label = ttk.Label(settings_frame, text='Calibration method:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts,
-                                            command=self.update_sens_mask)
+        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts)
         self.cal_type_widg.configure(width=15)
         self.cal_type_widg.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        row += 1
-
-        # Use sensitivity mask checkbutton
-        self.sens_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
-                                          variable=self._use_sensitivity_mask)
-        self.sens_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Use light dilution checkbutton
@@ -3008,7 +2999,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.plot_check = ttk.Checkbutton(settings_frame, text='Update plots iteratively', variable=self._plot_iter)
         self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
-        self.update_sens_mask()
 
         self.butt_frame = ttk.Frame(self.frame)
         self.butt_frame.grid(row=2, columnspan=4, sticky='nsew')
@@ -3096,14 +3086,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_type = self.cal_opts[value]
 
     @property
-    def use_sensitivity_mask(self):
-        return self._use_sensitivity_mask.get()
-
-    @use_sensitivity_mask.setter
-    def use_sensitivity_mask(self, value):
-        self._use_sensitivity_mask.set(value)
-
-    @property
     def use_light_dilution(self):
         return self._use_light_dilution.get()
 
@@ -3168,18 +3150,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @time_zone.setter
     def time_zone(self, value):
         self._time_zone.set(value)
-
-    def update_sens_mask(self, val=None):
-        """Updates sensitivity mask depending on currently selected calibration option"""
-        if self.cal_type == 'Cell':
-            self.sens_check.configure(state=tk.NORMAL)
-            self.use_sensitivity_mask = 1
-        elif self.cal_type == 'Cell + DOAS':
-            self.sens_check.configure(state=tk.DISABLED)
-            self.use_sensitivity_mask = 1
-        elif self.cal_type == 'DOAS':
-            self.sens_check.configure(state=tk.DISABLED)
-            self.use_sensitivity_mask = 0
 
     def get_dark_img_dir(self):
         """Gives user options for retrieving dark image directory"""
@@ -3254,7 +3224,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.dark_img_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.cell_cal_dir = self.cell_cal_dir
         pyplis_worker.cal_type_int = self.cal_type_int
-        pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
         pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
         if pyplis_worker.use_vign_corr:
@@ -3282,7 +3251,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_spec_dir = doas_worker.dark_dir
         self.cell_cal_dir = pyplis_worker.cell_cal_dir
         self.cal_type_int = pyplis_worker.cal_type_int
-        self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
         self.use_light_dilution = int(pyplis_worker.use_light_dilution)
         self.min_cd = pyplis_worker.min_cd
         self.img_buff_size = pyplis_worker.img_buff_size

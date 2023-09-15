@@ -240,7 +240,9 @@ class PyplisWorker:
         self.got_doas_fov = False
         self.got_cal_cell = False
         self._cell_cal_dir = None
-        self.cal_type_int = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
+        self.sens_mask_opts = [0,2]       # Use sensitivity mask when cal_type_int is set to one of the specified options, 0 = cell, 1 = doas, 2 = cell + doas
+        self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
+        self.cal_type_int = 1             # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
         self.cell_dict_A = {}
         self.cell_dict_B = {}
         self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
@@ -256,7 +258,6 @@ class PyplisWorker:
         self.cell_err = 0.1         # Cell CD error (fractional). Currently just assumed to be 10%, typical manufacturer error
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
-        self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
         self.use_cell_bg = False    # If true, the bg image for bg modelling is automatically set from the cell calibration directory. Otherwise the defined path to bg imag is used
 
         # Load background image if we are provided with one
@@ -423,6 +424,15 @@ class PyplisWorker:
             self.plume_bg_A.mode = value
             self.plume_bg_B.mode = value
             self.bg_pycam = False
+
+    @property
+    def cal_type_int(self):
+        return self._cal_type_int
+
+    @cal_type_int.setter
+    def cal_type_int(self, value):
+        self._cal_type_int = value
+        self.use_sensitivity_mask = value in self.sens_mask_opts
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
