@@ -212,9 +212,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         self._current_ica = tk.IntVar()
         self.current_ica = 1
         self._xcorr_ica_old = tk.IntVar()
-        self.xcorr_ica_old = 0
+        self.xcorr_ica_old = 2
         self._xcorr_ica_young = tk.IntVar()
-        self.xcorr_ica_young = 0
+        self.xcorr_ica_young = 1
         self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
@@ -697,22 +697,28 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update time series lines
         self.fig_series.update_lines()
 
-    def update_ica_num(self):
-        """Makes necessary changes to update the number of ICA lines"""
-
+    def update_ica_num(self, reset_xcorr_lines=False):
+        """
+        Makes necessary changes to update the number of ICA lines
+        :param reset_xcorr_lines bool   If True, when there are fewer lines than the xcorr line designations the xcorr
+                                        line designations are reset to 0. Not typically used.
+        """
         # Edit 'to' of ica_edit_spin spinbox and if current ICA is above number of ICAs we update current ICA
         self.ica_edit_spin.configure(to=self.num_ica)
         self.current_ica = self.num_ica
 
-        # Edit cross-correlation ICA
+        # Fix the line number the spinbox can go up to (based on number fo lines we currently have)
         self.x_corr_spin_old.configure(to=self.num_ica)
-        if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
-            self.xcorr_ica_old = 0
-
-        # Edit cross-correlation ICA (young)
         self.x_corr_spin_young.configure(to=self.num_ica)
-        if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
-            self.xcorr_ica_young = 0
+
+        if reset_xcorr_lines:
+            # Edit cross-correlation ICA
+            if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
+                self.xcorr_ica_old = 0
+
+            # Edit cross-correlation ICA (young)
+            if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
+                self.xcorr_ica_young = 0
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
@@ -3546,8 +3552,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.ax_cal_params_1 = self.fig_cal_params.subplots(1, 1)
         self.ax_cal_params_2 = self.ax_cal_params_1.twinx()
         # self.fig_cal_params.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
-        self.ax_cal_params_1.set_ylabel('Fit 1st order')
-        self.ax_cal_params_2.set_ylabel('Fit error')
+        self.ax_cal_params_1.set_ylabel('1st order coefficient', color = "red")
+        self.ax_cal_params_2.set_ylabel('R squared', color = "blue")
+        self.ax_cal_params_2.set_yticks([0,0.2,0.4,0.6,0.8,1])
+        self.ax_cal_params_2.set_ylim(0, 1)
 
         self.frame_cal_params = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
         self.cal_params_canvas = FigureCanvasTkAgg(self.fig_cal_params, master=self.frame_cal_params)
@@ -3720,6 +3728,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             try:
                 self.ax_fit.cla()
                 self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
+                self.ax_fit.get_children()[2].set_zorder(1.9)
             except (AttributeError, ValueError):
                 pass
 
@@ -3732,10 +3741,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
                 print('Calib coeffs: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs))
                 print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
-                self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.calib_coeffs[0], color='red', marker='o')
-                self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
+
+                # Plot slope coefficient
+                self.ax_cal_params_1.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 2],
+                                          color='red', marker='o', linestyle='none', markersize=3)
+                # Plot R squared value for fit
+                self.ax_cal_params_2.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 4],
+                                          color='blue', marker='o', linestyle='none', markersize=3)
                 self.ax_cal_params_1.margins(0.05)
                 self.ax_cal_params_2.margins(0.05)
             except (AttributeError, ValueError, TypeError) as e:

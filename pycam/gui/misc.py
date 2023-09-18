@@ -102,8 +102,7 @@ class Indicator:
             return
 
         try:
-            self.sock.close_socket()    # Close socket first, might avoid issues
-            self.sock.connect_socket_timeout(timeout=5)
+            self.sock.connect_socket_try_all(timeout=5)
 
             cmd = self.sock.encode_comms({'LOG': 0})
             self.sock.send_comms(self.sock.sock, cmd)

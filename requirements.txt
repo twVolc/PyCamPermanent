@@ -18,5 +18,6 @@ srtm.py
 watchdog
 parameterized
 dropbox
+pywin32
 pyplis @ git+https://github.com/ubdbra001/pyplis.git@sources_fix
 iFit @ git+https://github.com/ubdbra001/iFit.git@make-pip-install
