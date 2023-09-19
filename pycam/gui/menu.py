@@ -63,6 +63,7 @@ class PyMenu:
         self.load_frame = LoadFrame(self.parent, pyplis_work=pyplis_worker, doas_work=doas_worker)
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
+        self.submenu_load.add_command(label='Load config file', command=self.load_frame.load_config_file)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
         self.submenu_load.add_command(label='Load light dilution line', command=self.load_frame.load_dil)
         self.submenu_load.add_command(label='Load image registration', command=self.load_frame.load_img_reg)
@@ -763,6 +764,27 @@ class LoadFrame(LoadSaveProcessingSettings):
         """CLose window"""
         self.in_frame = False
         self.frame.destroy()
+
+    def load_config_file(self):
+        filename = filedialog.askopenfilename(
+            title='Select config file',
+            initialdir=self.init_dir)
+        # Need to add condition to account for user pressing cancel
+        self.pyplis_worker.load_config(filename, "user")
+
+        self.reload_config()
+
+    def reload_config(self):
+        self.load_defaults()
+        self.main_gui.anal_wind.so2_img.load_defaults()
+        process_settings.load_defaults()
+        plume_bg.load_defaults()
+        opti_flow.load_defaults()
+        light_dilution.load_defaults()
+        cross_correlation.load_defaults()
+        doas_fov.load_defaults()
+
+        calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
 
 
 class SaveFrame(LoadSaveProcessingSettings):
