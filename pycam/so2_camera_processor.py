@@ -125,6 +125,7 @@ class PyplisWorker:
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
         self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
@@ -2329,6 +2330,31 @@ class PyplisWorker:
 
         self.got_cross_corr = True
 
+    def calc_line_orientation(self, line, deg=True):
+        """
+        Calculates line orientation with 0 as north and
+        :param line: pyplis.LineOnImage     Line to calculate orientation
+        :return:
+        """
+        # vec = list(line._delx_dely())       # Get vector of line
+        # north_vec = [0, 1]                  # Set northern vector
+        #
+        # # Calculate angle between north vector and our line
+        # unit_vector_1 = vec / np.linalg.norm(vec)
+        # unit_vector_2 = north_vec / np.linalg.norm(north_vec)
+        # dot_product = np.dot(unit_vector_2, unit_vector_1)
+        # orientation = np.arccos(dot_product)
+
+        dx, dy = line._delx_dely()
+        complex_norm = complex(-dy, dx)
+        orientation = -(np.angle(complex_norm, deg) - 180)
+
+        return orientation
+
+    def autogenerate_nadeau_line(self, pcs_line):
+        """Automatically generates the nadeau cross-correlation line based on PCS line"""
+        pass
+
     def generate_nadeau_plumespeed(self, img_current, img_next, line):
         """
         Uses two images and the nadeau line to calculate plume speed
@@ -2339,6 +2365,12 @@ class PyplisWorker:
         # Extract line profiles
         profile_current = line.get_line_profile(img_current)
         profile_next = line.get_line_profile(img_next)
+
+        # Depending on orientation of line we may need to reverse the line profile, to ensure it always starts from source
+        orientation = self.calc_line_orientation(line)
+        if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation == 180:
+            profile_current = profile_current[::-1]
+            profile_next = profile_next[::-1]
 
         # Get average distance of pixel in image line profile
         pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
@@ -2531,7 +2563,7 @@ class PyplisWorker:
 
         return self.flow, self.velo_img
 
-    def calculate_emission_rate(self, img, flow=None, plot=True):
+    def calculate_emission_rate(self, img, flow=None, nadeau_speed=None, plot=True):
         """
         Generates emission rate for current calibrated image/optical flow etc
         :param img:         pyplis.Img          Image to have emission rate retrieved from (must be cal)
@@ -2901,9 +2933,14 @@ class PyplisWorker:
             else:
                 opt_flow = None
 
+            if self.velo_modes['flow_nadeau']:
+                nadeau_plumespeed = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau, self.nadeau_line)
+            else:
+                nadeau_plumespeed = None
+
             # Calibrate image if we have a calibrated image
             if self.img_cal_prev is not None:
-                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow, plot=plot)
+                self.calculate_emission_rate(self.img_cal_prev, opt_flow, nadeau_speed=nadeau_plumespeed, plot=plot)
 
             # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
             # function can add this most recent data point to the cross-corr buffer)
@@ -2921,6 +2958,8 @@ class PyplisWorker:
                                              self.cross_corr_series['young'],
                                              self.cross_corr_series['old'])
                     self.get_cross_corr_emissions_from_buff()
+
+
 
             # TODO all of processing if not the first image pair
             # TODO I need to add data for DOAS calibration if I have some

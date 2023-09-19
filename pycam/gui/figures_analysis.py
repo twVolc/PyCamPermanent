@@ -4229,6 +4229,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                      }
         self._cross_corr_recal = tk.IntVar()
         self._auto_nadeau_line = tk.IntVar()
+        self.auto_nadeau_line = 0
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
         self._nadeau_line_orientation = tk.IntVar()
@@ -4328,7 +4329,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         # Make frame for Nadeau options
         row = 0
         auto_nad_check = ttk.Checkbutton(self.frame_opts_nad, text="Automatic line generation",
-                                         variable=self._auto_nadeau_line, command=self.generate_nadeau_line)
+                                         variable=self._auto_nadeau_line, command=self.toggle_auto_naduea_line)
         auto_nad_check.grid(row=row, column=0, columnspan=2, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row+=1
@@ -4403,6 +4404,9 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         toolbar = NavigationToolbar2Tk(self.fig_canvas_nad, self.frame_fig_nad)
         toolbar.update()
         self.fig_canvas_nad._tkcanvas.pack(side=tk.TOP)
+
+        self.generate_nadeau_line()
+        self.update_nad_line_plot(draw=True)
 
     @property
     def cross_corr_recal(self):
@@ -4538,36 +4542,25 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         Updates drawing of Nadeau cross-correlation line
         :param draw bool    If True, the canvas is asked to be drawn
         """
-        # TODO work out how to draw nadeau line from orientation
-        orientation_rad = np.deg2rad(self.nadeau_line_orientation)
-        x_coord = int(np.round(self.source_x + (self.nadeau_line_length*np.sin(orientation_rad))))
-        y_coord = int(np.round(self.source_y + (self.nadeau_line_length*np.cos(orientation_rad))))
-
-        # Ensure coordinates don't extend beyond image
-        if x_coord < 0:
-            x_coord = 0
-        elif x_coord > self.cam_specs.pix_num_x - 1:
-            x_coord = self.cam_specs.pix_num_x - 1
-
-        if y_coord < 0:
-            y_coord = 0
-        elif y_coord > self.cam_specs.pix_num_y - 1:
-            y_coord = self.cam_specs.pix_num_y - 1
+        if not self.auto_nadeau_line:
+            self.generate_nadeau_line()
 
         # Remove previous plot line then plot new line
         try:
             self.nadeau_line_plot.pop(0).remove()
         except AttributeError:
             pass
-        self.nadeau_line_plot = self.ax_nad.plot([self.source_x, x_coord], [self.source_y, y_coord], 'k-')
+        try:
+            self.nadeau_line_plot = self.ax_nad.plot([self.source_x, self.nadeau_line.x1],
+                                                     [self.source_y, self.nadeau_line.y1], 'k-')
+        except AttributeError:
+            pass
 
         # Make suure even if line goes off the image the axes for the image remain the same
         self.ax_nad.set_ylim([self.cam_specs.pix_num_y, 0])
         self.ax_nad.set_xlim([0, self.cam_specs.pix_num_x])
 
         try:
-            self.nadeau_line = LineOnImage(x0=x_coord, y0=y_coord, x1=self.source_x, y1=self.source_y,
-                                           normal_orientation='right', color='k', line_id='nadeau')
             self.update_xsect_plot(draw=False)
         except ValueError:
             pass
@@ -4608,15 +4601,58 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def generate_nadeau_line(self):
-        """Instigates automatic generation of the Nadeau line"""
-        if self.auto_nadeau_line:
+    def generate_nadeau_line(self, orientation_rad=None):
+        """
+        Generates nadeau line based on the GUI's settings
+        :param orientation_rad  float   Orientation of the line in radians. 0 is north and angle moves clockwise
+        """
+        # TODO MAybe this shoould all be moved to PyplisWorker and the line is simply taken from there and plotted
+        # TODO by this class.
+
+        # Calculate line end coordinates
+        if orientation_rad is None:
+            orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        x_coord = int(np.round(self.source_x + (self.nadeau_line_length*np.sin(orientation_rad))))
+        y_coord = int(np.round(self.source_y + (self.nadeau_line_length*np.cos(orientation_rad))))
+
+        # Ensure coordinates don't extend beyond image
+        if x_coord < 0:
+            x_coord = 0
+        elif x_coord > self.cam_specs.pix_num_x - 1:
+            x_coord = self.cam_specs.pix_num_x - 1
+
+        if y_coord < 0:
+            y_coord = 0
+        elif y_coord > self.cam_specs.pix_num_y - 1:
+            y_coord = self.cam_specs.pix_num_y - 1
+
+        try:
+            self.nadeau_line = LineOnImage(x0=self.source_x, y0=self.source_y, x1=x_coord, y1=y_coord,
+                                           normal_orientation='right', color='k', line_id='nadeau')
+            # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+            self.nadeau_line.x0 = self.source_x
+            self.nadeau_line.x1 = x_coord
+            self.nadeau_line.y0 = self.source_y
+            self.nadeau_line.y1 = y_coord
+        except ValueError as e:
             pass
+
+        # Update pyplis worker line
+        self.pyplis_worker.nadeau_line = self.nadeau_line
+
+    def toggle_auto_naduea_line(self):
+        """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
+        # Update pyplis worker
+        self.pyplis_worker.auto_nadeau_line = self.auto_nadeau_line
+        if self.auto_nadeau_line:
+
+            self.pyplis_worker.autogenerate_nadeau_line(line)
+            self.nadeau_line = self.pyplis_worker.nadeau_line
             # TODO run automatic generation of nadeau line and plot the result
+            self.generate_nadeau_line(orientation_rad)
 
         else:
-            pass
-            # TODO revert back to manual line
+            self.update_nad_line_plot(draw=True)
 
     def close_frame(self):
         """
