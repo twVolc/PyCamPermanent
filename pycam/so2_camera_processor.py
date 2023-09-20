@@ -50,11 +50,11 @@ yaml = YAML()
 class PyplisWorker:
     """
     Main pyplis worker class
-    :param  img_dir:    str     Directory where images are stored
+    :param  config_Path:  string        Path to config file
     :param  cam_specs:  CameraSpecs     Object containing all details of the camera/images
     :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
-    def __init__(self, config_path, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, config_path, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self._conversion_factor = 2.663 * 1e-6     # Conversion for ppm.m into Kg m-2
         self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
@@ -211,7 +211,7 @@ class PyplisWorker:
         self.doas_last_fov_cal = datetime.datetime.now()
         self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
 
-        self.img_dir = img_dir
+        self.img_dir = None
         self.proc_name = 'Processed_{}'     # Directory name for processing
         self.processed_dir = None           # Full path for processing directory
         self.dark_dict = {'on': {},
@@ -304,15 +304,22 @@ class PyplisWorker:
         self.config = {}
         self.raw_configs = {}
         self.load_config(config_path, "default")
-        #self.apply_config()
+        self.apply_config()
 
     def load_config(self, file_path, conf_name):
+        """load in a yml config file and place the contents in config attribute"""
         with open(file_path, "r") as file:
             self.raw_configs[conf_name] = yaml.load(file)
 
         self.config.update(self.raw_configs[conf_name])
 
+    def apply_config(self):
+        """take items in config file and set them as attributes in pyplis_worker"""
+        for key, value in self.config.items():
+            setattr(self, key, value)
+
     def save_config(self, file_path, conf_name):
+        """Save the contents of the config attribute to a yml file"""
         self.raw_configs[conf_name].update(self.config)
         with open(file_path, "w") as file:
             yaml.dump(self.raw_configs[conf_name], file)
@@ -1157,7 +1164,7 @@ class PyplisWorker:
         self.sensitivity_mask = mask.img
 
         # Plot if requested
-        if plot:
+        if plot and self.fig_cell_cal is not None:
             self.fig_cell_cal.update_plot()
 
     def perform_cell_calibration(self, plot=True, save_corr=True):

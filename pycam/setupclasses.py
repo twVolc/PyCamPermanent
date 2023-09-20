@@ -96,7 +96,7 @@ class FileLocator:
     CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
 
-    PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.txt'
+    PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.yml'
 
     # Data
     DATA = PYCAM_ROOT_WINDOWS + '/Data/'
