@@ -116,8 +116,8 @@ class PyplisWorker:
         self.ref_check_upper = 0    # Background check to ensure no gas is present in ref region
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
-        self.PCS_lines = []
-        self.PCS_lines_all = [] # TODO not sure the difference between these two - there may be one but it isn't clear...
+        self.PCS_lines = []         # PCS lines excluding the "old" xcorr line, which will not be included when summing lines
+        self.PCS_lines_all = []     # All PCS lines
         self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
                                  'old': None}           # Old plume LineOnImage for cross-correlation
         self.cross_corr_series = {'time': [],           # datetime list
@@ -125,6 +125,7 @@ class PyplisWorker:
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
         self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        self.auto_nadeau_pcs = 0                        # Integer for PCS line to be used to generate Nadeau line
         self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
         self.nadeau_line_orientation = 0                # Orientation of Nadeau line
         self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3) # Length of Nadeau line
@@ -2354,13 +2355,16 @@ class PyplisWorker:
 
         return orientation
 
-    def generate_nadeau_line(self, source_coords, orientation=None, length=None):
+    def generate_nadeau_line(self, source_coords=None, orientation=None, length=None):
         """
         Generates nadeau line given source coordinates, orientation and length
         :param source_coords    tuple-like  (x, y) coordinates of the gas source
         :param orientation      float/int   Orientation (deg) of line (0 = North, 90 = East, 180 = South, 270 = West)
-        :param length           float/int   Length of Nadeau line (in pixels). Default = 100
+        :param length           float/int   Length of Nadeau line (in pixels)
         """
+        if source_coords is not None:
+            self.source_coords = source_coords
+
         if length is not None:
             self.nadeau_line_length = length
 
@@ -2369,8 +2373,8 @@ class PyplisWorker:
 
         # Calculate line end coordinates
         orientation_rad = np.deg2rad(self.nadeau_line_orientation)
-        x_coord = int(np.round(source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
-        y_coord = int(np.round(source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+        x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
 
         # Ensure coordinates don't extend beyond image
         if x_coord < 0:
@@ -2384,24 +2388,25 @@ class PyplisWorker:
             y_coord = self.cam_specs.pix_num_y - 1
 
         try:
-            self.nadeau_line = LineOnImage(x0=source_coords[0], y0=source_coords[1], x1=x_coord, y1=y_coord,
+            self.nadeau_line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=x_coord, y1=y_coord,
                                            normal_orientation='right', color='k', line_id='nadeau')
             # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
-            self.nadeau_line.x0 = source_coords[0]
+            self.nadeau_line.x0 = self.source_coords[0]
             self.nadeau_line.x1 = x_coord
-            self.nadeau_line.y0 = source_coords[1]
+            self.nadeau_line.y0 = self.source_coords[1]
             self.nadeau_line.y1 = y_coord
             return self.nadeau_line
         except ValueError as e:
             return None
 
-    def autogenerate_nadeau_line(self, pcs_line):
+    def autogenerate_nadeau_line(self, pcs_line, img_tau):
         """
         Automatically generates the nadeau cross-correlation line based on PCS line
         :param pcs_line pyplis.LineOnImage  Line to use for automatic plume direction determination
+        :param img_tau  pyplis.Img          Line to extract SO2 values from
         """
         # Get line profile
-        profile = pcs_line.get_line_profile(self.img_tau)
+        profile = pcs_line.get_line_profile(img_tau)
 
         # Get index of maximum SO2
         max_idx = np.argmax(profile)
@@ -2423,7 +2428,7 @@ class PyplisWorker:
         orientation = self.calc_line_orientation(line)
 
         # Generate Nadeau line of desired length
-        self.generate_nadeau_line(self.source_coords, orientation=orientation)
+        self.generate_nadeau_line(orientation=orientation)
 
 
     def generate_nadeau_plumespeed(self, img_current, img_next, line):
@@ -3005,6 +3010,10 @@ class PyplisWorker:
                 opt_flow = None
 
             if self.velo_modes['flow_nadeau']:
+                if self.auto_nadeau_line:
+                    self.autogenerate_nadeau_line(self.PCS_lines_all[self.auto_nadeau_pcs], self.img_tau)
+                elif self.nadeau_line is None:
+                    self.generate_nadeau_line()
                 nadeau_plumespeed = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau, self.nadeau_line)
             else:
                 nadeau_plumespeed = None
