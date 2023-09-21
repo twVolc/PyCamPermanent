@@ -126,6 +126,9 @@ class PyplisWorker:
         self.got_cross_corr = False
         self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
         self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
+        self.nadeau_line_orientation = 0                # Orientation of Nadeau line
+        self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3) # Length of Nadeau line
+        self.source_coords = [int(self.cam_specs.pix_num_x/2), int(self.cam_specs.pix_num_x/2)]  # Source coordinates for Nadeau line
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
@@ -2351,9 +2354,77 @@ class PyplisWorker:
 
         return orientation
 
+    def generate_nadeau_line(self, source_coords, orientation=None, length=None):
+        """
+        Generates nadeau line given source coordinates, orientation and length
+        :param source_coords    tuple-like  (x, y) coordinates of the gas source
+        :param orientation      float/int   Orientation (deg) of line (0 = North, 90 = East, 180 = South, 270 = West)
+        :param length           float/int   Length of Nadeau line (in pixels). Default = 100
+        """
+        if length is not None:
+            self.nadeau_line_length = length
+
+        if orientation is not None:
+            self.nadeau_line_orientation = orientation
+
+        # Calculate line end coordinates
+        orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        x_coord = int(np.round(source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
+        y_coord = int(np.round(source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+
+        # Ensure coordinates don't extend beyond image
+        if x_coord < 0:
+            x_coord = 0
+        elif x_coord > self.cam_specs.pix_num_x - 1:
+            x_coord = self.cam_specs.pix_num_x - 1
+
+        if y_coord < 0:
+            y_coord = 0
+        elif y_coord > self.cam_specs.pix_num_y - 1:
+            y_coord = self.cam_specs.pix_num_y - 1
+
+        try:
+            self.nadeau_line = LineOnImage(x0=source_coords[0], y0=source_coords[1], x1=x_coord, y1=y_coord,
+                                           normal_orientation='right', color='k', line_id='nadeau')
+            # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+            self.nadeau_line.x0 = source_coords[0]
+            self.nadeau_line.x1 = x_coord
+            self.nadeau_line.y0 = source_coords[1]
+            self.nadeau_line.y1 = y_coord
+            return self.nadeau_line
+        except ValueError as e:
+            return None
+
     def autogenerate_nadeau_line(self, pcs_line):
-        """Automatically generates the nadeau cross-correlation line based on PCS line"""
-        pass
+        """
+        Automatically generates the nadeau cross-correlation line based on PCS line
+        :param pcs_line pyplis.LineOnImage  Line to use for automatic plume direction determination
+        """
+        # Get line profile
+        profile = pcs_line.get_line_profile(self.img_tau)
+
+        # Get index of maximum SO2
+        max_idx = np.argmax(profile)
+
+        # Get coordinate of maximum SO2 (from index)
+        pcs_line.prepare_coords()
+        coords = [pcs_line.profile_coords[1, max_idx], pcs_line.profile_coords[0, max_idx]]
+
+        # Create Nadeau line (Length won't be correct)
+        line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=coords[0], y1=coords[1],
+                                       normal_orientation='right', color='k', line_id='nadeau')
+        # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+        line.x0 = self.source_coords[0]
+        line.x1 = coords[0]
+        line.y0 = self.source_coords[1]
+        line.y1 = coords[1]
+
+        # Get orientation of line
+        orientation = self.calc_line_orientation(line)
+
+        # Generate Nadeau line of desired length
+        self.generate_nadeau_line(self.source_coords, orientation=orientation)
+
 
     def generate_nadeau_plumespeed(self, img_current, img_next, line):
         """

@@ -4228,13 +4228,16 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                      'nadeau_line_length': int
                      }
         self._cross_corr_recal = tk.IntVar()
-        self._auto_nadeau_line = tk.IntVar()
-        self.auto_nadeau_line = 0
+        self._auto_nadeau_line = tk.BooleanVar()
+        self.auto_nadeau_line = self.pyplis_worker.auto_nadeau_line
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
+        self.source_x = self.pyplis_worker.source_coords[0]
+        self.source_y = self.pyplis_worker.source_coords[1]
         self._nadeau_line_orientation = tk.IntVar()
+        self.nadeau_line_orientation = self.pyplis_worker.nadeau_line_orientation
         self._nadeau_line_length = tk.IntVar()
-        self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3)
+        self.nadeau_line_length = self.pyplis_worker.nadeau_line_length
 
     def gather_vars(self):
         # Set cross-correlation recalibration
@@ -4340,12 +4343,12 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         lab = ttk.Label(frame_coords, text='x')
         lab.grid(row=0, column=0, sticky='e', pady=self.pdy)
         spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_x-1, increment=1,
-                           textvariable=self._source_x, width=4, command=self.update_source_plot)
+                           textvariable=self._source_x, width=4, command=self.update_nad_line_plot)
         spin.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
         lab = ttk.Label(frame_coords, text='y')
         lab.grid(row=0, column=2, sticky='e', pady=self.pdy)
         spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_y-1, increment=1,
-                           textvariable=self._source_y, width=4, command=self.update_source_plot)
+                           textvariable=self._source_y, width=4, command=self.update_nad_line_plot)
         spin.grid(row=0, column=3, sticky='w', padx=self.pdx, pady=self.pdy)
 
         row+=1
@@ -4533,9 +4536,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         except AttributeError:
             pass
         self.source_scat = self.ax_nad.scatter(self.source_x, self.source_y, c='blue')
-        self.update_nad_line_plot(draw=False)
-
-        self.q.put(1)
 
     def update_nad_line_plot(self, draw=True):
         """
@@ -4544,6 +4544,9 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         if not self.auto_nadeau_line:
             self.generate_nadeau_line()
+
+        # Update the source coordinate
+        self.update_source_plot()
 
         # Remove previous plot line then plot new line
         try:
@@ -4601,44 +4604,53 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def generate_nadeau_line(self, orientation_rad=None):
+    def generate_nadeau_line(self, orientation=None):
         """
         Generates nadeau line based on the GUI's settings
-        :param orientation_rad  float   Orientation of the line in radians. 0 is north and angle moves clockwise
+        :param orientation  float/int   Orientation of the line in degrees. 0 is north and angle moves clockwise
         """
         # TODO MAybe this shoould all be moved to PyplisWorker and the line is simply taken from there and plotted
         # TODO by this class.
+        # Use GUI orientation if we aren't passed a value, otherwise we update GUI orientation
+        if orientation is None:
+            orientation = self.nadeau_line_orientation
+        else:
+            self.nadeau_line_orientation = orientation
 
-        # Calculate line end coordinates
-        if orientation_rad is None:
-            orientation_rad = np.deg2rad(self.nadeau_line_orientation)
-        x_coord = int(np.round(self.source_x + (self.nadeau_line_length*np.sin(orientation_rad))))
-        y_coord = int(np.round(self.source_y + (self.nadeau_line_length*np.cos(orientation_rad))))
 
-        # Ensure coordinates don't extend beyond image
-        if x_coord < 0:
-            x_coord = 0
-        elif x_coord > self.cam_specs.pix_num_x - 1:
-            x_coord = self.cam_specs.pix_num_x - 1
+        self.nadeau_line = self.pyplis_worker.generate_nadeau_line((self.source_x, self.source_y), orientation)
 
-        if y_coord < 0:
-            y_coord = 0
-        elif y_coord > self.cam_specs.pix_num_y - 1:
-            y_coord = self.cam_specs.pix_num_y - 1
 
-        try:
-            self.nadeau_line = LineOnImage(x0=self.source_x, y0=self.source_y, x1=x_coord, y1=y_coord,
-                                           normal_orientation='right', color='k', line_id='nadeau')
-            # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
-            self.nadeau_line.x0 = self.source_x
-            self.nadeau_line.x1 = x_coord
-            self.nadeau_line.y0 = self.source_y
-            self.nadeau_line.y1 = y_coord
-        except ValueError as e:
-            pass
-
-        # Update pyplis worker line
-        self.pyplis_worker.nadeau_line = self.nadeau_line
+        # # Calculate line end coordinates
+        #
+        #     orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        # x_coord = int(np.round(self.source_x + (self.nadeau_line_length*np.sin(orientation_rad))))
+        # y_coord = int(np.round(self.source_y + (self.nadeau_line_length*np.cos(orientation_rad))))
+        #
+        # # Ensure coordinates don't extend beyond image
+        # if x_coord < 0:
+        #     x_coord = 0
+        # elif x_coord > self.cam_specs.pix_num_x - 1:
+        #     x_coord = self.cam_specs.pix_num_x - 1
+        #
+        # if y_coord < 0:
+        #     y_coord = 0
+        # elif y_coord > self.cam_specs.pix_num_y - 1:
+        #     y_coord = self.cam_specs.pix_num_y - 1
+        #
+        # try:
+        #     self.nadeau_line = LineOnImage(x0=self.source_x, y0=self.source_y, x1=x_coord, y1=y_coord,
+        #                                    normal_orientation='right', color='k', line_id='nadeau')
+        #     # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+        #     self.nadeau_line.x0 = self.source_x
+        #     self.nadeau_line.x1 = x_coord
+        #     self.nadeau_line.y0 = self.source_y
+        #     self.nadeau_line.y1 = y_coord
+        # except ValueError as e:
+        #     pass
+        #
+        # # Update pyplis worker line
+        # self.pyplis_worker.nadeau_line = self.nadeau_line
 
     def toggle_auto_naduea_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
@@ -4649,7 +4661,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.pyplis_worker.autogenerate_nadeau_line(line)
             self.nadeau_line = self.pyplis_worker.nadeau_line
             # TODO run automatic generation of nadeau line and plot the result
-            self.generate_nadeau_line(orientation_rad)
+            self.generate_nadeau_line(orientation)
 
         else:
             self.update_nad_line_plot(draw=True)
