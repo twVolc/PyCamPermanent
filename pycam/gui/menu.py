@@ -788,16 +788,19 @@ class LoadFrame(LoadSaveProcessingSettings):
             self.reload_config()
 
     def reload_config(self):
+        """Update the GUI with the new config settings"""
         self.load_defaults()
-        self.main_gui.anal_wind.so2_img.load_defaults()
+        self.pyplis_worker.fig_tau.load_defaults()
+        self.pyplis_worker.fig_tau.reload_roi()
+        self.reload_all()
         process_settings.load_defaults()
         plume_bg.load_defaults()
         opti_flow.load_defaults()
         light_dilution.load_defaults()
         cross_correlation.load_defaults()
         doas_fov.load_defaults()
-
         calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
+        self.pyplis_worker.load_sequence(pyplis_worker.config["img_dir"], plot_bg=False)
 
     def reset_pcs_lines(self):
 
