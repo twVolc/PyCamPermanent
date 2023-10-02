@@ -643,6 +643,14 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         self.q.put(1)
 
+    def reload_roi(self):
+        self.rect.remove()
+        # Draw ambient roi
+        crop_X = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_Y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
+                                                        crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
+
     def add_pcs_line(self, line, line_num=None, force_add=True):
         """
         Adds LineOnImage object to plot and updates all relevant objects
