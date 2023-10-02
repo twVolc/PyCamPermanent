@@ -313,10 +313,13 @@ class PyplisWorker:
 
         self.config.update(self.raw_configs[conf_name])
 
-    def apply_config(self):
-        """take items in config file and set them as attributes in pyplis_worker"""
-        for key, value in self.config.items():
-            setattr(self, key, value)
+    def apply_config(self, subset = None):
+        """take items in config dict and set them as attributes in pyplis_worker"""
+        if subset is not None:
+            [setattr(self, key, value) for key, value in self.config.items() if key in subset]
+        else: 
+            [setattr(self, key, value) for key, value in self.config.items()]
+            
 
     def save_config(self, file_path, conf_name):
         """Save the contents of the config attribute to a yml file"""
