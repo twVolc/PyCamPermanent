@@ -760,6 +760,17 @@ class LoadFrame(LoadSaveProcessingSettings):
         # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
         self.load_img_reg(filename=self.img_registration, rerun=False)
 
+    def reload_all(self):
+        """Reruns all load functions to prepare pyplis worker"""
+        self.reset_pcs_lines()
+        self.set_all_pcs_lines()
+
+        # DIL and LD not really used during test analysis, may need checking later
+        self.set_all_dil_lines()
+        self.set_ld_lookups()
+        
+        self.load_img_reg(filename=self.img_registration, rerun=False)
+
     def close_frame(self):
         """CLose window"""
         self.in_frame = False
