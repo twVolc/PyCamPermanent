@@ -2640,7 +2640,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         :return:
         """
         if not self.use_vign_corr:
-            pyplis_worker.use_vign_corr = False
+            pyplis_worker.config['use_vign_corr'] = False
             # Save the old path so we can revert back to it
             if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
                 pyplis_worker.bg_A_path_old = pyplis_worker.bg_A_path
@@ -2649,7 +2649,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
             pyplis_worker.load_BG_img(self.ones_mask, band='B', ones=True)
 
         else:
-            pyplis_worker.use_vign_corr = True
+            pyplis_worker.config['use_vign_corr'] = True
             if pyplis_worker.bg_A_path_old is not None:
                 pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
                 pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
@@ -2657,16 +2657,17 @@ class PlumeBackground(LoadSaveProcessingSettings):
     def gather_vars(self):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
-        pyplis_worker.bg_mode = self.bg_mode
-        pyplis_worker.auto_param_bg = self.auto_param_bg
-        pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_mask_thresh
-        pyplis_worker.ref_check_lower = self.ref_check_lower
-        pyplis_worker.ref_check_upper = self.ref_check_upper
-        pyplis_worker.ref_check_mode = self.ref_check_mode
+        pyplis_worker.config['bg_mode'] = self.bg_mode
+        pyplis_worker.config['auto_param_bg'] = self.auto_param_bg
+        pyplis_worker.config['polyfit_2d_mask_thresh'] = self.polyfit_2d_mask_thresh
+        pyplis_worker.config['ref_check_lower'] = self.ref_check_lower
+        pyplis_worker.config['ref_check_upper'] = self.ref_check_upper
+        pyplis_worker.config['ref_check_mode'] = self.ref_check_mode
 
     def run_process(self, reload_seq=True):
         """Main processing for background modelling and displaying the results"""
         self.gather_vars()
+        pyplis_worker.apply_config(subset = self.vars.keys())
         pyplis_worker.model_background()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
@@ -2785,12 +2786,12 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def close_window(self):
         """Restore current settings"""
-        self.bg_mode = pyplis_worker.bg_mode
-        self.auto_param_bg = pyplis_worker.auto_param_bg
-        self.polyfit_2d_mask_thresh = pyplis_worker.polyfit_2d_mask_thresh
-        self.ref_check_lower = pyplis_worker.ref_check_lower
-        self.ref_check_upper = pyplis_worker.ref_check_upper
-        self.ref_check_mode = pyplis_worker.ref_check_mode
+        self.bg_mode = pyplis_worker.config['bg_mode']
+        self.auto_param_bg = pyplis_worker.config['auto_param_bg']
+        self.polyfit_2d_mask_thresh = pyplis_worker.config['polyfit_2d_mask_thresh']
+        self.ref_check_lower = pyplis_worker.config['ref_check_lower']
+        self.ref_check_upper = pyplis_worker.config['ref_check_upper']
+        self.ref_check_mode = pyplis_worker.config['ref_check_mode']
         self.frame.destroy()
         self.in_frame = False
 
