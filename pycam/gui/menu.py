@@ -766,13 +766,15 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.frame.destroy()
 
     def load_config_file(self):
+        """Load in a config file selected by the user"""
         filename = filedialog.askopenfilename(
             title='Select config file',
             initialdir=self.init_dir)
-        # Need to add condition to account for user pressing cancel
-        self.pyplis_worker.load_config(filename, "user")
+        
+        if len(filename) > 0:
+            self.pyplis_worker.load_config(filename, "user")
 
-        self.reload_config()
+            self.reload_config()
 
     def reload_config(self):
         self.load_defaults()
