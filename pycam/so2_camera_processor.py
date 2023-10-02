@@ -806,9 +806,10 @@ class PyplisWorker:
                               'Background image has not been corrected for dark current.')
 
         # Set variables
-        setattr(self, 'bg_{}'.format(band), img)
+        self.config['bg_{}'.format(band)] = img
         self.generate_vign_mask(img.img, band)
-        setattr(self, 'bg_{}_path'.format(band), bg_path)
+        self.config['bg_{}_path'.format(band)] = bg_path
+        #setattr(self, 'bg_{}_path'.format(band), bg_path)
 
     def save_imgs(self):
         """

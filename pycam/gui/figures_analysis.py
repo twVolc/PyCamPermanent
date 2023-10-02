@@ -2643,8 +2643,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
             pyplis_worker.config['use_vign_corr'] = False
             # Save the old path so we can revert back to it
             if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
-                pyplis_worker.bg_A_path_old = pyplis_worker.bg_A_path
-                pyplis_worker.bg_B_path_old = pyplis_worker.bg_B_path
+                pyplis_worker.bg_A_path_old = pyplis_worker.config['bg_A_path']
+                pyplis_worker.bg_B_path_old = pyplis_worker.config['bg_B_path']
             pyplis_worker.load_BG_img(self.ones_mask, band='A', ones=True)
             pyplis_worker.load_BG_img(self.ones_mask, band='B', ones=True)
 
@@ -3234,43 +3234,44 @@ class ProcessSettings(LoadSaveProcessingSettings):
         Gathers all variables and sets associated objects to the values
         :return:
         """
-        pyplis_worker.plot_iter = self.plot_iter
+        pyplis_worker.config['plot_iter'] = self.plot_iter
         doas_worker.plot_iter = self.plot_iter
-        pyplis_worker.dark_img_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
-        pyplis_worker.cell_cal_dir = self.cell_cal_dir
-        pyplis_worker.cal_type_int = self.cal_type_int
-        pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
+        pyplis_worker.config['dark_img_dir'] = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
+        pyplis_worker.config['cal_type_int'] = self.cal_type_int
+        pyplis_worker.config['use_light_dilution'] = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
-        if pyplis_worker.use_vign_corr:
+        if pyplis_worker.config['use_vign_corr']:
             pyplis_worker.load_BG_img(self.bg_A_path, band='A')
             pyplis_worker.load_BG_img(self.bg_B_path, band='B')
-        pyplis_worker.min_cd = self.min_cd
-        pyplis_worker.img_buff_size = self.img_buff_size
-        pyplis_worker.save_opt_flow = self.save_opt_flow
-        pyplis_worker.time_zone - self.time_zone
+        pyplis_worker.config['min_cd'] = self.min_cd
+        pyplis_worker.config['img_buff_size'] = self.img_buff_size
+        pyplis_worker.config['save_opt_flow'] = self.save_opt_flow
+        pyplis_worker.config['time_zone'] - self.time_zone
 
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
         self.close_window()
+        pyplis_worker.apply_config(subset=self.vars.keys())
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
     def close_window(self):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
-        self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
-        self.bg_A_path = pyplis_worker.bg_A_path
-        self.bg_B_path = pyplis_worker.bg_B_path
-        self.dark_img_dir = pyplis_worker.dark_img_dir
+        self.plot_iter = self.vars['plot_iter'](pyplis_worker.config['plot_iter'])
+        self.bg_A_path = pyplis_worker.config['bg_A_path']
+        self.bg_B_path = pyplis_worker.config['bg_B_path']
+        self.dark_img_dir = pyplis_worker.config['dark_img_dir']
         self.dark_spec_dir = doas_worker.dark_dir
-        self.cell_cal_dir = pyplis_worker.cell_cal_dir
-        self.cal_type_int = pyplis_worker.cal_type_int
-        self.use_light_dilution = int(pyplis_worker.use_light_dilution)
-        self.min_cd = pyplis_worker.min_cd
-        self.img_buff_size = pyplis_worker.img_buff_size
-        self.save_opt_flow = pyplis_worker.save_opt_flow
-        self.time_zone = pyplis_worker.time_zone
+        self.cell_cal_dir = pyplis_worker.config['cell_cal_dir']
+        self.cal_type_int = pyplis_worker.config['cal_type_int']
+        self.use_light_dilution = int(pyplis_worker.config['use_light_dilution'])
+        self.min_cd = pyplis_worker.config['min_cd']
+        self.img_buff_size = pyplis_worker.config['img_buff_size']
+        self.save_opt_flow = pyplis_worker.config['save_opt_flow']
+        self.time_zone = pyplis_worker.config['time_zone']
 
         self.in_frame = False
         self.frame.destroy()
