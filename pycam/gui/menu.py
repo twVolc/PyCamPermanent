@@ -788,6 +788,12 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
 
+    def reset_pcs_lines(self):
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_tau.PCS_lines_list) if v is not None]
+
+        [self.pyplis_worker.fig_tau.del_ica(line_n) for line_n in current_lines]
+
 
 class SaveFrame(LoadSaveProcessingSettings):
     """
