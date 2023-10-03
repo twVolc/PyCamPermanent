@@ -3355,15 +3355,16 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
     def gather_vars(self, message=False):
         """Updates pyplis worker settings"""
-        self.pyplis_worker.doas_cal_adjust_offset = self.doas_cal_adjust_offset
-        self.pyplis_worker.maxrad_doas = self.maxrad_doas
-        self.pyplis_worker.remove_doas_mins = self.remove_doas_mins
-        self.pyplis_worker.doas_recal = self.doas_recal
-        self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
-        self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
-        self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
-        self.pyplis_worker.polyorder_cal = self.polyorder_cal
-        self.pyplis_worker.fix_fov = self.fix_fov
+        self.pyplis_worker.config['doas_cal_adjust_offset'] = self.doas_cal_adjust_offset
+        self.pyplis_worker.config['maxrad_doas'] = self.maxrad_doas
+        self.pyplis_worker.config['remove_doas_mins'] = self.remove_doas_mins
+        self.pyplis_worker.config['doas_recal'] = self.doas_recal
+        self.pyplis_worker.config['doas_fov_recal_mins'] = self.doas_fov_recal_mins
+        self.pyplis_worker.config['doas_fov_recal'] = self.doas_fov_recal
+        self.pyplis_worker.config['max_doas_cam_dif'] = self.max_doas_cam_dif
+        self.pyplis_worker.config['polyorder_cal'] = self.polyorder_cal
+        self.pyplis_worker.config['fix_fov'] = self.fix_fov
+        self.pyplis_worker.apply_config(subset=self.vars) # Not 100% sure if this is needed here or could be moved into the if-statement
         if self.fix_fov:
             self.pyplis_worker.doas_fov_x = self.centre_pix_x
             self.pyplis_worker.doas_fov_y = self.centre_pix_y
@@ -3787,17 +3788,21 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         Closes frame
         :return:
         """
+        # This appears in the self.vars dict and the gather_vars, may be needed here too?
+        self.doas_cal_adjust_offset = self.pyplis_worker.config['doas_cal_adjust_offset']
+
         # Ensure all settings match pyplis worker (if Update settings button hasn't been pressed we don't want to update
         # those settings)
-        self.maxrad_doas = self.pyplis_worker.maxrad_doas
 
-        self.remove_doas_mins = self.pyplis_worker.remove_doas_mins
-        self.doas_recal = self.pyplis_worker.doas_recal
-        self.doas_fov_recal_misn = self.pyplis_worker.doas_fov_recal_mins
-        self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
-        self.fix_fov = self.pyplis_worker.fix_fov
-        self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
-        self.polyorder_cal = self.pyplis_worker.polyorder_cal
+        self.maxrad_doas = self.pyplis_worker.config['maxrad_doas']
+
+        self.remove_doas_mins = self.pyplis_worker.config['remove_doas_mins']
+        self.doas_recal = self.pyplis_worker.config['doas_recal']
+        self.doas_fov_recal_mins = self.pyplis_worker.config['doas_fov_recal_mins']
+        self.doas_fov_recal = self.pyplis_worker.config['doas_fov_recal']
+        self.fix_fov = self.pyplis_worker.config['fix_fov']
+        self.max_doas_cam_dif = self.pyplis_worker.config['max_doas_cam_dif']
+        self.polyorder_cal = self.pyplis_worker.config['polyorder_cal']
         self.update_vars()
 
         self.in_frame = False
