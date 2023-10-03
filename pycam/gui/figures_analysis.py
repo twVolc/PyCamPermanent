@@ -3207,7 +3207,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
         # Update pyplis worker value if requested (done when using submenu selection
         if set_var:
-            pyplis_worker.cell_cal_dir = self.cell_cal_dir
+            pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
 
     def set_cell_cal_dir(self, cal_dir):
         """Directly sets cell calibration directory without filedialog"""
@@ -3215,7 +3215,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
             print('Cannot set calibration directory as requested directory does not exist')
             return
         self.cell_cal_dir = cal_dir
-        pyplis_worker.cell_cal_dir = self.cell_cal_dir
+        pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
@@ -3985,9 +3985,9 @@ class CellCalibFrame:
     @property
     def cal_dir_short(self):
         try:
-            val = '...' + self.pyplis_worker.cell_cal_dir[-50:]
+            val = '...' + self.pyplis_worker.config['cell_cal_dir'][-50:]
         except:
-            val = self.pyplis_worker.cell_cal_dir
+            val = self.pyplis_worker.config['cell_cal_dir']
         return val
 
     @property
