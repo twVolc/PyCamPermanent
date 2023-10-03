@@ -3364,7 +3364,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.config['max_doas_cam_dif'] = self.max_doas_cam_dif
         self.pyplis_worker.config['polyorder_cal'] = self.polyorder_cal
         self.pyplis_worker.config['fix_fov'] = self.fix_fov
-        self.pyplis_worker.apply_config(subset=self.vars) # Not 100% sure if this is needed here or could be moved into the if-statement
+        self.pyplis_worker.apply_config(subset=self.vars.keys()) # Not 100% sure if this is needed here or could be moved into the if-statement
         if self.fix_fov:
             self.pyplis_worker.doas_fov_x = self.centre_pix_x
             self.pyplis_worker.doas_fov_y = self.centre_pix_y
@@ -4194,13 +4194,13 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.main_gui = main_gui
-        self.vars = {'cross_corr_recal': int
-                     }
+        self.vars = {'cross_corr_recal': int}
         self._cross_corr_recal = tk.IntVar()
 
     def gather_vars(self):
         # Set cross-correlation recalibration
-        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+        self.pyplis_worker.config['cross_corr_recal'] = self.cross_corr_recal
+        self.pyplis_worker.apply_config(subset=self.vars.keys())
 
     def generate_frame(self):
         """
@@ -4727,7 +4727,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
             self.pyplis_worker.velo_modes[key] = bool(getattr(self, key))
 
         # Set cross-correlation recalibration
-        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+        self.pyplis_worker.config['cross_corr_recal'] = self.cross_corr_recal
 
         if run:
             self.run_flow()
