@@ -231,7 +231,8 @@ class PyplisWorker:
         self.got_doas_fov = False
         self.got_cal_cell = False
         self._cell_cal_dir = None
-        self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
+        self._cal_series_path = None
+        self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity), 4 = preloaded coefficients
         self.cell_dict_A = {}
         self.cell_dict_B = {}
         self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
@@ -334,6 +335,15 @@ class PyplisWorker:
         """When the cell calibration directory is changed we automatically load it in and process the data"""
         self._cell_cal_dir = value
         self.perform_cell_calibration_pyplis(plot=True)
+
+    @property
+    def cal_series_path(self):
+        return self._cal_series_path
+
+    @cal_series_path.setter
+    def cal_series_path(self, value):
+        self._cal_series_path = value
+        self.load_cal_series(self._cal_series_path)
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
@@ -1950,6 +1960,22 @@ class PyplisWorker:
 
             cal_img.edit_log["gascalib"] = True
 
+        elif self.cal_type == 3:        # Preloaded calibration coefficients from CSV file
+            if self.calibration_series is None:
+                return cal_img
+
+            # Find closest available calibration data point for current image time
+            closest_index = self.calibration_series.index.get_indexer([self.img_A.meta['start_acq']], method='nearest')
+
+            # Use index to retrieve calibration coeffients
+            grad = self.calibration_series.iloc[closest_index]['coeff 0'][0]
+            intercept = self.calibration_series.iloc[closest_index]['coeff 1'][0]
+
+            # Calibrate image
+            cal_img = img * grad
+            if self.doas_cal_adjust_offset:
+                cal_img = cal_img + intercept
+
         return cal_img
 
     def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
@@ -2002,7 +2028,7 @@ class PyplisWorker:
 
     def generate_doas_fov(self):
         """
-        Generates clibpears object from fixed DOAS FOV parameters
+        Generates calibpears object from fixed DOAS FOV parameters
         :return:
         """
         self.calib_pears = DoasCalibData(polyorder=self.polyorder_cal, camera=self.cam,
@@ -2225,6 +2251,42 @@ class PyplisWorker:
         if recal:
             calib_dat.fit_calib_data()
         return calib_dat
+
+    def load_cal_series(self, filename):
+        """
+        Loads calibration coefficient time series from a file, to be used to calibrate optical depths.
+        Note: this calibration will be reliant on the optical depths being generated in the same way as when the
+        calibration series was produced - i.e. same background correction scheme - otherwise results are likely to
+        be erroneous.
+        :param filename str Path to calibration file
+        """
+        _, ext = os.path.splitext(filename)
+        if ext != '.csv':
+            print('PyplisWorker.load_cal_series: Cannot read file {} as it is not in the correct format (.csv)'.format(filename))
+            return
+
+        #Extract number of headers
+        with open(filename, 'r') as f:
+            headerline = f.readline()
+            num_headers = int(headerline.split('=')[-1])
+
+        # Load in csv to dataframe
+        self.calibration_series = pd.read_csv(filename, header=num_headers)
+
+        # Set columns to be numeric
+        self.calibration_series = self.calibration_series.astype({'optical depth (tau)': 'float',
+                                                                  'col density (doas)': 'float',
+                                                                  'col density (error)': 'float',
+                                                                  'coeff 0': 'float',
+                                                                  'coeff 1': 'float',
+                                                                  'MSE': 'float',
+                                                                  'r-squared': 'float'})
+
+        # Convert timepoints to datetime objects (easier to work with than time strings)
+        self.calibration_series['timepoint'] = pd.to_datetime(self.calibration_series['timepoint'])
+
+        # Set timepoint as index (useful for searching for times later) and drop rows that don't contain calibration data
+        self.calibration_series = self.calibration_series.set_index('timepoint').dropna()
 
     def calc_line_dist(self, line_1, line_2):
         """
@@ -3347,12 +3409,15 @@ class PyplisWorker:
             file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
             file.write(self.generate_DOAS_FOV_info())
 
-        coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+        if hasattr(self, 'calibration_series'):
+            full_df = self.calibration_series
+        else:
+            coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
 
-        tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
-        fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
+            tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
+            fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
 
-        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+            full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
 
         full_df.to_csv(path, mode = "a")
 
