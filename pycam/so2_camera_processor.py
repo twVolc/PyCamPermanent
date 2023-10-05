@@ -3409,12 +3409,15 @@ class PyplisWorker:
             file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
             file.write(self.generate_DOAS_FOV_info())
 
-        coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+        if hasattr(self, 'calibration_series'):
+            full_df = self.calibration_series
+        else:
+            coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
 
-        tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
-        fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
+            tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
+            fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
 
-        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+            full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
 
         full_df.to_csv(path, mode = "a")
 
