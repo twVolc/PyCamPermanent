@@ -5754,7 +5754,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         # Only update roi_abs if use_roi is true
         self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
-        self.pyplis_worker.ambient_roi = self.ambient_roi
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
 
         self.q.put(1)
 
@@ -5763,10 +5763,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         Gathers all parameters and sets them to pyplis worker
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.ambient_roi
-        self.pyplis_worker.I0_MIN = self.I0_MIN
-        self.pyplis_worker.tau_thresh = self.tau_thresh
-        self.pyplis_worker.dil_recal_time = self.dil_recal_time
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
+        self.pyplis_worker.config['I0_MIN'] = self.I0_MIN
+        self.pyplis_worker.config['tau_thresh'] = self.tau_thresh
+        self.pyplis_worker.config['dil_recal_time'] = self.dil_recal_time
         self.doas_worker.recal_ld_mins = self.spec_recal_time
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
 
@@ -5780,6 +5780,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             return
 
         self.gather_vars()
+        self.pyplis_worker.apply_config(subset=self.vars.keys())
         self.pyplis_worker.model_light_dilution(draw=draw)
 
         # Reload whole sequence to show updated plots
@@ -5839,10 +5840,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :return:
         """
         # Make sure any non-saved settings are reverted back to pyplis settings
-        self.ambient_roi = self.pyplis_worker.ambient_roi
-        self.I0_MIN = self.pyplis_worker.I0_MIN
-        self.tau_thresh = self.pyplis_worker.tau_thresh
-        self.dil_recal_time = self.pyplis_worker.dil_recal_time
+        self.ambient_roi = self.pyplis_worker.config['ambient_roi']
+        self.I0_MIN = self.pyplis_worker.config['I0_MIN']
+        self.tau_thresh = self.pyplis_worker.config['tau_thresh']
+        self.dil_recal_time = self.pyplis_worker.config['dil_recal_time']
 
         self.in_frame = False
 
