@@ -292,7 +292,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         Update pyplis_worker for all attributes
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.ambient_roi
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
 
         # Update full line list
         self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
