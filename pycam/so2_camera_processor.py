@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
-from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
+from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
 
@@ -320,8 +320,18 @@ class PyplisWorker:
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
             
+    def save_all_pcs(self, path):
+        """Save all the currently loaded/drawn pcs lines to files and update config"""
+        pcs_lines = []
+        for line_n, line in enumerate(self.PCS_lines_all):
+            if line is not None:
+                filename = "pcs_line_{}.txt".format(line_n+1)
+                filepath = os.path.join(path, filename)
+                save_pcs_line(line, filepath)
+                pcs_lines.append(filepath)
+        
+        self.config["pcs_lines"] = pcs_lines
 
-    def save_config(self, file_path, conf_name):
         """Save the contents of the config attribute to a yml file"""
         self.raw_configs[conf_name].update(self.config)
         with open(file_path, "w") as file:
