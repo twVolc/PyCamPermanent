@@ -332,7 +332,10 @@ class PyplisWorker:
         
         self.config["pcs_lines"] = pcs_lines
 
+    def save_config(self, file_path, conf_name="default"):
         """Save the contents of the config attribute to a yml file"""
+        self.save_all_pcs(os.path.dirname(file_path))
+
         self.raw_configs[conf_name].update(self.config)
         with open(file_path, "w") as file:
             yaml.dump(self.raw_configs[conf_name], file)
