@@ -75,6 +75,7 @@ class PyMenu:
         self.submenu_save = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
+        self.submenu_save.add_command(label='Save config file', command=self.save_frame.save_config_file)
 
         # Export
         self.submenu_export = tk.Menu(self.frame, tearoff=0)
@@ -1098,3 +1099,16 @@ class SaveFrame(LoadSaveProcessingSettings):
             if self.reg_ext[self.img_reg] not in filename:
                 filename += self.reg_ext[self.img_reg]
             self.pyplis_worker.img_reg.save_registration(filename, method=self.img_reg)
+
+
+    def save_config_file(self):
+        """Load in a config file selected by the user"""
+        filename = filedialog.asksaveasfilename(
+            title='Save config file',
+            initialdir=self.init_dir,
+            initialfile="process_config",
+            defaultextension=".yml",
+            filetypes = (("yml files","*.yml"),("all files","*.*")))
+        
+        if len(filename) > 0:
+            self.pyplis_worker.save_config(filename)
