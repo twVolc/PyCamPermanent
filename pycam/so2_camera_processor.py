@@ -708,7 +708,8 @@ class PyplisWorker:
             img_dir = filedialog.askdirectory(title='Select image sequence directory', initialdir=self.img_dir)
 
         if len(img_dir) > 0 and os.path.exists(img_dir):
-            self.img_dir = img_dir
+            self.config["img_dir"] = img_dir
+            self.apply_config(subset="img_dir")
         else:
             return
 
