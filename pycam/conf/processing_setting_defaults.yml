@@ -15,6 +15,7 @@ min_cd: 5.0e+16
 plot_iter: 0
 buff_size: 1500
 save_opt_flow: 1
+time_zone: 0
 
 # Start-up object loading
 pcs_lines:
@@ -85,4 +86,5 @@ use_light_dilution_spec: 0
 grid_max_ppmm: 5000
 grid_increment_ppmm: 20
 spec_recal_time: 0
+doas_cal_adjust_offset: 0
 default_cam_geom: ./pycam\conf\cam_geom\villarrica_26-03-2018.txt
