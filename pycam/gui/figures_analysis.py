@@ -1084,6 +1084,7 @@ class TimeSeriesFigure:
         self.style = 'default'
         self.date_fmt = '%HH:%MM'
         self.plot_styles = {'flow_glob': {'ls': 'solid'},
+                            'flow_nadeau': {'ls': 'densely dashdotted'},
                             'flow_raw': {'ls': 'dotted'},
                             'flow_histo': {'ls': 'dashed'},
                             'flow_hybrid': {'ls': 'dashdot'}}
@@ -4233,12 +4234,16 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.auto_nadeau_line = self.pyplis_worker.auto_nadeau_line
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
-        self.source_x = self.pyplis_worker.source_coords[0]
-        self.source_y = self.pyplis_worker.source_coords[1]
+        # self.source_x = self.pyplis_worker.source_coords[0]
+        # self.source_y = self.pyplis_worker.source_coords[1]
+        self.source_x = 361
+        self.source_y = 231
         self._nadeau_line_orientation = tk.IntVar()
-        self.nadeau_line_orientation = self.pyplis_worker.nadeau_line_orientation
+        # self.nadeau_line_orientation = self.pyplis_worker.nadeau_line_orientation
+        self.nadeau_line_orientation = 311
         self._nadeau_line_length = tk.IntVar()
-        self.nadeau_line_length = self.pyplis_worker.nadeau_line_length
+        # self.nadeau_line_length = self.pyplis_worker.nadeau_line_length
+        self.nadeau_line_length = 180
         self._pcs_line = tk.IntVar()
         self.pcs_line = 1
 
@@ -4325,6 +4330,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
+
+
         # ----------------------------------------------
         # Building Nadeau frame
         self.frame_opts_nad = ttk.LabelFrame(self.frame_nadeau, text='Options', relief=tk.RAISED, borderwidth=3)
@@ -4332,6 +4339,12 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         self.frame_fig_nad = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
         self.frame_fig_nad.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_nad_xcorr = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_xcorr.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_nad_res = ttk.Frame(self.frame_nad_xcorr, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_res.pack(side=tk.TOP)
 
         # Make frame for Nadeau options
         row = 0
@@ -4354,7 +4367,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         lab = ttk.Label(self.frame_opts_nad, text='Line orientation:')
         lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=359, increment=1,
-                           textvariable=self._nadeau_line_orientation, width=4, command=self.update_nad_line_plot)
+                           textvariable=self._nadeau_line_orientation, width=4, command=self.toggle_auto_naduea_line)
+                           # textvariable=self._nadeau_line_orientation, width=4, command=self.update_nad_line_plot)
         spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
 
         row+=1
@@ -4423,8 +4437,54 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         toolbar.update()
         self.fig_canvas_nad._tkcanvas.pack(side=tk.TOP)
 
-        self.generate_nadeau_line()
-        self.update_nad_line_plot(draw=True)
+        # -------------------------
+        # Setup results labels
+        row = 0
+        lab = tk.Label(self.frame_nad_res, text='Lag [pixels]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        lab = tk.Label(self.frame_nad_res, text='Lag [distance; m]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        lab = tk.Label(self.frame_nad_res, text='Plume speed [m/s]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+
+        row=0
+        self.lag_pix = tk.Label(self.frame_nad_res, text='N/A')
+        self.lag_pix.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        self.lag_dist = tk.Label(self.frame_nad_res, text='N/A')
+        self.lag_dist.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        self.plume_speed = tk.Label(self.frame_nad_res, text='N/A')
+        self.plume_speed.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        # --------------------
+
+
+
+        # --------------------------------
+        # Build cross correlation plot for Nadeau
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_nad_corr'):
+            # Create figure
+            self.fig_nad_lag, self.ax_nad_lag = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi)
+        self.fig_nad_lag.set_facecolor(fig_face_colour)
+        for child in self.ax_nad_lag:
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_nad_lag[0].set_xlabel('Lag')
+        self.ax_nad_lag[0].set_ylabel('Correlation coefficient')
+        self.ax_nad_lag[0].grid()
+        self.ax_nad_lag[1].set_xlabel('Pixel')
+        self.ax_nad_lag[0].set_ylabel('\u03C4')
+        self.ax_nad_lag[0].grid()
+
+        self.fig_canvas_lag = FigureCanvasTkAgg(self.fig_nad_lag, master=self.frame_nad_xcorr)
+        self.fig_canvas_lag.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_lag.draw()
+
+        # Draw/update all plots on opening of frame
+        self.toggle_auto_naduea_line()
 
     @property
     def cross_corr_recal(self):
@@ -4631,21 +4691,24 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def generate_nadeau_line(self, orientation=None):
+    def generate_nadeau_line(self, orientation=None, length=None):
         """
         Generates nadeau line based on the GUI's settings
         :param orientation  float/int   Orientation of the line in degrees. 0 is north and angle moves clockwise
         """
-        # TODO MAybe this shoould all be moved to PyplisWorker and the line is simply taken from there and plotted
-        # TODO by this class.
         # Use GUI orientation if we aren't passed a value, otherwise we update GUI orientation
         if orientation is None:
             orientation = self.nadeau_line_orientation
         else:
             self.nadeau_line_orientation = orientation
 
+        if length is None:
+            length = self.nadeau_line_length
+        else:
+            self.nadeau_line_length = length
 
-        self.nadeau_line = self.pyplis_worker.generate_nadeau_line(self.source_coords, orientation)
+        # Generate line
+        self.nadeau_line = self.pyplis_worker.generate_nadeau_line(self.source_coords, orientation, length)
 
     def toggle_auto_naduea_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
@@ -4665,6 +4728,13 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.update_pcs_line(draw=False)
             self.update_nad_line_plot(draw=True)
 
+        # Now run cross corrrelation on current images and update plots and results
+        plume_speed, info_dict = self.pyplis_worker.generate_nadeau_plumespeed(self.pyplis_worker.img_tau_prev,
+                                                                               self.pyplis_worker.img_tau,
+                                                                               self.pyplis_worker.nadeau_line)
+        self.update_nadeau_lag(info_dict)
+        self.update_results(plume_speed, info_dict)
+
     def update_pcs_line(self, draw=True):
         """Updates plotting of PCS line if auto_nadeau_line is True, otherwise it removes the line"""
         try:
@@ -4678,6 +4748,45 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.pcs_line_plot = self.ax_nad.plot([line.x0, line.x1], [line.y0, line.y1], 'c-')
 
         if draw == True:
+            self.q.put(1)
+
+    def update_results(self, plume_speed, info_dict):
+        """Updates result labels based on info dictionary"""
+        self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
+        self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
+        self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
+
+    def update_nadeau_lag(self, info_dict, draw=True):
+        """Updates Nadeau lag"""
+        try:
+            self.lag_line_plot.pop(0).remove()
+        except (AttributeError, IndexError):
+            pass
+
+        self.lag_line_plot = self.ax_nad_lag[0].plot(info_dict['lags'], info_dict['coeffs'], 'b-')
+
+        # Lag plots
+        try:
+            for line in self.xsect_plots:
+                line.pop(0).remove()
+        except (AttributeError, IndexError):
+            pass
+
+        self.xsect_plots = [None, None, None]
+        profile_names = ['Current', 'Next', 'Next [aligned]']
+        ls = ['solid', 'dotted', 'solid']
+        colours = ['black', 'red', 'blue']
+        profiles = [info_dict['profile_current'], info_dict['profile_next'], info_dict['profile_next']]
+        x_dat = [np.arange(0, len(profiles[0])),
+                 np.arange(0, len(profiles[0])),
+                 np.arange(0, len(profiles[0])) + info_dict['lag']]
+
+        for i, prof_name in enumerate(profile_names):
+            self.xsect_plots[i] = self.ax_nad_lag[1].plot(x_dat[i], profiles[i], label=profile_names[i],
+                                                          linestyle=ls[i], color=colours[i])
+        self.ax_nad_lag[1].legend()
+
+        if draw:
             self.q.put(1)
 
     def close_frame(self):
@@ -4697,6 +4806,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                 if self.in_frame:
                     self.fig_canvas.draw()
                     self.fig_canvas_nad.draw()
+                    self.fig_canvas_lag.draw()
             else:
                 pass
         except queue.Empty:

@@ -469,7 +469,8 @@ class PyplisWorker:
                           'time': datetime.datetime.now() + datetime.timedelta(hours=72),   # Make sure time is always a time object, as we need to compare this to other time objects. So just set this way in the future
                           'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
                                                           self.cam_specs.pix_num_x], dtype=np.float32)),
-                          'opt_flow': None  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'opt_flow': None,  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'nadeau_plumespeed': None
                           }
                          for x in range(self.img_buff_size)]
 
@@ -854,7 +855,7 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
-    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None):
+    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None, nadeau_plumespeed=None):
         """
         Updates the image buffer and file time buffer
         :param img_tau:     np.array        n x m image matrix of tau image
@@ -877,7 +878,8 @@ class PyplisWorker:
                     'file_B': file_B,
                     'time': copy.deepcopy(self.get_img_time(file_A)),
                     'img_tau': copy.deepcopy(img_tau),
-                    'opt_flow': copy.deepcopy(opt_flow)
+                    'opt_flow': copy.deepcopy(opt_flow),
+                    'nadeau_plumespeed': nadeau_plumespeed
                     }
 
         # If we haven't exceeded buffer size then we simply add new data to buffer
@@ -2444,15 +2446,22 @@ class PyplisWorker:
 
         # Depending on orientation of line we may need to reverse the line profile, to ensure it always starts from source
         orientation = self.calc_line_orientation(line)
-        if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation == 180:
+        if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation >= 180:
             profile_current = profile_current[::-1]
             profile_next = profile_next[::-1]
 
         # Get average distance of pixel in image line profile
         pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
 
-        # Perform cross correlation, generating coeffieicients and finding lag of maximum correlation
-        coeffs = scipy.signal.correlate(profile_next, profile_current)
+        # Perform cross correlation, generating coefficients and finding lag of maximum correlation
+        p = profile_current
+        q = profile_next
+        p = (p - np.mean(p)) / (np.std(p) * len(p))
+        q = (q - np.mean(q)) / (np.std(q))
+
+
+        # coeffs = np.correlate(profile_next, profile_current, 'full')
+        coeffs = np.correlate(p, q, 'full')
         lags = scipy.signal.correlation_lags(len(profile_current), len(profile_next))
         lag = lags[np.argmax(coeffs)]   # Find lag in pixels
 
@@ -2466,7 +2475,15 @@ class PyplisWorker:
         time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
         plume_speed = lag_length / time_step.total_seconds()
 
-        return plume_speed
+        print('Nadeau plume speed (m/s): {:.2f}'.format(plume_speed))
+        info_dict = {'profile_current': profile_current,
+                     'profile_next': profile_next,
+                     'lags': lags,
+                     'coeffs': coeffs,
+                     'lag': lag,
+                     'lag_in_pixels': lag_in_pixels,
+                     'lag_length': lag_length}
+        return plume_speed, info_dict
 
     def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
@@ -2761,6 +2778,26 @@ class PyplisWorker:
                             total_emissions['flow_glob']['veff'].append(vel_glob)
                             total_emissions['flow_glob']['veff_err'].append(vel_glob_err)
 
+                # Nadeau plume speed algorithm
+                if self.velo_modes['flow_nadeau']:
+                    # Calculate emission rate
+                    phi, phi_err = det_emission_rate(cds, nadeau_speed, distarr, cd_err,
+                                                     velo_err=None, pix_dists_err=disterr)
+
+                    # Update results dictionary
+                    res['flow_nadeau']._start_acq.append(img_time)
+                    res['flow_nadeau']._phi.append(phi)
+                    res['flow_nadeau']._phi_err.append(phi_err)
+                    res['flow_nadeau']._velo_eff.append(nadeau_speed)
+                    res['flow_nadeau']._velo_eff_err.append(np.nan)
+
+                    # Add to total emissions
+                    if line_id in lines_total:
+                        total_emissions['flow_nadeau']['phi'].append(phi)
+                        total_emissions['flow_nadeau']['phi_err'].append(phi_err)
+                        total_emissions['flow_nadeau']['veff'].append(nadeau_speed)
+                        total_emissions['flow_nadeau']['veff_err'].append(np.nan)
+
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
                     if flow is not None:
@@ -3014,7 +3051,8 @@ class PyplisWorker:
                     self.autogenerate_nadeau_line(self.PCS_lines_all[self.auto_nadeau_pcs], self.img_tau)
                 elif self.nadeau_line is None:
                     self.generate_nadeau_line()
-                nadeau_plumespeed = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau, self.nadeau_line)
+                nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
+                                                                               self.nadeau_line)
             else:
                 nadeau_plumespeed = None
 
@@ -3047,7 +3085,7 @@ class PyplisWorker:
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
-                                 self.img_B_prev.filename, opt_flow=opt_flow)
+                                 self.img_B_prev.filename, opt_flow=opt_flow, nadeau_plumespeed=nadeau_plumespeed)
 
     def check_buffer_size(self):
         """
@@ -3118,8 +3156,8 @@ class PyplisWorker:
                 img_cal = img_tau
 
             # If we want optical flow output but we don't have it saved we need to reanalyse
-            if buff_dict['opt_flow'] is None:
-                if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+            if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                if buff_dict['opt_flow'] is None:
                     # Try optical flow generation, if it failes because of an index error then the buffer has no
                     # more images and we can't process this image (we must then be at the final image)
                     try:
@@ -3127,11 +3165,27 @@ class PyplisWorker:
                         flow = self.opt_flow
                     except IndexError:
                         continue
+                else:
+                    flow = buff_dict['opt_flow']
             else:
-                flow = buff_dict['opt_flow']
+                flow=None
+
+            # Calculate nadeau plumespeed if we don't have it already
+            if self.velo_modes['flow_nadeau']:
+                if buff_dict['nadeau_plumespeed'] is None:
+                    if self.auto_nadeau_line:
+                        self.autogenerate_nadeau_line(self.PCS_lines_all[self.auto_nadeau_pcs], img_tau)
+                    elif self.nadeau_line is None:
+                        self.generate_nadeau_line()
+                    nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(img_tau, img_buff[i+1]['img_tau'],
+                                                                                   self.nadeau_line)
+                else:
+                    nadeau_plumespeed = buff_dict['nadeau_plumespeed']
+            else:
+                nadeau_plumespeed = None
 
             # Calculate emission rate - don't update plot, and then we will do that at the end, for speed
-            results = self.calculate_emission_rate(img=img_cal, flow=flow, plot=False)
+            results = self.calculate_emission_rate(img=img_cal, flow=flow, nadeau_speed=nadeau_plumespeed, plot=False)
 
         self.fig_series.update_plot()
 
