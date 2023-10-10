@@ -1413,8 +1413,7 @@ class GeomSettings:
 
 
         # Setting start values of variables
-        with open(FileLocator.DEFAULT_GEOM, 'r') as f:
-            self.filename = f.readline()
+        self.filename = self.pyplis_worker.config["default_cam_geom"]
         self.load_instrument_setup(self.filename, show_info=False)
 
     def generate_frame(self):
@@ -1852,10 +1851,9 @@ class GeomSettings:
         """Sets default instrument setup to load on startup"""
         # First save the settings
         self.save_instrument_setup()
-
+        
         # Update default
-        with open(FileLocator.DEFAULT_GEOM, 'w') as f:
-            f.write(self.filename)
+        self.pyplis_worker.config["default_cam_geom"] = self.filename
 
     def draw_geometry(self):
         """Draws geometry through pyplis"""

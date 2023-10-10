@@ -85,3 +85,4 @@ use_light_dilution_spec: 0
 grid_max_ppmm: 5000
 grid_increment_ppmm: 20
 spec_recal_time: 0
+default_cam_geom: ./pycam\conf\cam_geom\villarrica_26-03-2018.txt
