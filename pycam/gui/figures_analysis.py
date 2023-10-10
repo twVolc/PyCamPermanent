@@ -1827,6 +1827,8 @@ class GeomSettings:
         # Get filename to load
         if filepath is None:
             self.filename = filedialog.askopenfilename(initialdir=self.geom_path)
+        else:
+            self.filename = filepath
 
         with open(self.filename, 'r') as f:
             for line in f:
