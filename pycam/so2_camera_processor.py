@@ -332,9 +332,17 @@ class PyplisWorker:
         
         self.config["pcs_lines"] = pcs_lines
 
+    def save_img_reg(self, save_dir):
+        """Save a copy of the currently used image registratioon"""
+        file_path = os.path.join(save_dir, "image_reg")
+        file_path = self.img_reg.save_registration(file_path)
+        self.config["img_registration"] = file_path
+
     def save_config(self, file_path, conf_name="default"):
         """Save the contents of the config attribute to a yml file"""
-        self.save_all_pcs(os.path.dirname(file_path))
+        save_dir = os.path.dirname(file_path)
+        self.save_all_pcs(save_dir)
+        self.save_img_reg(save_dir)
 
         self.raw_configs[conf_name].update(self.config)
         with open(file_path, "w") as file:
@@ -3416,6 +3424,8 @@ class PyplisWorker:
 
     def save_processing_params(self):
         """Saves processing parameters in current processing directory"""
+        # This is likely now redundant code
+
         # Cross correlation save
         if self.got_cross_corr:
             cross_corr_file = os.path.join(self.processed_dir, 'cross_corr_info.txt')
@@ -3653,6 +3663,8 @@ class ImageRegistration:
             pathname = pathname.split('.')[0] + '.pkl'
             with open(pathname, 'wb') as pickle_file:
                 pickle.dump(self.cp_tform, pickle_file, pickle.HIGHEST_PROTOCOL)
+
+        return pathname
 
     def load_registration(self, pathname, img_reg_frame=None, rerun=True):
         """
