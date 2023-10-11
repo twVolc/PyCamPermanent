@@ -1083,11 +1083,12 @@ class TimeSeriesFigure:
         # Plot Options
         self.style = 'default'
         self.date_fmt = '%HH:%MM'
-        self.plot_styles = {'flow_glob': {'ls': 'solid'},
-                            'flow_nadeau': {'ls': 'densely dashdotted'},
-                            'flow_raw': {'ls': 'dotted'},
-                            'flow_histo': {'ls': 'dashed'},
-                            'flow_hybrid': {'ls': 'dashdot'}}
+        self.plot_styles = {'flow_glob': {'ls': 'solid', 'marker': '.', 'colour': 'mediumblue'},
+                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'lime'},
+                            'flow_raw': {'ls': 'dotted', 'marker': '1', 'colour': 'darkorange'},
+                            'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
+                            'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
+                            }
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
 
@@ -1230,17 +1231,19 @@ class TimeSeriesFigure:
                                                marker='.')
                             self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
-                                           color=self.colours[int(self.line_plot)],
-                                           marker=self.marker)
+                                           color=self.plot_styles[mode]['colour'],
+                                           # color=self.colours[int(self.line_plot)],
+                                           marker=None)
                             self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
                                                                                   ls=self.plot_styles[mode]['ls'],
-                                                                                  color=self.colours[
-                                                                                      int(self.line_plot)],
+                                                                                  # color=self.colours[
+                                                                                  #     int(self.line_plot)],
+                                                                                  color=self.plot_styles[mode]['colour'],
                                                                                   lw=1.5,
                                                                                   ymin=0,
                                                                                   date_fmt=self.date_fmt,
                                                                                   label=line_lab,
-                                                                                  marker=self.marker
+                                                                                  marker=None
                                                                                   )
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
