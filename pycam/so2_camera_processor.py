@@ -124,6 +124,7 @@ class PyplisWorker:
                                   'young': [],          # Young plume series list
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
+        self.max_nad_shift = 50                         # Maximum shift (%) for Nadeau cross-correlation (Anything above 50 is probably unrealistic - could cause unexpected results)
         self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
         self.auto_nadeau_pcs = 0                        # Integer for PCS line to be used to generate Nadeau line
         self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
@@ -2433,13 +2434,17 @@ class PyplisWorker:
         self.generate_nadeau_line(orientation=orientation)
 
 
-    def generate_nadeau_plumespeed(self, img_current, img_next, line):
+    def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None):
         """
         Uses two images and the nadeau line to calculate plume speed
         :param  img_current pyplis.Img      Current optical depth (tau) image
         :param  img_next    pyplis.Img      Next optical depth image
         :param  line        LineOnImage     Nadeau line running parallel to plume motion
+        :param  max_shift   Int             Maximum allowed shift of time series (%)
         """
+        if max_shift is not None:
+            self.max_nad_shift = max_shift
+
         # Extract line profiles
         profile_current = line.get_line_profile(img_current)
         profile_next = line.get_line_profile(img_next)
@@ -2453,17 +2458,12 @@ class PyplisWorker:
         # Get average distance of pixel in image line profile
         pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
 
-        # Perform cross correlation, generating coefficients and finding lag of maximum correlation
-        p = profile_current
-        q = profile_next
-        p = (p - np.mean(p)) / (np.std(p) * len(p))
-        q = (q - np.mean(q)) / (np.std(q))
-
-
-        # coeffs = np.correlate(profile_next, profile_current, 'full')
-        coeffs = np.correlate(p, q, 'full')
-        lags = scipy.signal.correlation_lags(len(profile_current), len(profile_next))
-        lag = lags[np.argmax(coeffs)]   # Find lag in pixels
+        # -----------------------------------------------------------------
+        # Pyplis cross-correlation - currently somewhat arbitrarily setting max shift to 50%
+        lag, coeffs, s1_ana, s2_ana, max_coeff_signal, ax, = find_signal_correlation(profile_current, profile_next,
+                                                                                     max_shift_percent=self.max_nad_shift)
+        lags = np.arange(0, len(coeffs))
+        # -----------------------------------------------------------------
 
         # Scale the lag by line orientation (horizontal and vertical lines need no scaling, whilst diagonal lines do
         # since their number of pixels wont match with the length of the line based on horizontal pixel width
