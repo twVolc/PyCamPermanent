@@ -307,7 +307,7 @@ class LoadSaveProcessingSettings:
 
         filename = FileLocator.PROCESS_DEFAULTS
 
-        self.pyplis_worker.save_config(filename, save_extras=False)
+        self.pyplis_worker.save_config(filename, subset=self.vars.keys())
 
         kwargs = {}
         if parent is not None:

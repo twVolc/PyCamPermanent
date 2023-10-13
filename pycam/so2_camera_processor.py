@@ -338,16 +338,26 @@ class PyplisWorker:
         file_path = self.img_reg.save_registration(file_path)
         self.config["img_registration"] = file_path
 
-    def save_config(self, file_path, conf_name="default", save_extras=True):
-        """Save the contents of the config attribute to a yml file"""
-        if (save_extras):
-            save_dir = os.path.dirname(file_path)
-            self.save_all_pcs(save_dir)
-            self.save_img_reg(save_dir)
+    def save_config_plus(self, file_path):
+        """Save extra data associated with config file along with config"""
+        save_dir = os.path.dirname(file_path)
+        self.save_all_pcs(save_dir)
+        self.save_img_reg(save_dir)
 
-        self.raw_configs[conf_name].update(self.config)
+        self.save_config(file_path)
+
+    def save_config(self, file_path, subset=None):
+        """Save the contents of the config attribute to a yml file"""
+
+        # Allows partial update of the specified config file (useful for updating defaults) 
+        if subset is None:
+            self.raw_configs["default"].update(self.config)
+        else:
+            vals = {key: self.config[key] for key in subset if key in self.config.keys()}
+            self.raw_configs["default"].update(vals)
+
         with open(file_path, "w") as file:
-            yaml.dump(self.raw_configs[conf_name], file)
+            yaml.dump(self.raw_configs["default"], file)
 
     @property
     def location(self):
@@ -3169,7 +3179,7 @@ class PyplisWorker:
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         filepath = os.path.join(self.processed_dir, "process_config.yml")
-        self.save_config(filepath)
+        self.save_config_plus(filepath)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True

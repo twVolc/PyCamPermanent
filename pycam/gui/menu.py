@@ -1103,7 +1103,7 @@ class SaveFrame(LoadSaveProcessingSettings):
 
 
     def save_config_file(self):
-        """Load in a config file selected by the user"""
+        """Save a config file and additional data in location selected by the user"""
         filename = filedialog.asksaveasfilename(
             title='Save config file',
             initialdir=self.init_dir,
@@ -1112,4 +1112,4 @@ class SaveFrame(LoadSaveProcessingSettings):
             filetypes = (("yml files","*.yml"),("all files","*.*")))
         
         if len(filename) > 0:
-            self.pyplis_worker.save_config(filename)
+            self.pyplis_worker.save_config_plus(filename)
