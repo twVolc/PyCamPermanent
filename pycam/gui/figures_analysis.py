@@ -4720,16 +4720,21 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # Pass settings to pyplis worker update function
         self.pyplis_worker.update_opt_flow_settings(**settings)
-        self.pyplis_worker.use_multi_gauss = self.use_multi_gauss
+        self.pyplis_worker.config.update(settings)
 
-        # Loop through flow options and set them
-        for key in self.pyplis_worker.velo_modes:
-            self.pyplis_worker.velo_modes[key] = bool(getattr(self, key))
+        self.pyplis_worker.config['use_multi_gauss'] = self.use_multi_gauss
 
         # Set cross-correlation recalibration
         self.pyplis_worker.config['cross_corr_recal'] = self.cross_corr_recal
+        
+        # Loop through flow options and set them
+        for key in self.pyplis_worker.velo_modes:
+            self.pyplis_worker.config[key] = bool(getattr(self, key))
+
+        non_opt_flow_setts = self.vars.keys() - self.settings_vars
 
         if run:
+            self.pyplis_worker.apply_config(subset=non_opt_flow_setts)
             self.run_flow()
 
     def run_flow(self):

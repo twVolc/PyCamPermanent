@@ -394,6 +394,38 @@ class PyplisWorker:
         self.perform_cell_calibration_pyplis(plot=True)
 
     @property
+    def flow_glob(self):
+        return self.velo_modes['flow_glob']
+
+    @flow_glob.setter
+    def flow_glob(self, value):
+        self.velo_modes['flow_glob'] = value
+
+    @property
+    def flow_raw(self):
+        return self.velo_modes['flow_raw']
+
+    @flow_raw.setter
+    def flow_raw(self, value):
+        self.velo_modes['flow_raw'] = value
+
+    @property
+    def flow_histo(self):
+        return self.velo_modes['flow_histo']
+
+    @flow_histo.setter
+    def flow_histo(self, value):
+        self.velo_modes['flow_histo'] = value
+
+    @property
+    def flow_hybrid(self):
+        return self.velo_modes['flow_hybrid']
+
+    @flow_hybrid.setter
+    def flow_hybrid(self, value):
+        self.velo_modes['flow_hybrid'] = value
+
+    @property
     def save_img_aa(self):
         return self.save_dict['img_aa']['save']
 
