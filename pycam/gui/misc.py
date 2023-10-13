@@ -302,14 +302,12 @@ class LoadSaveProcessingSettings:
 
     def set_defaults(self, parent=None):
         """Sets current values as defaults"""
-        # First set this variables
+        # First ensure that values from GUI are in config
         self.gather_vars()
 
-        # Ask user to define filename for saving geometry settings
         filename = FileLocator.PROCESS_DEFAULTS
-        filename_yml = filename.replace('.txt', '.yml')
 
-        self.pyplis_worker.save_config(filename_yml, "default")
+        self.pyplis_worker.save_config(filename, save_extras=False)
 
         kwargs = {}
         if parent is not None:

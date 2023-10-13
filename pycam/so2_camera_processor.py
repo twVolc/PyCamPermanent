@@ -338,11 +338,12 @@ class PyplisWorker:
         file_path = self.img_reg.save_registration(file_path)
         self.config["img_registration"] = file_path
 
-    def save_config(self, file_path, conf_name="default"):
+    def save_config(self, file_path, conf_name="default", save_extras=True):
         """Save the contents of the config attribute to a yml file"""
-        save_dir = os.path.dirname(file_path)
-        self.save_all_pcs(save_dir)
-        self.save_img_reg(save_dir)
+        if (save_extras):
+            save_dir = os.path.dirname(file_path)
+            self.save_all_pcs(save_dir)
+            self.save_img_reg(save_dir)
 
         self.raw_configs[conf_name].update(self.config)
         with open(file_path, "w") as file:
