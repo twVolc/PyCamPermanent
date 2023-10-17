@@ -378,6 +378,7 @@ class PyplisWorker:
         save_dir = os.path.dirname(file_path)
         self.save_all_pcs(save_dir)
         self.save_img_reg(save_dir)
+        self.save_cam_geom(save_dir)
 
         self.save_config(file_path)
 
