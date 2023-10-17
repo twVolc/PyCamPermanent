@@ -301,6 +301,9 @@ class PyplisWorker:
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
 
+        self.geom_dict = {}
+
+
         self.config = {}
         self.raw_configs = {}
         self.load_config(config_path, "default")
@@ -337,6 +340,38 @@ class PyplisWorker:
         file_path = os.path.join(save_dir, "image_reg")
         file_path = self.img_reg.save_registration(file_path)
         self.config["img_registration"] = file_path
+
+    def load_cam_geom(self, filepath):
+        with open(filepath, 'r') as f:
+            for line in f:
+                # Ignore first line
+                if line[0] == '#':
+                    continue
+
+                # Extract key-value pair, remove the newline character from the value, then recast
+                key, value = line.split('=')
+                value = value.replace('\n', '')
+                if key == 'volcano':
+                    self.volcano = value
+                elif key == 'altitude':
+                    self.geom_dict[key] = int(value)
+                else:
+                    self.geom_dict[key] = float(value)
+
+
+    def save_cam_geom(self, filepath):
+        """Save a copy of the currently loaded cam geom"""
+
+        # If the file isn't specified then use a default name
+        if filepath.find(".txt") == -1:
+            filepath = os.path.join(filepath, "cam_geom.txt")
+        
+        # Open file object and write all attributes to it
+        with open(filepath, 'w') as f:
+            f.write('# Geometry setup file\n')
+            f.write('volcano={}\n'.format(self.location))
+            for key, value in self.geom_dict.items():
+                f.write('{}={}\n'.format(key, value))
 
     def save_config_plus(self, file_path):
         """Save extra data associated with config file along with config"""

@@ -1816,11 +1816,7 @@ class GeomSettings:
         self.filename = '{}.txt'.format(self.filename.split('.')[0])
 
         # Open file object and write all attributes to it
-        with open(self.filename, 'w') as f:
-            f.write('# Geometry setup file\n')
-            f.write('volcano={}\n'.format(self.volcano))
-            for key in self.geom_dict:
-                f.write('{}={}\n'.format(key, self.geom_dict[key]))
+        self.pyplis_worker.save_cam_geom(self.filename)
 
     def load_instrument_setup(self, filepath=None, show_info=True):
         """Loads existing instrument setup"""
@@ -1830,21 +1826,8 @@ class GeomSettings:
         else:
             self.filename = filepath
 
-        with open(self.filename, 'r') as f:
-            for line in f:
-                # Ignore first line
-                if line[0] == '#':
-                    continue
-
-                # Extract key-value pair, remove the newline character from the value, then recast
-                key, value = line.split('=')
-                value = value.replace('\n', '')
-                if key == 'volcano':
-                    setattr(self, key, value)
-                elif key == 'altitude':
-                    setattr(self, key, int(value))
-                else:
-                    setattr(self, key, float(value))
+        self.pyplis_worker.load_cam_geom(self.filename)
+        self.volcano = self.pyplis_worker.volcano
 
         # Update geometry settings
         self.update_geom(show_info)
