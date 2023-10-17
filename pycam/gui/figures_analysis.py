@@ -1727,14 +1727,22 @@ class GeomSettings:
 
     def gather_geom(self):
         """Gathers all geometry data and adds it to the dictionary"""
-        for key in self.geom_dict:
-            self.geom_dict[key] = getattr(self, key)
+        for key in self.pyplis_worker.geom_dict:
+            self.pyplis_worker.geom_dict[key] = getattr(self, key)
 
-    def update_geom(self, show_info=True):
+    def spread_geom(self):
+        for key in self.pyplis_worker.geom_dict:
+            setattr(self, key, self.pyplis_worker.geom_dict[key])
+
+    def update_geom(self, show_info=True, toGUI=False):
         """Updates pyplis MeasGeom object with values from this frame"""
         # Update geometry dictionary and pyplis worker camera object
-        self.gather_geom()
-        self.pyplis_worker.update_cam_geom(self.geom_dict)
+        if toGUI:
+            self.spread_geom()
+        else:
+            self.gather_geom()
+    
+        self.pyplis_worker.update_cam_geom(self.pyplis_worker.geom_dict)
 
         # Update measurement setup with location
         self.volcano_search(show_info)
@@ -1830,7 +1838,7 @@ class GeomSettings:
         self.volcano = self.pyplis_worker.volcano
 
         # Update geometry settings
-        self.update_geom(show_info)
+        self.update_geom(show_info, toGUI=True)
 
     def set_default_instrument_setup(self):
         """Sets default instrument setup to load on startup"""
