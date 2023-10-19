@@ -3256,28 +3256,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         if set_var:
             pyplis_worker.config['cal_series_path'] = cal_series_path
 
-    def get_cal_series_path(self, set_var=False):
-        """
-        Gives user options for retrieving calibration coefficients from file
-        :param set_var: bool
-            If true, this will set the pyplis_worker value automatically. This means that this function can be used
-            from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is probably not
-            used anywhere currently
-        """
-        cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(cal_series_path) > 0:
-            self.cal_series_path = cal_series_path
-
-        # Update pyplis worker value if requested (done when using submenu selection
-        if set_var:
-            pyplis_worker.config['cal_series_path'] = cal_series_path
-
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
         bg_file = filedialog.askopenfilename(initialdir=self.dark_img_dir)
