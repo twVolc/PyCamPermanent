@@ -3233,6 +3233,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.config['use_light_dilution'] = bool(self.use_light_dilution)
         doas_worker.dark_dir = self.dark_spec_dir
         if pyplis_worker.config['use_vign_corr']:
+            pyplis_worker.apply_config(subset=["dark_img_dir"])
             pyplis_worker.load_BG_img(self.bg_A_path, band='A')
             pyplis_worker.load_BG_img(self.bg_B_path, band='B')
         pyplis_worker.config['min_cd'] = self.min_cd
