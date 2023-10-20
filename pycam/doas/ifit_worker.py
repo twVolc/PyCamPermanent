@@ -274,6 +274,11 @@ class IFitWorker:
             self.q_spec.queue.clear()
 
     @property
+    def plume_spec_shift(self):
+        """Shifted plume spectrum (to account for issues with spectrometer calibration"""
+        return np.roll(self.plume_spec_corr, self.shift)
+
+    @property
     def start_stray_wave(self):
         return self._start_stray_wave
 
@@ -772,7 +777,7 @@ class IFitWorker:
 
         # Run processing
         #print('IFit worker: Running fit')
-        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift], calc_od=self.ref_spec_used,
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
         #print('IFit worker: Finished fit')
         self.applied_ld_correction = False
@@ -796,7 +801,7 @@ class IFitWorker:
                         self.spec_time - self.spec_time_last_ld >= datetime.timedelta(minutes=self.recal_ld_mins):
 
                     # Process second fit window
-                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr],
+                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift],
                                                        calc_od=self.ref_spec_used,
                                                        fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
                     self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
@@ -806,7 +811,7 @@ class IFitWorker:
                                                                        so2_dat_err=(fit_0.params['SO2'].fit_err,
                                                                                     fit_1.params['SO2'].fit_err),
                                                                        wavelengths=self.wavelengths,
-                                                                       spectra=self.plume_spec_corr,
+                                                                       spectra=self.plume_spec_shift,
                                                                        spec_time=self.spec_time)
                     print('Fit val uncorrected: {}'.format(fit_0.params['SO2'].fit_val))
                     print('Fit val corrected: {}'.format(df_lookup['SO2'][0]))
@@ -823,7 +828,7 @@ class IFitWorker:
                     # TODO I don't think this alone works - the ldf doesn't seem to change the fit result
                     # TODO instead i will still need to run the LD lookup to find so2_best which is the column density value we
                     # TODO are interested in.
-                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_corr, self.ldf_best)
+                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_shift, self.ldf_best)
 
         else:
             self.ldf_best = np.nan
