@@ -2402,12 +2402,15 @@ class PyplisWorker:
         except ValueError as e:
             return None
 
-    def autogenerate_nadeau_line(self, pcs_line, img_tau):
+    def autogenerate_nadeau_line(self, img_tau, pcs_line=None):
         """
         Automatically generates the nadeau cross-correlation line based on PCS line
         :param pcs_line pyplis.LineOnImage  Line to use for automatic plume direction determination
         :param img_tau  pyplis.Img          Line to extract SO2 values from
         """
+        if pcs_line is None:
+            self.PCS_lines_all[self.auto_nadeau_pcs]
+
         # Get line profile
         profile = pcs_line.get_line_profile(img_tau)
 
@@ -2430,8 +2433,8 @@ class PyplisWorker:
         # Get orientation of line
         orientation = self.calc_line_orientation(line)
 
-        # Generate Nadeau line of desired length
-        self.generate_nadeau_line(orientation=orientation)
+        # Generate Nadeau line of desired length and return that value
+        return self.generate_nadeau_line(orientation=orientation)
 
 
     def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None):
@@ -3048,7 +3051,7 @@ class PyplisWorker:
 
             if self.velo_modes['flow_nadeau']:
                 if self.auto_nadeau_line:
-                    self.autogenerate_nadeau_line(self.PCS_lines_all[self.auto_nadeau_pcs], self.img_tau)
+                    self.autogenerate_nadeau_line(self.img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
                 elif self.nadeau_line is None:
                     self.generate_nadeau_line()
                 nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
@@ -3174,7 +3177,7 @@ class PyplisWorker:
             if self.velo_modes['flow_nadeau']:
                 if buff_dict['nadeau_plumespeed'] is None:
                     if self.auto_nadeau_line:
-                        self.autogenerate_nadeau_line(self.PCS_lines_all[self.auto_nadeau_pcs], img_tau)
+                        self.autogenerate_nadeau_line(img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
                     elif self.nadeau_line is None:
                         self.generate_nadeau_line()
                     nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(img_tau, img_buff[i+1]['img_tau'],

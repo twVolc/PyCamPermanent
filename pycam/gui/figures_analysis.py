@@ -4226,8 +4226,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.main_gui = main_gui
         self.vars = {'cross_corr_recal': int,
                      'auto_nadeau_line:': int,
-                     # 'source_x': int,
-                     # 'source_y': int,
                      'source_coords': list,
                      'nadeau_line_orientation': int,
                      'nadeau_line_length': int,
@@ -4239,10 +4237,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.auto_nadeau_line = self.pyplis_worker.auto_nadeau_line
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
-        # self.source_x = self.pyplis_worker.source_coords[0]
-        # self.source_y = self.pyplis_worker.source_coords[1]
-        self.source_x = 361
-        self.source_y = 231
+        self.source_coords = [361, 231]
         self._nadeau_line_orientation = tk.IntVar()
         # self.nadeau_line_orientation = self.pyplis_worker.nadeau_line_orientation
         self.nadeau_line_orientation = 311
@@ -4255,10 +4250,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.auto_nadeau_pcs = 1
 
     def gather_vars(self):
-        # Set cross-correlation recalibration
-        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
-
-
         # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
         for key in self.vars:
             self.pyplis_worker.config[key] = getattr(self, key)
@@ -4339,7 +4330,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         toolbar.update()
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
-
 
 
         # ----------------------------------------------
@@ -4479,8 +4469,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.plume_speed.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
         # --------------------
 
-
-
         # --------------------------------
         # Build cross correlation plot for Nadeau
         # Make empty figure if we don't have a figure to use
@@ -4525,17 +4513,15 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @auto_nadeau_line.setter
     def auto_nadeau_line(self, value):
         self._auto_nadeau_line.set(value)
-        self.pyplis_worker.auto_nadeau_line = value
 
     @property
     def auto_nadeau_pcs(self):
         """Index of PCS line to be used for autogeneration of Nadeau line"""
-        return self._auto_nadeau_pcs.get()
+        return self._auto_nadeau_pcs.get() - 1  # Adjust for 0-indexing when retrieving this value
 
     @auto_nadeau_pcs.setter
     def auto_nadeau_pcs(self, value):
-        self._auto_nadeau_pcs.set(value)
-        self.pyplis_worker.auto_nadeau_pcs = value - 1  # Adjust for 0-indexing
+        self._auto_nadeau_pcs.set(value + 1)    # Adjust for 0-indexing in PyplisWorker
 
     @property
     def nadeau_line_orientation(self):
@@ -4547,7 +4533,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @nadeau_line_orientation.setter
     def nadeau_line_orientation(self, value):
         self._nadeau_line_orientation.set(value)
-        self.pyplis_worker.nadeau_line_orientation = value
 
     @property
     def nadeau_line_length(self):
@@ -4559,7 +4544,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @nadeau_line_length.setter
     def nadeau_line_length(self, value):
         self._nadeau_line_length.set(value)
-        self.pyplis_worker.nadeau_line_length = value
 
     @property
     def max_nad_shift(self):
@@ -4571,7 +4555,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @max_nad_shift.setter
     def max_nad_shift(self, value):
         self._max_nad_shift.set(value)
-        self.pyplis_worker.max_nad_shift = value
 
     @property
     def source_x(self):
@@ -4581,7 +4564,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @source_x.setter
     def source_x(self, value):
         self._source_x.set(value)
-        self.pyplis_worker.source_coords[0] = value
 
     @property
     def source_y(self):
@@ -4591,14 +4573,13 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @source_y.setter
     def source_y(self, value):
         self._source_y.set(value)
-        self.pyplis_worker.source_coords[1] = value
 
     @property
     def source_coords(self):
         """
         Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
         """
-        return (self._source_x.get(), self._source_y.get())
+        return [self._source_x.get(), self._source_y.get()]
 
     @source_coords.setter
     def source_coords(self, value):
@@ -4607,7 +4588,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                 self._source_x.set(value[0])
                 self._source_y.set(value[1])
             else:
-                raise  IndexError
+                raise IndexError
         except (IndexError, TypeError):
             print('Error when attempting to set gas source coordinates. Aborting setting.\n'
                   'Expected list with length 2, got type: {}'.format(type(value)))
@@ -4664,9 +4645,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         Updates drawing of Nadeau cross-correlation line
         :param draw bool    If True, the canvas is asked to be drawn
         """
-        if not self.auto_nadeau_line:
-            self.generate_nadeau_line()
-
         # Update the source coordinate
         self.update_source_plot()
 
@@ -4728,48 +4706,26 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def generate_nadeau_line(self, orientation=None, length=None):
-        """
-        Generates nadeau line based on the GUI's settings
-        :param orientation  float/int   Orientation of the line in degrees. 0 is north and angle moves clockwise
-        """
-        # Use GUI orientation if we aren't passed a value, otherwise we update GUI orientation
-        if orientation is None:
-            orientation = self.nadeau_line_orientation
-        else:
-            self.nadeau_line_orientation = orientation
-
-        if length is None:
-            length = self.nadeau_line_length
-        else:
-            self.nadeau_line_length = length
-
-        # Generate line
-        self.nadeau_line = self.pyplis_worker.generate_nadeau_line(self.source_coords, orientation, length)
-
     def run_nadeau_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
-        # Update pyplis worker
-        self.pyplis_worker.auto_nadeau_line = self.auto_nadeau_line
+        # Update pyplis_worker config
+        self.gather_vars()
+
+        # Apply config to pyplis_worker
+        self.pyplis_worker.apply_config(subset=self.vars.keys())
 
         # If auto we automate line generation
+        self.update_pcs_line(draw=False)
         if self.auto_nadeau_line:
-            self.pyplis_worker.source_coords = self.source_coords
-            self.pyplis_worker.nadeau_line_length = self.nadeau_line_length
-            self.update_pcs_line(draw=False)
-            self.pyplis_worker.autogenerate_nadeau_line(self.pyplis_worker.PCS_lines_all[self.auto_nadeau_pcs - 1],
-                                                        self.pyplis_worker.img_tau)
-            self.nadeau_line = self.pyplis_worker.nadeau_line
-            self.update_nad_line_plot(draw=False)
+            self.nadeau_line = self.pyplis_worker.autogenerate_nadeau_line(self.pyplis_worker.img_tau)
         else:
-            self.update_pcs_line(draw=False)
-            self.update_nad_line_plot(draw=False)
+            self.nadeau_line = self.pyplis_worker.generate_nadeau_line()
+        self.update_nad_line_plot(draw=False)
 
-        # Now run cross corrrelation on current images and update plots and results
+        # Now run cross correlation on current images and update plots and results
         plume_speed, info_dict = self.pyplis_worker.generate_nadeau_plumespeed(self.pyplis_worker.img_tau_prev,
                                                                                self.pyplis_worker.img_tau,
-                                                                               self.pyplis_worker.nadeau_line,
-                                                                               max_shift=self.max_nad_shift)
+                                                                               self.pyplis_worker.nadeau_line)
         self.update_nadeau_lag(info_dict, draw=True)
         self.update_results(plume_speed, info_dict)
 
@@ -4782,7 +4738,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Try to draw PCS line if using auto_nadeau line
         if self.auto_nadeau_line:
-            line = self.pyplis_worker.PCS_lines_all[self.auto_nadeau_pcs - 1]
+            line = self.pyplis_worker.PCS_lines_all[self.auto_nadeau_pcs]
             self.pcs_line_plot = self.ax_nad.plot([line.x0, line.x1], [line.y0, line.y1], 'c-')
 
         if draw == True:
@@ -4845,6 +4801,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         Closes frame and makes sure current values are correct
         :return:
         """
+        # UPDATE CURRENT SETTINGS FROM CONFIG FILE
+        for key in self.vars.keys():
+            setattr(self, key, self.pyplis_worker.config[key])
+
         self.in_frame = False
         # Close frame
         self.frame.destroy()
