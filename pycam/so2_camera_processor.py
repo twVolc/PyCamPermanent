@@ -3056,6 +3056,12 @@ class PyplisWorker:
                     self.generate_nadeau_line()
                 nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
                                                                                self.nadeau_line)
+                if plot:
+                    self.fig_cross_corr.nadeau_line = self.nadeau_line
+                    self.fig_cross_corr.update_pcs_line(draw=False)
+                    self.fig_cross_corr.update_nad_line_plot(draw=False)
+                    self.fig_cross_corr.update_nadeau_lag(info_dict, draw=True)
+                    self.fig_cross_corr.update_results(nadeau_plumespeed, info_dict)
             else:
                 nadeau_plumespeed = None
 
