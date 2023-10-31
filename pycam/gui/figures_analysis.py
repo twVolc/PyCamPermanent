@@ -640,7 +640,7 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         # Only update roi_abs if use_roi is true
         self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
-        self.gather_vars()
+        self.gather_vars(update_pyplis=True)
 
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
@@ -2663,8 +2663,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def run_process(self, reload_seq=True):
         """Main processing for background modelling and displaying the results"""
-        self.gather_vars()
-        pyplis_worker.apply_config(subset = self.vars.keys())
+        self.gather_vars(update_pyplis=True)
         pyplis_worker.model_background()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
