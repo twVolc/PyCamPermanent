@@ -287,12 +287,15 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         self.load_defaults()
 
-    def gather_vars(self):
+    def gather_vars(self, update_pyplis=False):
         """
         Update pyplis_worker for all attributes
         :return:
         """
         self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
+
+        if update_pyplis:
+            pyplis_worker.apply_config(subset=self.vars.keys())
 
         # Update full line list
         self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
@@ -2645,7 +2648,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
                 pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
                 pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
 
-    def gather_vars(self):
+    def gather_vars(self, update_pyplis=False):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
         pyplis_worker.config['bg_mode'] = self.bg_mode
@@ -2654,6 +2657,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
         pyplis_worker.config['ref_check_lower'] = self.ref_check_lower
         pyplis_worker.config['ref_check_upper'] = self.ref_check_upper
         pyplis_worker.config['ref_check_mode'] = self.ref_check_mode
+
+        if update_pyplis:
+            pyplis_worker.apply_config(subset = self.vars.keys())
 
     def run_process(self, reload_seq=True):
         """Main processing for background modelling and displaying the results"""
@@ -5805,7 +5811,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         self.q.put(1)
 
-    def gather_vars(self):
+    def gather_vars(self, update_pyplis=False):
         """
         Gathers all parameters and sets them to pyplis worker
         :return:
@@ -5816,6 +5822,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self.pyplis_worker.config['dil_recal_time'] = self.dil_recal_time
         self.doas_worker.recal_ld_mins = self.spec_recal_time
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+
+        if update_pyplis:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""
