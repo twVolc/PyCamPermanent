@@ -5834,8 +5834,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             self.frame.attributes('-topmost', 0)
             return
 
-        self.gather_vars()
-        self.pyplis_worker.apply_config(subset=self.vars.keys())
+        self.gather_vars(update_pyplis=True)
         self.pyplis_worker.model_light_dilution(draw=draw)
 
         # Reload whole sequence to show updated plots
