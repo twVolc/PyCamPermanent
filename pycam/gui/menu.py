@@ -802,7 +802,9 @@ class LoadFrame(LoadSaveProcessingSettings):
         cross_correlation.load_defaults()
         doas_fov.load_defaults()
         calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
-        self.pyplis_worker.load_sequence(pyplis_worker.config["img_dir"], plot_bg=False)
+
+        self.pyplis_worker.apply_config()
+        self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
 
     def reset_pcs_lines(self):
 
