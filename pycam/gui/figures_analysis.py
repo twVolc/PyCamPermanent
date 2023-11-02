@@ -4249,10 +4249,14 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self._auto_nadeau_pcs = tk.IntVar()
         self.auto_nadeau_pcs = 1
 
-    def gather_vars(self):
+    def gather_vars(self, apply_config=False):
         # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
         for key in self.vars:
             self.pyplis_worker.config[key] = getattr(self, key)
+
+        # Apply the config if requested
+        if apply_config:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
 
     def generate_frame(self):
         """
@@ -4709,10 +4713,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     def run_nadeau_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
         # Update pyplis_worker config
-        self.gather_vars()
-
-        # Apply config to pyplis_worker
-        self.pyplis_worker.apply_config(subset=self.vars.keys())
+        self.gather_vars(apply_config=True)
 
         # If auto we automate line generation
         self.update_pcs_line(draw=False)
