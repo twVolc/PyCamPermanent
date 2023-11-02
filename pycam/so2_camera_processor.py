@@ -374,6 +374,8 @@ class PyplisWorker:
             for key, value in self.geom_dict.items():
                 f.write('{}={}\n'.format(key, value))
 
+        self.config["default_cam_geom"] = filepath
+
     def save_config_plus(self, file_path):
         """Save extra data associated with config file along with config"""
         save_dir = os.path.dirname(file_path)
