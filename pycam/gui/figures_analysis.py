@@ -5498,6 +5498,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             use_new_window = False
         self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num, use_new_window=use_new_window)
         setattr(self, 'grid_{}_path'.format(grid_num), grid_path)
+        self.pyplis_worker.config["ld_lookup_{}".format(grid_num+1)] = grid_path
         if self.in_frame:
             getattr(self, 'name_grid_{}'.format(grid_num)).configure(text=getattr(self,
                                                                                   'grid_{}_path_short'.format(grid_num)))
