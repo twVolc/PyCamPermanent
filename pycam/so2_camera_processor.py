@@ -376,12 +376,32 @@ class PyplisWorker:
 
         self.config["default_cam_geom"] = filepath
 
+    def save_doas_params(self):
+
+        # names in doas/ifit do not always correspond to names in config file,
+        # so dict below provides translation.
+        # Keys are names in config file, Values are doas_worker attribute names
+        doas_params = {
+            "spec_dir": "spec_dir",
+            "dark_spec_dir": "dark_dir",
+            "ILS_path": "ils_path",
+            "use_light_dilution_spec": "corr_light_dilution",
+            "grid_max_ppmm": "grid_max_ppmm",
+            "grid_increment_ppmm": "grid_increment_ppmm",
+            "spec_recal_time": "recal_ld_mins"
+        }
+        
+        current_params = {key: getattr(self.doas_worker, value)
+                          for key, value in doas_params.items()}
+        self.config.update(current_params)
+
     def save_config_plus(self, file_path):
         """Save extra data associated with config file along with config"""
         save_dir = os.path.dirname(file_path)
         self.save_all_pcs(save_dir)
         self.save_img_reg(save_dir)
         self.save_cam_geom(save_dir)
+        self.save_doas_params()
 
         self.save_config(file_path)
 
