@@ -3292,6 +3292,10 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.config['img_buff_size'] = self.img_buff_size
         pyplis_worker.config['save_opt_flow'] = self.save_opt_flow
         pyplis_worker.config['time_zone'] - self.time_zone
+        if pyplis_worker.config["use_vign_corr"]:
+            pyplis_worker.apply_config(subset=["dark_img_dir"])
+            pyplis_worker.load_BG_img(self.bg_A_path, band='A')
+            pyplis_worker.load_BG_img(self.bg_B_path, band='B')
 
     def save_close(self):
         """Gathers all variables and then closes"""
