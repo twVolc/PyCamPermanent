@@ -5063,7 +5063,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                      'I0_MIN': int,
                      'tau_thresh': float,
                      'dil_recal_time': int,     # Time [minutes] until recalibration of light dilution
-                     'use_ligh_dilution_spec': int,
+                     'use_light_dilution_spec': int,
                      'grid_max_ppmm': int,
                      'grid_increment_ppmm': int,
                      'spec_recal_time': int}
