@@ -762,15 +762,10 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.load_img_reg(filename=self.img_registration, rerun=False)
 
     def reload_all(self):
-        """Reruns all load functions to prepare pyplis worker"""
+        """Reruns all load functions to prepare pyplis worker after config loaded"""
         self.reset_pcs_lines()
-        self.set_all_pcs_lines()
-
-        # DIL and LD not really used during test analysis, may need checking later
-        self.set_all_dil_lines()
-        self.set_ld_lookups()
-        
-        self.load_img_reg(filename=self.img_registration, rerun=False)
+        self.reset_dil_lines()
+        self.load_all()
 
     def close_frame(self):
         """CLose window"""
@@ -809,10 +804,17 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.doas_worker.load_dir(prompt=False, plot=True)
 
     def reset_pcs_lines(self):
+        """Reset current PCS lines"""
 
         current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_tau.PCS_lines_list) if v is not None]
-
         [self.pyplis_worker.fig_tau.del_ica(line_n) for line_n in current_lines]
+
+    def reset_dil_lines(self):
+        """Reset current DIL lines"""
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_dilution.lines_pyplis) if v is not None]
+        [self.pyplis_worker.fig_dilution.del_line(line_n) for line_n in current_lines]
+        self.pyplis_worker.fig_dilution.current_line = 1
 
 
 class SaveFrame(LoadSaveProcessingSettings):
