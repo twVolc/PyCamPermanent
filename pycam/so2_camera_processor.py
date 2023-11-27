@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
-from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line
+from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
 
@@ -336,6 +336,17 @@ class PyplisWorker:
         
         self.config["pcs_lines"] = pcs_lines
 
+    def save_all_dil(self, path):
+        dil_lines = []
+        for line_n, line in enumerate(self.fig_dilution.lines_pyplis):
+            if line is not None:
+                filename = "dil_line_{}.txt".format(line_n+1)
+                filepath = os.path.join(path, filename)
+                save_light_dil_line(line, filepath)
+                dil_lines.append(filepath)
+
+        self.config["dil_lines"] = dil_lines
+
     def save_img_reg(self, save_dir):
         """Save a copy of the currently used image registratioon"""
         file_path = os.path.join(save_dir, "image_reg")
@@ -399,6 +410,7 @@ class PyplisWorker:
         """Save extra data associated with config file along with config"""
         save_dir = os.path.dirname(file_path)
         self.save_all_pcs(save_dir)
+        self.save_all_dil(save_dir)
         self.save_img_reg(save_dir)
         self.save_cam_geom(save_dir)
         self.save_doas_params()
