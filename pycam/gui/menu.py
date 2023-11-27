@@ -542,7 +542,6 @@ class LoadFrame(LoadSaveProcessingSettings):
     @pcs_lines.setter
     def pcs_lines(self, lines):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        #lines = value.split(self.sep)
         for i, line in enumerate(lines):
             if i < self.num_pcs_lines:
                 if line == '':
@@ -562,13 +561,13 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     @property
     def dil_lines(self):
-        return self.sep.join([line for line in self._dil_lines if line != self.no_line])
+        return [line for line in self._dil_lines if line != self.no_line]
 
     @dil_lines.setter
     def dil_lines(self, value):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
-        for i, line in enumerate(lines):
+
+        for i, line in enumerate(value):
             if i < self.num_dil_lines:
                 if line == '':
                     line = self.no_line
