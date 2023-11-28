@@ -5321,7 +5321,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.ax_vel.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
-        self.img_vel = self.pyplis_worker.velo_img
+        try:
+            self.img_vel = self.pyplis_worker.velo_img
+        except AttributeError:
+            self.gather_vars(run=False)
+            self.pyplis_worker.generate_opt_flow(plot=False)
+            self.img_vel = self.pyplis_worker.velo_img
         # self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
         #                                vmax=0.5, aspect='auto')
         self.img_vel.show_img(ax=self.ax_vel, tit='Optical flow velocities', cbar=False, cmap='Greens')
