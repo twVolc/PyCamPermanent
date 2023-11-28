@@ -953,7 +953,8 @@ class PyplisWorker:
         # Set variables
         setattr(self, 'bg_{}'.format(band), img)
         self.generate_vign_mask(img.img, band)
-        self.config['bg_{}_path'.format(band)] = bg_path
+        if not ones:
+            self.config['bg_{}_path'.format(band)] = bg_path
 
     def save_imgs(self):
         """
@@ -1965,6 +1966,13 @@ class PyplisWorker:
                     if img_A.edit_log['vigncorr']:
                         img_A.edit_log['vigncorr'] = False
                         img_B.edit_log['vigncorr'] = False
+
+                    # If vignette correction is not used then the bg images will not have the same properties
+                    # as the plume images (i.e. not dark corrected), so need to ensure that they are consistent.
+                    if not self.use_vign_corr:
+                        self.update_meta(self.bg_A, img_A)
+                        self.update_meta(self.bg_B, img_B)
+
                     tau_A = self.plume_bg_A.get_tau_image(img_A, self.bg_A)
                     tau_B = self.plume_bg_B.get_tau_image(img_B, self.bg_B)
 

@@ -2647,6 +2647,10 @@ class PlumeBackground(LoadSaveProcessingSettings):
             if pyplis_worker.bg_A_path_old is not None:
                 pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
                 pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
+            else:
+                pyplis_worker.load_BG_img(pyplis_worker.bg_A_path, band='A')
+                pyplis_worker.load_BG_img(pyplis_worker.bg_B_path, band='B')
+
 
     def gather_vars(self, update_pyplis=False):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
@@ -3296,6 +3300,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
             pyplis_worker.apply_config(subset=["dark_img_dir"])
             pyplis_worker.load_BG_img(self.bg_A_path, band='A')
             pyplis_worker.load_BG_img(self.bg_B_path, band='B')
+        else:
+            pyplis_worker.load_BG_img(FileLocator.ONES_MASK, band='A', ones=True)
+            pyplis_worker.load_BG_img(FileLocator.ONES_MASK, band='B', ones=True)
 
     def save_close(self):
         """Gathers all variables and then closes"""
@@ -5779,8 +5786,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         """Deletes line"""
         # Get line
         try:
-            self.lines_A[idx].pop(0).remove()
-            self.lines_A[idx] = None
+            if self.in_frame:
+                self.lines_A[idx].pop(0).remove()
+                self.lines_A[idx] = None
             self.lines_pyplis[idx] = None
         except AttributeError:
             pass
