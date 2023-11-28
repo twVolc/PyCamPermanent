@@ -4649,6 +4649,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         Updates drawing of Nadeau cross-correlation line
         :param draw bool    If True, the canvas is asked to be drawn
         """
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'ax_nad'):
+            return
+
         # Update the source coordinate
         self.update_source_plot()
 
@@ -4747,12 +4751,20 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
     def update_results(self, plume_speed, info_dict):
         """Updates result labels based on info dictionary"""
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'lag_pix'):
+            return
+
         self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
         self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
         self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
 
     def update_nadeau_lag(self, info_dict, draw=True):
         """Updates Nadeau lag"""
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'ax_nad_lag'):
+            return
+
         try:
             self.lag_line_plot.pop(0).remove()
             self.lag_line_peak.pop(0).remove()
