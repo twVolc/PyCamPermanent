@@ -1095,7 +1095,7 @@ class TimeSeriesFigure:
         self.style = 'default'
         self.date_fmt = '%HH:%MM'
         self.plot_styles = {'flow_glob': {'ls': 'solid', 'marker': '.', 'colour': 'mediumblue'},
-                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'lime'},
+                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'silver'},
                             'flow_raw': {'ls': 'dotted', 'marker': '1', 'colour': 'darkorange'},
                             'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
                             'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
