@@ -4789,9 +4789,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if not hasattr(self, 'lag_pix'):
             return
 
-        self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
-        self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
-        self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
+        if self.in_frame:   # Need this otherwise we hit an error with trying to update an GUI object that isn't there
+            self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
+            self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
+            self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
 
     def update_nadeau_lag(self, info_dict, draw=True):
         """Updates Nadeau lag"""
