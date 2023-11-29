@@ -87,7 +87,7 @@ def create_video(directory=None, band='on', save_dir=None, fps=60):
     """
     Generates video from image sequence.
     :param directory: str   Directory to take images from
-    :param band: str        'on' or 'off' band to tgenerate video for
+    :param band: str        'on' or 'off' band to generate video for
     :param save_dir: str    Save directory of video
     :return:
     """
@@ -105,23 +105,22 @@ def create_video(directory=None, band='on', save_dir=None, fps=60):
 
     # Setup video writer
     frame_size = (int(cam_spec.pix_num_x), int(cam_spec.pix_num_y))
-    # frame_size = (int(cam_spec.pix_size_y), int(cam_spec.pix_size_x))
     start_datetime = band_files[0].split('_')[cam_spec.file_date_loc]
     end_datetime = band_files[-1].split('_')[cam_spec.file_date_loc]
 
     # Setup filename to save to
     if save_dir is None:
         save_dir = directory
-    filename = '{}/{}_{}_{}.mp4'.format(save_dir, start_datetime, end_datetime, band_str)
-    filename = '{}/{}_{}_{}.avi'.format(save_dir, start_datetime, end_datetime, band_str)
+    videoname = '{}/{}_{}_{}.avi'.format(save_dir, start_datetime, end_datetime, band_str)
 
     # Setup video writer object
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    # fourcc = cv2.VideoWriter_fourcc(*'MPEG')
-    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    # fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-    out = cv2.VideoWriter(filename, fourcc, fps, frame_size, 0)
+    out = cv2.VideoWriter(videoname, fourcc, fps, frame_size, 0)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    pos = (15, 20)
+    colour = (255,255,255)
+    colour_bg = (0,0,0)
 
     # Loop through image files, loading them then writing them to the video object
     for i, filename in enumerate(band_files):
@@ -131,13 +130,18 @@ def create_video(directory=None, band='on', save_dir=None, fps=60):
         img = np.array(cv2.imread(file_path, -1))
         img = np.round((img / ((2**cam_spec.bit_depth)-1) * 255))
         img = np.array(img, dtype=np.uint8)
-        # img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        # Add frame to image
+        # Write filename to frame
+        text_size, _ = cv2.getTextSize(filename, font, font_scale, 1)
+        text_w, text_h = text_size
+        cv2.rectangle(img, pos, (pos[0] + text_w, pos[1] + int(text_h*1.5)), colour_bg, -1)
+        cv2.putText(img, filename, (pos[0], int(pos[1] + text_h + font_scale - 1)), font, font_scale, colour, 1, cv2.LINE_4)
+
+        # Add frame to video
         out.write(img)
 
     out.release()
-    print('Video write completed!')
+    print('Video write completed: {}'.format(videoname))
 
 
 def spec_txt_2_npy(directory):

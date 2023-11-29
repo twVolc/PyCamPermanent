@@ -102,8 +102,7 @@ class Indicator:
             return
 
         try:
-            self.sock.close_socket()    # Close socket first, might avoid issues
-            self.sock.connect_socket_timeout(timeout=5)
+            self.sock.connect_socket_try_all(timeout=5)
 
             cmd = self.sock.encode_comms({'LOG': 0})
             self.sock.send_comms(self.sock.sock, cmd)
@@ -294,67 +293,21 @@ class LoadSaveProcessingSettings:
 
     def load_defaults(self):
         """Loads default settings"""
-        filename = FileLocator.PROCESS_DEFAULTS
+        config = self.pyplis_worker.config
 
-        with open(filename, 'r') as f:
-            for line in f:
-                if line[0] == '#':
-                    continue
-
-                # Try to split line into key and value, if it fails this line is not used
-                try:
-                    key, value = line.split('=')
-                except ValueError:
-                    continue
-
-                # If the value is one we edit, we extract the value
-                if key in self.vars.keys():
-                    if self.vars[key] is str:
-                        value = value.split('\'')[1]
-                    elif self.vars[key] is list:
-                        value = [int(x) for x in value.split('[')[1].split(']')[0].split(',')]
-                    else:
-                        value = self.vars[key](value.split('\n')[0].split('#')[0])
-                    setattr(self, key, value)
+        [setattr(self, key, config[key]) for key in self.vars.keys() if key in config.keys()]
 
         # Update all objects finally
         self.gather_vars()
 
     def set_defaults(self, parent=None):
         """Sets current values as defaults"""
-        # First set this variables
+        # First ensure that values from GUI are in config
         self.gather_vars()
 
-        # Ask user to define filename for saving geometry settings
         filename = FileLocator.PROCESS_DEFAULTS
-        filename_temp = filename.replace('.txt', '_temp.txt')
 
-        # Open file object and write all attributes to it
-        with open(filename_temp, 'w') as f_temp:
-            with open(filename, 'r') as f:
-                for line in f:
-                    if line[0] == '#':
-                        f_temp.write(line)
-                        continue
-
-                    # If we can't split the line, then we just write it as it as, as it won't contain anything useful
-                    try:
-                        key, value = line.split('=')
-                    except ValueError:
-                        f_temp.write(line)
-                        continue
-
-                    # If the value is one we edit, we extract the value
-                    if key in self.vars.keys():
-                        if self.vars[key] is str:  # If string we need to write the value within quotes
-                            f_temp.write('{}={}\n'.format(key, '\'' + getattr(self, key) + '\''))
-                        else:
-                            f_temp.write('{}={}\n'.format(key, self.vars[key](getattr(self, key))))
-                    else:
-                        f_temp.write(line)
-
-        # Finally, overwrite old default file with new file
-        os.replace(filename_temp, filename)
+        self.pyplis_worker.save_config(filename, subset=self.vars.keys())
 
         kwargs = {}
         if parent is not None:

@@ -17,7 +17,11 @@ import threading
 from .setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from .utils import format_time
 
+
+
 try:
+    import seabreeze
+    seabreeze.use("pyseabreeze")
     import seabreeze.spectrometers as sb
 except ModuleNotFoundError:
     warnings.warn('Working on machine without seabreeze, functionality of some classes will be lost')
