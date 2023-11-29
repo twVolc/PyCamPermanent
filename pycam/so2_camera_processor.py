@@ -2723,7 +2723,7 @@ class PyplisWorker:
         :param img_tau  pyplis.Img          Line to extract SO2 values from
         """
         if pcs_line is None:
-            self.PCS_lines_all[self.auto_nadeau_pcs]
+            pcs_line = self.PCS_lines_all[self.auto_nadeau_pcs]
 
         # Get line profile
         profile = pcs_line.get_line_profile(img_tau)

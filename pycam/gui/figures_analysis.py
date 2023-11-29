@@ -4259,7 +4259,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.main_gui = main_gui
    
         self.vars = {'cross_corr_recal': int,
-                     'auto_nadeau_line:': int,
+                     'auto_nadeau_line': int,
                      'source_coords': list,
                      'nadeau_line_orientation': int,
                      'nadeau_line_length': int,
@@ -4751,7 +4751,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     def run_nadeau_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
         # Update pyplis_worker config
-        self.gather_vars(apply_config=True)
+        self.gather_vars(update_pyplis=True)
 
         # If auto we automate line generation
         self.update_pcs_line(draw=False)
