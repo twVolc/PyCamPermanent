@@ -4255,7 +4255,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.pyplis_worker.config[key] = getattr(self, key)
 
         # Apply the config if requested
-        if apply_config:
+        if update_pyplis:
             self.pyplis_worker.apply_config(subset=self.vars.keys())
 
     def generate_frame(self):
