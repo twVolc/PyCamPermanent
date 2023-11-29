@@ -4249,7 +4249,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self._auto_nadeau_pcs = tk.IntVar()
         self.auto_nadeau_pcs = 1
 
-    def gather_vars(self, apply_config=False):
+    def gather_vars(self, update_pyplis=False):
         # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
         for key in self.vars:
             self.pyplis_worker.config[key] = getattr(self, key)
