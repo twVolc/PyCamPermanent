@@ -63,6 +63,7 @@ class PyMenu:
         self.load_frame = LoadFrame(self.parent, pyplis_work=pyplis_worker, doas_work=doas_worker)
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
+        self.submenu_load.add_command(label='Load config file', command=self.load_frame.load_config_file)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
         self.submenu_load.add_command(label='Load light dilution line', command=self.load_frame.load_dil)
         self.submenu_load.add_command(label='Load image registration', command=self.load_frame.load_img_reg)
@@ -74,6 +75,7 @@ class PyMenu:
         self.submenu_save = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
+        self.submenu_save.add_command(label='Save config file', command=self.save_frame.save_config_file)
 
         # Export
         self.submenu_export = tk.Menu(self.frame, tearoff=0)
@@ -535,12 +537,11 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     @property
     def pcs_lines(self):
-        return self.sep.join([line for line in self._pcs_lines if line != self.no_line])
+        return [line for line in self._pcs_lines if line != self.no_line]
 
     @pcs_lines.setter
-    def pcs_lines(self, value):
+    def pcs_lines(self, lines):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
         for i, line in enumerate(lines):
             if i < self.num_pcs_lines:
                 if line == '':
@@ -560,13 +561,13 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     @property
     def dil_lines(self):
-        return self.sep.join([line for line in self._dil_lines if line != self.no_line])
+        return [line for line in self._dil_lines if line != self.no_line]
 
     @dil_lines.setter
     def dil_lines(self, value):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
-        for i, line in enumerate(lines):
+
+        for i, line in enumerate(value):
             if i < self.num_dil_lines:
                 if line == '':
                     line = self.no_line
@@ -759,10 +760,60 @@ class LoadFrame(LoadSaveProcessingSettings):
         # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
         self.load_img_reg(filename=self.img_registration, rerun=False)
 
+    def reload_all(self):
+        """Reruns all load functions to prepare pyplis worker after config loaded"""
+        self.reset_pcs_lines()
+        self.reset_dil_lines()
+        self.load_all()
+
     def close_frame(self):
         """CLose window"""
         self.in_frame = False
         self.frame.destroy()
+
+    def load_config_file(self):
+        """Load in a config file selected by the user"""
+        filename = filedialog.askopenfilename(
+            title='Select config file',
+            initialdir=self.init_dir)
+        
+        if len(filename) > 0:
+            self.pyplis_worker.load_config(filename, "user")
+
+            self.reload_config()
+
+    def reload_config(self):
+        """Update the GUI with the new config settings"""
+        self.load_defaults()
+        self.pyplis_worker.fig_tau.load_defaults()
+        self.pyplis_worker.fig_tau.reload_roi()
+        self.reload_all()
+        geom_settings.load_instrument_setup(self.pyplis_worker.config["default_cam_geom"], show_info=False)
+        process_settings.load_defaults()
+        plume_bg.load_defaults()
+        opti_flow.load_defaults()
+        light_dilution.load_defaults()
+        cross_correlation.load_defaults()
+        doas_fov.load_defaults()
+        calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
+        calibration_wind.ils_frame.load_ILS()
+
+        self.pyplis_worker.apply_config()
+        self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
+        self.doas_worker.load_dir(prompt=False, plot=True)
+
+    def reset_pcs_lines(self):
+        """Reset current PCS lines"""
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_tau.PCS_lines_list) if v is not None]
+        [self.pyplis_worker.fig_tau.del_ica(line_n) for line_n in current_lines]
+
+    def reset_dil_lines(self):
+        """Reset current DIL lines"""
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_dilution.lines_pyplis) if v is not None]
+        [self.pyplis_worker.fig_dilution.del_line(line_n) for line_n in current_lines]
+        self.pyplis_worker.fig_dilution.current_line = 1
 
 
 class SaveFrame(LoadSaveProcessingSettings):
@@ -814,16 +865,16 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._save_doas_cal = tk.BooleanVar()
 
     def gather_vars(self):
-        self.pyplis_worker.save_dict['img_aa']['save'] = self.save_img_aa
-        self.pyplis_worker.save_dict['img_aa']['ext'] = self.type_img_aa
+        self.pyplis_worker.config['save_img_aa'] = self.save_img_aa
+        self.pyplis_worker.type_img_aa = self.type_img_aa
 
-        self.pyplis_worker.save_dict['img_cal']['save'] = self.save_img_cal
-        self.pyplis_worker.save_dict['img_cal']['ext'] = self.type_img_cal
+        self.pyplis_worker.config['save_img_cal'] = self.save_img_cal
+        self.pyplis_worker.type_img_cal = self.type_img_cal
 
-        self.pyplis_worker.save_dict['img_SO2']['save'] = self.save_img_so2
-        self.pyplis_worker.save_dict['img_SO2']['compression'] = self.png_compression
+        self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
+        self.pyplis_worker.png_compression = self.png_compression
 
-        self.pyplis_worker.save_doas_cal = self.save_doas_cal
+        self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
         if hasattr(self, 'frame'):
             tk.messagebox.showinfo('Save settings updated',
@@ -1054,3 +1105,16 @@ class SaveFrame(LoadSaveProcessingSettings):
             if self.reg_ext[self.img_reg] not in filename:
                 filename += self.reg_ext[self.img_reg]
             self.pyplis_worker.img_reg.save_registration(filename, method=self.img_reg)
+
+
+    def save_config_file(self):
+        """Save a config file and additional data in location selected by the user"""
+        filename = filedialog.asksaveasfilename(
+            title='Save config file',
+            initialdir=self.init_dir,
+            initialfile="process_config",
+            defaultextension=".yml",
+            filetypes = (("yml files","*.yml"),("all files","*.*")))
+        
+        if len(filename) > 0:
+            self.pyplis_worker.save_config_plus(filename)
