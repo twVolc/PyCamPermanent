@@ -2797,17 +2797,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def save_and_close(self):
         
-        # WHat is the currently set mode?
-        if pyplis_worker.bg_pycam:
-            current_mode = 7
-        else:
-            current_mode = pyplis_worker.plume_bg_A.mode
-
-        # If the selected mode is different than the current mode, then update current mode
-        if self.bg_mode != current_mode:
-            self.gather_vars()
-            pyplis_worker.model_background(plot=False)
-            pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        self.gather_vars(update_pyplis=True)
+        pyplis_worker.model_background(plot=False)
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
         
         # CLose the window
         self.frame.destroy()
