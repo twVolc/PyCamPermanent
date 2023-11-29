@@ -1711,9 +1711,9 @@ class PyplisWorker:
             return
 
         # Get all appropriate images anf parameters based on
-        if band.upper() == 'A' or 'ON':
+        if band.upper() in ['A', 'ON']:
             ext_coeff = self.ext_on
-        elif band.upper() == 'B' or 'OFF':
+        elif band.upper() in ['B', 'OFF']:
             ext_coeff = self.ext_off
         else:
             print('Unrecognised definition of <band>, cannot perform light dilution correction')
