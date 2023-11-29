@@ -36,6 +36,7 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import os
 import cv2
 from skimage import transform as tf
@@ -118,14 +119,21 @@ class PyplisWorker:
         self.ref_check_upper = 0    # Background check to ensure no gas is present in ref region
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
-        self.PCS_lines = []
-        self.PCS_lines_all = [] # TODO not sure the difference between these two - there may be one but it isn't clear...
+        self.PCS_lines = []         # PCS lines excluding the "old" xcorr line, which will not be included when summing lines
+        self.PCS_lines_all = []     # All PCS lines
         self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
                                  'old': None}           # Old plume LineOnImage for cross-correlation
         self.cross_corr_series = {'time': [],           # datetime list
                                   'young': [],          # Young plume series list
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
+        self.max_nad_shift = 50                         # Maximum shift (%) for Nadeau cross-correlation (Anything above 50 is probably unrealistic - could cause unexpected results)
+        self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        self.auto_nadeau_pcs = 0                        # Integer for PCS line to be used to generate Nadeau line
+        self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
+        self.nadeau_line_orientation = 0                # Orientation of Nadeau line
+        self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3) # Length of Nadeau line
+        self.source_coords = [int(self.cam_specs.pix_num_x/2), int(self.cam_specs.pix_num_x/2)]  # Source coordinates for Nadeau line
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
         self.opt_flow_sett_keys = [
@@ -139,7 +147,8 @@ class PyplisWorker:
         self.velo_modes = {"flow_glob": False,          # Cross-correlation
                            "flow_raw": False,           # Raw optical flow output
                            "flow_histo": True,          # Histogram analysis
-                           "flow_hybrid": False}        # Hybrid histogram
+                            "flow_hybrid": False,       # Hybrid histogram
+                           "flow_nadeau": False}        # Nadeau cross-correlation technique
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
         self.cross_corr_info = {}
@@ -714,7 +723,8 @@ class PyplisWorker:
                           'time': datetime.datetime.now() + datetime.timedelta(hours=72),   # Make sure time is always a time object, as we need to compare this to other time objects. So just set this way in the future
                           'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
                                                           self.cam_specs.pix_num_x], dtype=np.float32)),
-                          'opt_flow': None  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'opt_flow': None,  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'nadeau_plumespeed': None
                           }
                          for x in range(self.img_buff_size)]
 
@@ -1101,7 +1111,7 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
-    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None):
+    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None, nadeau_plumespeed=None):
         """
         Updates the image buffer and file time buffer
         :param img_tau:     np.array        n x m image matrix of tau image
@@ -1124,7 +1134,8 @@ class PyplisWorker:
                     'file_B': file_B,
                     'time': copy.deepcopy(self.get_img_time(file_A)),
                     'img_tau': copy.deepcopy(img_tau),
-                    'opt_flow': copy.deepcopy(opt_flow)
+                    'opt_flow': copy.deepcopy(opt_flow),
+                    'nadeau_plumespeed': nadeau_plumespeed
                     }
 
         # If we haven't exceeded buffer size then we simply add new data to buffer
@@ -2640,6 +2651,157 @@ class PyplisWorker:
 
         self.got_cross_corr = True
 
+    def calc_line_orientation(self, line, deg=True):
+        """
+        Calculates line orientation with 0 as north and
+        :param line: pyplis.LineOnImage     Line to calculate orientation
+        :return:
+        """
+        # vec = list(line._delx_dely())       # Get vector of line
+        # north_vec = [0, 1]                  # Set northern vector
+        #
+        # # Calculate angle between north vector and our line
+        # unit_vector_1 = vec / np.linalg.norm(vec)
+        # unit_vector_2 = north_vec / np.linalg.norm(north_vec)
+        # dot_product = np.dot(unit_vector_2, unit_vector_1)
+        # orientation = np.arccos(dot_product)
+
+        dx, dy = line._delx_dely()
+        complex_norm = complex(-dy, dx)
+        orientation = -(np.angle(complex_norm, deg) - 180)
+
+        return orientation
+
+    def generate_nadeau_line(self, source_coords=None, orientation=None, length=None):
+        """
+        Generates nadeau line given source coordinates, orientation and length
+        :param source_coords    tuple-like  (x, y) coordinates of the gas source
+        :param orientation      float/int   Orientation (deg) of line (0 = North, 90 = East, 180 = South, 270 = West)
+        :param length           float/int   Length of Nadeau line (in pixels)
+        """
+        if source_coords is not None:
+            self.source_coords = source_coords
+
+        if length is not None:
+            self.nadeau_line_length = length
+
+        if orientation is not None:
+            self.nadeau_line_orientation = orientation
+
+        # Calculate line end coordinates
+        orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+
+        # Ensure coordinates don't extend beyond image
+        if x_coord < 0:
+            x_coord = 0
+        elif x_coord > self.cam_specs.pix_num_x - 1:
+            x_coord = self.cam_specs.pix_num_x - 1
+
+        if y_coord < 0:
+            y_coord = 0
+        elif y_coord > self.cam_specs.pix_num_y - 1:
+            y_coord = self.cam_specs.pix_num_y - 1
+
+        try:
+            self.nadeau_line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=x_coord, y1=y_coord,
+                                           normal_orientation='right', color='k', line_id='nadeau')
+            # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+            self.nadeau_line.x0 = self.source_coords[0]
+            self.nadeau_line.x1 = x_coord
+            self.nadeau_line.y0 = self.source_coords[1]
+            self.nadeau_line.y1 = y_coord
+            return self.nadeau_line
+        except ValueError as e:
+            return None
+
+    def autogenerate_nadeau_line(self, img_tau, pcs_line=None):
+        """
+        Automatically generates the nadeau cross-correlation line based on PCS line
+        :param pcs_line pyplis.LineOnImage  Line to use for automatic plume direction determination
+        :param img_tau  pyplis.Img          Line to extract SO2 values from
+        """
+        if pcs_line is None:
+            self.PCS_lines_all[self.auto_nadeau_pcs]
+
+        # Get line profile
+        profile = pcs_line.get_line_profile(img_tau)
+
+        # Get index of maximum SO2
+        max_idx = np.argmax(profile)
+
+        # Get coordinate of maximum SO2 (from index)
+        pcs_line.prepare_coords()
+        coords = [pcs_line.profile_coords[1, max_idx], pcs_line.profile_coords[0, max_idx]]
+
+        # Create Nadeau line (Length won't be correct)
+        line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=coords[0], y1=coords[1],
+                                       normal_orientation='right', color='k', line_id='nadeau')
+        # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+        line.x0 = self.source_coords[0]
+        line.x1 = coords[0]
+        line.y0 = self.source_coords[1]
+        line.y1 = coords[1]
+
+        # Get orientation of line
+        orientation = self.calc_line_orientation(line)
+
+        # Generate Nadeau line of desired length and return that value
+        return self.generate_nadeau_line(orientation=orientation)
+
+
+    def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None):
+        """
+        Uses two images and the nadeau line to calculate plume speed
+        :param  img_current pyplis.Img      Current optical depth (tau) image
+        :param  img_next    pyplis.Img      Next optical depth image
+        :param  line        LineOnImage     Nadeau line running parallel to plume motion
+        :param  max_shift   Int             Maximum allowed shift of time series (%)
+        """
+        if max_shift is not None:
+            self.max_nad_shift = max_shift
+
+        # Extract line profiles
+        profile_current = line.get_line_profile(img_current)
+        profile_next = line.get_line_profile(img_next)
+
+        # Depending on orientation of line we may need to reverse the line profile, to ensure it always starts from source
+        orientation = self.calc_line_orientation(line)
+        if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation >= 180:
+            profile_current = profile_current[::-1]
+            profile_next = profile_next[::-1]
+
+        # Get average distance of pixel in image line profile
+        pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
+
+        # -----------------------------------------------------------------
+        # Pyplis cross-correlation - currently somewhat arbitrarily setting max shift to 50%
+        lag, coeffs, s1_ana, s2_ana, max_coeff_signal, ax, = find_signal_correlation(profile_current, profile_next,
+                                                                                     max_shift_percent=self.max_nad_shift)
+        lags = np.arange(0, len(coeffs))
+        # -----------------------------------------------------------------
+
+        # Scale the lag by line orientation (horizontal and vertical lines need no scaling, whilst diagonal lines do
+        # since their number of pixels wont match with the length of the line based on horizontal pixel width
+        relative_line_length = line.length() / len(profile_current)
+        lag_in_pixels = relative_line_length * lag
+        lag_length = pixel_dist * lag_in_pixels
+
+        # Calculate plume speed
+        time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
+        plume_speed = lag_length / time_step.total_seconds()
+
+        print('Nadeau plume speed (m/s): {:.2f}'.format(plume_speed))
+        info_dict = {'profile_current': profile_current,
+                     'profile_next': profile_next,
+                     'lags': lags,
+                     'coeffs': coeffs,
+                     'lag': lag,
+                     'lag_in_pixels': lag_in_pixels,
+                     'lag_length': lag_length}
+        return plume_speed, info_dict
+
     def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
         Retrieves cross-correlation emission rates from the cross-correlation buffer
@@ -2811,7 +2973,7 @@ class PyplisWorker:
 
         return self.flow, self.velo_img
 
-    def calculate_emission_rate(self, img, flow=None, plot=True):
+    def calculate_emission_rate(self, img, flow=None, nadeau_speed=None, plot=True):
         """
         Generates emission rate for current calibrated image/optical flow etc
         :param img:         pyplis.Img          Image to have emission rate retrieved from (must be cal)
@@ -2856,7 +3018,8 @@ class PyplisWorker:
         total_emissions = {'flow_glob': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_raw': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
-                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
+                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_nadeau': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
 
         # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
         lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
@@ -2931,6 +3094,26 @@ class PyplisWorker:
                             total_emissions['flow_glob']['phi_err'].append(phi_err)
                             total_emissions['flow_glob']['veff'].append(vel_glob)
                             total_emissions['flow_glob']['veff_err'].append(vel_glob_err)
+
+                # Nadeau plume speed algorithm
+                if self.velo_modes['flow_nadeau']:
+                    # Calculate emission rate
+                    phi, phi_err = det_emission_rate(cds, nadeau_speed, distarr, cd_err,
+                                                     velo_err=None, pix_dists_err=disterr)
+
+                    # Update results dictionary
+                    res['flow_nadeau']._start_acq.append(img_time)
+                    res['flow_nadeau']._phi.append(phi)
+                    res['flow_nadeau']._phi_err.append(phi_err)
+                    res['flow_nadeau']._velo_eff.append(nadeau_speed)
+                    res['flow_nadeau']._velo_eff_err.append(np.nan)
+
+                    # Add to total emissions
+                    if line_id in lines_total:
+                        total_emissions['flow_nadeau']['phi'].append(phi)
+                        total_emissions['flow_nadeau']['phi_err'].append(phi_err)
+                        total_emissions['flow_nadeau']['veff'].append(nadeau_speed)
+                        total_emissions['flow_nadeau']['veff_err'].append(np.nan)
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
@@ -3180,9 +3363,25 @@ class PyplisWorker:
             else:
                 opt_flow = None
 
+            if self.velo_modes['flow_nadeau']:
+                if self.auto_nadeau_line:
+                    self.autogenerate_nadeau_line(self.img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
+                elif self.nadeau_line is None:
+                    self.generate_nadeau_line()
+                nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
+                                                                               self.nadeau_line)
+                if plot:
+                    self.fig_cross_corr.nadeau_line = self.nadeau_line
+                    self.fig_cross_corr.update_pcs_line(draw=False)
+                    self.fig_cross_corr.update_nad_line_plot(draw=False)
+                    self.fig_cross_corr.update_nadeau_lag(info_dict, draw=True)
+                    self.fig_cross_corr.update_results(nadeau_plumespeed, info_dict)
+            else:
+                nadeau_plumespeed = None
+
             # Calibrate image if we have a calibrated image
             if self.img_cal_prev is not None:
-                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow, plot=plot)
+                self.calculate_emission_rate(self.img_cal_prev, opt_flow, nadeau_speed=nadeau_plumespeed, plot=plot)
 
             # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
             # function can add this most recent data point to the cross-corr buffer)
@@ -3201,13 +3400,15 @@ class PyplisWorker:
                                              self.cross_corr_series['old'])
                     self.get_cross_corr_emissions_from_buff()
 
+
+
             # TODO all of processing if not the first image pair
             # TODO I need to add data for DOAS calibration if I have some
 
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
-                                 self.img_B_prev.filename, opt_flow=opt_flow)
+                                 self.img_B_prev.filename, opt_flow=opt_flow, nadeau_plumespeed=nadeau_plumespeed)
 
     def check_buffer_size(self):
         """
@@ -3278,8 +3479,8 @@ class PyplisWorker:
                 img_cal = img_tau
 
             # If we want optical flow output but we don't have it saved we need to reanalyse
-            if buff_dict['opt_flow'] is None:
-                if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+            if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                if buff_dict['opt_flow'] is None:
                     # Try optical flow generation, if it failes because of an index error then the buffer has no
                     # more images and we can't process this image (we must then be at the final image)
                     try:
@@ -3287,11 +3488,27 @@ class PyplisWorker:
                         flow = self.opt_flow
                     except IndexError:
                         continue
+                else:
+                    flow = buff_dict['opt_flow']
             else:
-                flow = buff_dict['opt_flow']
+                flow=None
+
+            # Calculate nadeau plumespeed if we don't have it already
+            if self.velo_modes['flow_nadeau']:
+                if buff_dict['nadeau_plumespeed'] is None:
+                    if self.auto_nadeau_line:
+                        self.autogenerate_nadeau_line(img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
+                    elif self.nadeau_line is None:
+                        self.generate_nadeau_line()
+                    nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(img_tau, img_buff[i+1]['img_tau'],
+                                                                                   self.nadeau_line)
+                else:
+                    nadeau_plumespeed = buff_dict['nadeau_plumespeed']
+            else:
+                nadeau_plumespeed = None
 
             # Calculate emission rate - don't update plot, and then we will do that at the end, for speed
-            results = self.calculate_emission_rate(img=img_cal, flow=flow, plot=False)
+            results = self.calculate_emission_rate(img=img_cal, flow=flow, nadeau_speed=nadeau_plumespeed, plot=False)
 
         self.fig_series.update_plot()
 
