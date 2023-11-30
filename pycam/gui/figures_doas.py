@@ -353,7 +353,7 @@ class DOASPlot(LoadSaveProcessingSettings):
 
         # LDF widget
         tk.Label(self.frame2, text='LDF:', font=self.gui.main_font).pack(side=tk.LEFT)
-        self.LDF_box = ttk.Spinbox(self.frame2, from_=0, to=1, increment=0.01, width=3,
+        self.LDF_box = ttk.Spinbox(self.frame2, from_=0, to=1, increment=0.01, width=4,
                                      textvariable=self._LDF, command=self.gather_vars, font=self.gui.main_font)
         self.LDF_box.pack(side=tk.LEFT)
 
