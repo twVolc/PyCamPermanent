@@ -78,7 +78,7 @@ use_multi_gauss: 1
 
 # Cross correlation
 flow_glob: 1
-flow_nadeau: 0
+flow_nadeau: 1
 auto_nadeau_line: false
 source_coords:
 - 376
