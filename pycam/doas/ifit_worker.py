@@ -252,6 +252,7 @@ class IFitWorker:
         self.fit_0_uncorr = None
         self.fit_1_uncorr = None
         self.ldf_best = np.nan      # Best estimate of light dilution factor
+        self._LDF = 0               # User-defined LDF to process ifit data with
 
     def reset_self(self, reset_dark=True):
         """Some resetting of object, before processing occurs"""
@@ -390,6 +391,15 @@ class IFitWorker:
 
         # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
         self.ref_convolved = False
+
+    @property
+    def LDF(self):
+        return self._LDF
+
+    @LDF.setter
+    def LDF(self, value):
+        self._LDF = value
+        self.analyser.params.add('LDF', value=value, vary=False)
 
     # -------------------------------------------
 
