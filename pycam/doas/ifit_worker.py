@@ -232,7 +232,7 @@ class IFitWorker:
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
 
         # LD attributes
-        self.corr_light_dilution = True
+        self._corr_light_dilution = True
         self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
         self.recal_ld_mins = 0                  # Recalibration time for light dilution correction (means don't have to calculate it for every spectrum)
         self.spec_time_last_ld = None           # Time of spectrum for last LDF lookup - used with recal_ld_mins to decide whether to lookup LDf or use previous LDF
@@ -400,6 +400,20 @@ class IFitWorker:
     def LDF(self, value):
         self._LDF = value
         self.analyser.params.add('LDF', value=value, vary=False)
+
+    @property
+    def corr_light_dilution(self):
+        return self._corr_light_dilution
+
+    @corr_light_dilution.setter
+    def corr_light_dilution(self, value):
+        """
+        If using light dilution correction we need to make sure we have updated the standard analyser to not have
+        light dilution in - this manual LDF differs from the automated calculation of LDF within iFit
+        """
+        self._corr_light_dilution = value
+        if value:
+            self.LDF = 0.0
 
     # -------------------------------------------
 
@@ -758,7 +772,7 @@ class IFitWorker:
                    header='Raw in-plume spectrum\n'
                           '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
-    def process_doas(self):
+    def process_doas(self, plot=False):
         """Handles the order of DOAS processing"""
         # Check we have all of the correct spectra to perform processing
         if self.plume_spec_raw is None or self.wavelengths is None:
@@ -857,6 +871,9 @@ class IFitWorker:
         # Set flag defining that data has been fully processed
         self.processed_data = True
         self.fit = fit_0     # Save fit in attribute
+
+        if plot:
+            self.fig_doas.update_plot()
 
     def process_dir(self, spec_dir=None, plot=False):
         """

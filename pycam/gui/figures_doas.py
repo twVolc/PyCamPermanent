@@ -303,19 +303,15 @@ class DOASPlot(LoadSaveProcessingSettings):
     def initiate_variables(self):
         self.vars = {'shift': int,
                      'shift_tol': int,
-                     'stretch': int,
-                     'LDF': float}
+                     'stretch': int}
 
         self._shift = tk.IntVar()
         self._shift_tol = tk.IntVar()
         self._stretch = tk.IntVar()
-        self._LDF = tk.DoubleVar()
 
         self.shift = self.doas_worker.shift
         self.shift_tol = self.doas_worker.shift_tol
         self.stretch = self.doas_worker.stretch
-        self.LDF = self.doas_worker.LDF
-
 
     def __setup_gui__(self, frame):
         """Organise widget"""
@@ -350,12 +346,6 @@ class DOASPlot(LoadSaveProcessingSettings):
                                        textvariable=self._stretch, command=self.gather_vars)
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
-
-        # LDF widget
-        tk.Label(self.frame2, text='LDF:', font=self.gui.main_font).pack(side=tk.LEFT)
-        self.LDF_box = ttk.Spinbox(self.frame2, from_=0, to=1, increment=0.01, width=4,
-                                     textvariable=self._LDF, command=self.gather_vars, font=self.gui.main_font)
-        self.LDF_box.pack(side=tk.LEFT)
 
         # # If we are working with ifit we don't have these options - it does it automatically
         if isinstance(self.doas_worker, IFitWorker):
@@ -438,14 +428,6 @@ class DOASPlot(LoadSaveProcessingSettings):
     def stretch(self, value):
         self._stretch.set(value)
 
-    @property
-    def LDF(self):
-        return self._LDF.get()
-
-    @LDF.setter
-    def LDF(self, value):
-        self._LDF.set(value)
-
     def gather_vars(self):
         """Sets all current settings to the correct worker and reprocesses DOAS"""
         for key in self.vars:
@@ -453,35 +435,6 @@ class DOASPlot(LoadSaveProcessingSettings):
 
         self.doas_worker.process_doas()
         self.update_plot()
-
-    def update_shift_tol(self):
-        """Updates DOASWorker shift value for aligning spectra"""
-        # Set shift in DOASWorker object
-        self.doas_worker.shift_tol = self.shift_tol
-
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
-
-    def update_shift(self):
-        """Updates DOASWorker shift value for aligning spectra"""
-        # Set shift in DOASWorker object
-        self.doas_worker.shift = self.shift.get()
-
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
-
-    def update_stretch(self):
-        """Updates DOASWorker stretch value for aligning spectra"""
-        self.doas_worker.stretch = self.stretch.get()
-
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
 
     def update_plot(self):
         """Updates doas plot"""

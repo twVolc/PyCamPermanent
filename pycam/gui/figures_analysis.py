@@ -5567,7 +5567,8 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                      'use_light_dilution_spec': int,
                      'grid_max_ppmm': int,
                      'grid_increment_ppmm': int,
-                     'spec_recal_time': int}
+                     'spec_recal_time': int,
+                     'LDF': float}
 
 
         self.ambient_roi = [0, 0, 0, 0]
@@ -5580,6 +5581,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._grid_max_ppmm = tk.IntVar()
         self._grid_increment_ppmm = tk.IntVar()
         self._spec_recal_time = tk.IntVar()
+        self._LDF = tk.DoubleVar()
 
         # Load default values
         self.load_defaults()
@@ -5655,6 +5657,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     @grid_increment_ppmm.setter
     def grid_increment_ppmm(self, value):
         self._grid_increment_ppmm.set(value)
+
+    @property
+    def LDF(self):
+        return self._LDF.get()
+
+    @LDF.setter
+    def LDF(self, value):
+        self._LDF.set(value)
 
     @property
     def dark_spec_path_short(self):
@@ -5850,6 +5860,13 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         recal_spin = ttk.Spinbox(options_frame, textvariable=self._spec_recal_time, from_=0, to=60, increment=1,
                                  width=2, command=self.set_spec_recal, font=self.gui.main_font)
         recal_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
+
+
+        # LDF widget
+        tk.Label(options_frame, text='LDF:', font=self.gui.main_font).grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        self.LDF_box = ttk.Spinbox(options_frame, from_=0, to=1, increment=0.01, width=4, textvariable=self._LDF,
+                                   command=lambda: self.gather_vars(rerun_doas=True), font=self.gui.main_font)
+        self.LDF_box.grid(row=2, column=1, sticky='ew', padx=2, pady=2)
 
 
         # Load spectra
@@ -6315,20 +6332,26 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
         self.q.put(1)
 
-    def gather_vars(self, update_pyplis=False):
+    def gather_vars(self, update_pyplis=False, rerun_doas=False):
         """
         Gathers all parameters and sets them to pyplis worker
+        rerun_doas  bool    If True, DOAS is reprocessed and the plot updated - used by LDF so it immediately displays
+                            the results of chaning the LDF
         :return:
         """
         self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
         self.pyplis_worker.config['I0_MIN'] = self.I0_MIN
         self.pyplis_worker.config['tau_thresh'] = self.tau_thresh
         self.pyplis_worker.config['dil_recal_time'] = self.dil_recal_time
+        self.doas_worker.LDF = self.LDF
         self.doas_worker.recal_ld_mins = self.spec_recal_time
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
 
         if update_pyplis:
             self.pyplis_worker.apply_config(subset=self.vars.keys())
+
+        if rerun_doas:
+            self.doas_worker.process_doas(plot=True)
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""
