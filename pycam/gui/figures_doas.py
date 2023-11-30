@@ -336,10 +336,10 @@ class DOASPlot:
         self.stretch_box.pack(side=tk.LEFT)
 
         # # If we are working with ifit we don't have these options - it does it automatically
-        # if isinstance(self.doas_worker, IFitWorker):
+        if isinstance(self.doas_worker, IFitWorker):
         #     self.shift_box.configure(state=tk.DISABLED)
-        #     self.shift_tol_box.configure(state=tk.DISABLED)
-        #     self.stretch_box.configure(state=tk.DISABLED)
+            self.shift_tol_box.configure(state=tk.DISABLED)
+            self.stretch_box.configure(state=tk.DISABLED)
 
         # Save button
         self.save_butt = ttk.Button(self.frame2, text='Save spectra', command=self.save_spectra)
