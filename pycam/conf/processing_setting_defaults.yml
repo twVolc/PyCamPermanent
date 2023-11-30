@@ -71,11 +71,22 @@ hist_dir_binres: 10
 hist_sigma_tol: 2
 use_roi: 1
 roi_abs: [151, 150, 372, 239]
-flow_glob: 1
 flow_raw: 1
 flow_histo: 1
 flow_hybrid: 1
 use_multi_gauss: 1
+
+# Cross correlation
+flow_glob: 1
+flow_nadeau: 1
+auto_nadeau_line: false
+source_coords:
+- 376
+- 227
+nadeau_line_orientation: 311
+nadeau_line_length: 215
+max_nad_shift: 50
+auto_nadeau_pcs: 1
 cross_corr_recal: 30
 
 # Light dilution

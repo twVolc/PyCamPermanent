@@ -147,7 +147,7 @@ class PyplisWorker:
         self.velo_modes = {"flow_glob": False,          # Cross-correlation
                            "flow_raw": False,           # Raw optical flow output
                            "flow_histo": True,          # Histogram analysis
-                            "flow_hybrid": False,       # Hybrid histogram
+                           "flow_hybrid": False,        # Hybrid histogram
                            "flow_nadeau": False}        # Nadeau cross-correlation technique
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
@@ -523,6 +523,14 @@ class PyplisWorker:
     @flow_hybrid.setter
     def flow_hybrid(self, value):
         self.velo_modes['flow_hybrid'] = value
+
+    @property
+    def flow_nadeau(self):
+        return self.velo_modes['flow_nadeau']
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self.velo_modes['flow_nadeau'] = value
 
     @property
     def save_img_aa(self):
@@ -2723,7 +2731,7 @@ class PyplisWorker:
         :param img_tau  pyplis.Img          Line to extract SO2 values from
         """
         if pcs_line is None:
-            self.PCS_lines_all[self.auto_nadeau_pcs]
+            pcs_line = self.PCS_lines_all[self.auto_nadeau_pcs]
 
         # Get line profile
         profile = pcs_line.get_line_profile(img_tau)

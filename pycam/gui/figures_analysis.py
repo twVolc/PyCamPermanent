@@ -1095,7 +1095,7 @@ class TimeSeriesFigure:
         self.style = 'default'
         self.date_fmt = '%HH:%MM'
         self.plot_styles = {'flow_glob': {'ls': 'solid', 'marker': '.', 'colour': 'mediumblue'},
-                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'lime'},
+                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'silver'},
                             'flow_raw': {'ls': 'dotted', 'marker': '1', 'colour': 'darkorange'},
                             'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
                             'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
@@ -4259,7 +4259,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.main_gui = main_gui
    
         self.vars = {'cross_corr_recal': int,
-                     'auto_nadeau_line:': int,
+                     'auto_nadeau_line': int,
                      'source_coords': list,
                      'nadeau_line_orientation': int,
                      'nadeau_line_length': int,
@@ -4268,20 +4268,18 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                      }
         self._cross_corr_recal = tk.IntVar()
         self._auto_nadeau_line = tk.BooleanVar()
-        self.auto_nadeau_line = self.pyplis_worker.auto_nadeau_line
         self._source_x = tk.IntVar()
         self._source_y = tk.IntVar()
-        self.source_coords = [361, 231]
         self._nadeau_line_orientation = tk.IntVar()
-        # self.nadeau_line_orientation = self.pyplis_worker.nadeau_line_orientation
-        self.nadeau_line_orientation = 311
         self._nadeau_line_length = tk.IntVar()
-        # self.nadeau_line_length = self.pyplis_worker.nadeau_line_length
-        self.nadeau_line_length = 180
         self._max_nad_shift = tk.IntVar()
-        self.max_nad_shift = self.pyplis_worker.max_nad_shift
         self._auto_nadeau_pcs = tk.IntVar()
-        self.auto_nadeau_pcs = 1
+        self.update_variables()
+
+    def update_variables(self):
+        """Updates variables with current pyplis settings"""
+        for key in self.vars.keys():
+            setattr(self, key, self.pyplis_worker.config[key])
 
     def gather_vars(self, update_pyplis=False):
         # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
@@ -4301,6 +4299,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.frame.attributes('-topmost', 1)
             self.frame.attributes('-topmost', 0)
             return
+
+        self.update_variables() # Update to current settings
 
         self.in_frame = True
 
@@ -4751,7 +4751,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     def run_nadeau_line(self):
         """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
         # Update pyplis_worker config
-        self.gather_vars(apply_config=True)
+        self.gather_vars(update_pyplis=True)
 
         # If auto we automate line generation
         self.update_pcs_line(draw=False)
@@ -4789,9 +4789,10 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if not hasattr(self, 'lag_pix'):
             return
 
-        self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
-        self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
-        self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
+        if self.in_frame:   # Need this otherwise we hit an error with trying to update an GUI object that isn't there
+            self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
+            self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
+            self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
 
     def update_nadeau_lag(self, info_dict, draw=True):
         """Updates Nadeau lag"""
@@ -4849,8 +4850,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         :return:
         """
         # UPDATE CURRENT SETTINGS FROM CONFIG FILE
-        for key in self.vars.keys():
-            setattr(self, key, self.pyplis_worker.config[key])
+        self.update_variables()
 
         self.in_frame = False
         # Close frame
