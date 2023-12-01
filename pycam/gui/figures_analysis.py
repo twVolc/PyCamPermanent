@@ -5868,6 +5868,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                    command=lambda: self.gather_vars(rerun_doas=True), font=self.gui.main_font)
         self.LDF_box.grid(row=2, column=1, sticky='ew', padx=2, pady=2)
         if self.use_light_dilution_spec:
+            self.LDF = 0.0
             self.LDF_box.configure(state=tk.DISABLED)
 
 
