@@ -5863,10 +5863,12 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
 
 
         # LDF widget
-        tk.Label(options_frame, text='LDF:', font=self.gui.main_font).grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        tk.Label(options_frame, text='Fix LDF:', font=self.gui.main_font).grid(row=2, column=0, sticky='w', padx=2, pady=2)
         self.LDF_box = ttk.Spinbox(options_frame, from_=0, to=1, increment=0.01, width=4, textvariable=self._LDF,
                                    command=lambda: self.gather_vars(rerun_doas=True), font=self.gui.main_font)
         self.LDF_box.grid(row=2, column=1, sticky='ew', padx=2, pady=2)
+        if self.use_light_dilution_spec:
+            self.LDF_box.configure(state=tk.DISABLED)
 
 
         # Load spectra
@@ -5938,6 +5940,11 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                  'Please switch from DOAS to iFit and then attempt correction')
             return
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+        if self.use_light_dilution_spec:
+            self.LDF_box.configure(state=tk.DISABLED)
+            self.LDF = 0.00
+        else:
+            self.LDF_box.configure(state=tk.ACTIVE)
 
     def set_spec_recal(self):
         """Updates doas_worker recalibration time for light dilution factor generation"""
