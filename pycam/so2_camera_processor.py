@@ -2239,8 +2239,8 @@ class PyplisWorker:
             closest_index = self.calibration_series.index.get_indexer([self.img_A.meta['start_acq']], method='nearest')
 
             # Use index to retrieve calibration coeffients
-            grad = self.calibration_series.iloc[closest_index]['coeff 0'][0]
-            intercept = self.calibration_series.iloc[closest_index]['coeff 1'][0]
+            intercept = self.calibration_series.iloc[closest_index]['coeff 0'][0]
+            grad = self.calibration_series.iloc[closest_index]['coeff 1'][0]
 
             # Calibrate image
             cal_img = img * grad
@@ -3908,7 +3908,7 @@ class PyplisWorker:
         mse = np.mean(self.calib_pears.residual ** 2)
         r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
 
-        fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
+        fit_data = np.hstack((self.calib_pears.stop, np.flip(self.calib_pears.calib_coeffs), mse, r2))
         self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
 
