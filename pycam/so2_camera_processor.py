@@ -313,7 +313,6 @@ class PyplisWorker:
 
         self.geom_dict = {}
 
-
         self.config = {}
         self.raw_configs = {}
         self.load_config(config_path, "default")
@@ -408,7 +407,8 @@ class PyplisWorker:
             "use_light_dilution_spec": "corr_light_dilution",
             "grid_max_ppmm": "grid_max_ppmm",
             "grid_increment_ppmm": "grid_increment_ppmm",
-            "spec_recal_time": "recal_ld_mins"
+            "spec_recal_time": "recal_ld_mins",
+            "LDF": "LDF"
         }
         
         current_params = {key: getattr(self.doas_worker, value)

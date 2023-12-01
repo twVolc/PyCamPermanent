@@ -232,7 +232,7 @@ class IFitWorker:
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
 
         # LD attributes
-        self.corr_light_dilution = True
+        self._corr_light_dilution = True
         self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
         self.recal_ld_mins = 0                  # Recalibration time for light dilution correction (means don't have to calculate it for every spectrum)
         self.spec_time_last_ld = None           # Time of spectrum for last LDF lookup - used with recal_ld_mins to decide whether to lookup LDf or use previous LDF
@@ -252,6 +252,7 @@ class IFitWorker:
         self.fit_0_uncorr = None
         self.fit_1_uncorr = None
         self.ldf_best = np.nan      # Best estimate of light dilution factor
+        self._LDF = 0               # User-defined LDF to process ifit data with
 
     def reset_self(self, reset_dark=True):
         """Some resetting of object, before processing occurs"""
@@ -272,6 +273,11 @@ class IFitWorker:
         # Clear images queue
         with self.q_spec.mutex:
             self.q_spec.queue.clear()
+
+    @property
+    def plume_spec_shift(self):
+        """Shifted plume spectrum (to account for issues with spectrometer calibration"""
+        return np.roll(self.plume_spec_corr, self.shift)
 
     @property
     def start_stray_wave(self):
@@ -385,6 +391,29 @@ class IFitWorker:
 
         # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
         self.ref_convolved = False
+
+    @property
+    def LDF(self):
+        return self._LDF
+
+    @LDF.setter
+    def LDF(self, value):
+        self._LDF = value
+        self.analyser.params.add('LDF', value=value, vary=False)
+
+    @property
+    def corr_light_dilution(self):
+        return self._corr_light_dilution
+
+    @corr_light_dilution.setter
+    def corr_light_dilution(self, value):
+        """
+        If using light dilution correction we need to make sure we have updated the standard analyser to not have
+        light dilution in - this manual LDF differs from the automated calculation of LDF within iFit
+        """
+        self._corr_light_dilution = value
+        if value:
+            self.LDF = 0.0
 
     # -------------------------------------------
 
@@ -743,7 +772,7 @@ class IFitWorker:
                    header='Raw in-plume spectrum\n'
                           '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
-    def process_doas(self):
+    def process_doas(self, plot=False):
         """Handles the order of DOAS processing"""
         # Check we have all of the correct spectra to perform processing
         if self.plume_spec_raw is None or self.wavelengths is None:
@@ -772,7 +801,7 @@ class IFitWorker:
 
         # Run processing
         #print('IFit worker: Running fit')
-        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift], calc_od=self.ref_spec_used,
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
         #print('IFit worker: Finished fit')
         self.applied_ld_correction = False
@@ -796,7 +825,7 @@ class IFitWorker:
                         self.spec_time - self.spec_time_last_ld >= datetime.timedelta(minutes=self.recal_ld_mins):
 
                     # Process second fit window
-                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr],
+                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift],
                                                        calc_od=self.ref_spec_used,
                                                        fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
                     self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
@@ -806,7 +835,7 @@ class IFitWorker:
                                                                        so2_dat_err=(fit_0.params['SO2'].fit_err,
                                                                                     fit_1.params['SO2'].fit_err),
                                                                        wavelengths=self.wavelengths,
-                                                                       spectra=self.plume_spec_corr,
+                                                                       spectra=self.plume_spec_shift,
                                                                        spec_time=self.spec_time)
                     print('Fit val uncorrected: {}'.format(fit_0.params['SO2'].fit_val))
                     print('Fit val corrected: {}'.format(df_lookup['SO2'][0]))
@@ -823,7 +852,7 @@ class IFitWorker:
                     # TODO I don't think this alone works - the ldf doesn't seem to change the fit result
                     # TODO instead i will still need to run the LD lookup to find so2_best which is the column density value we
                     # TODO are interested in.
-                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_corr, self.ldf_best)
+                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_shift, self.ldf_best)
 
         else:
             self.ldf_best = np.nan
@@ -842,6 +871,9 @@ class IFitWorker:
         # Set flag defining that data has been fully processed
         self.processed_data = True
         self.fit = fit_0     # Save fit in attribute
+
+        if plot:
+            self.fig_doas.update_plot()
 
     def process_dir(self, spec_dir=None, plot=False):
         """

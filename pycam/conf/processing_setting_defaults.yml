@@ -97,6 +97,9 @@ dil_recal_time: 30
 use_light_dilution_spec: 0
 grid_max_ppmm: 5000
 grid_increment_ppmm: 20
+LDF: 0.00
 spec_recal_time: 0
 doas_cal_adjust_offset: 0
+
+# Camera Geometry
 default_cam_geom: ./pycam/conf/cam_geom/villarrica_26-03-2018.txt
