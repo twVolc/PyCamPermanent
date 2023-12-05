@@ -1923,8 +1923,8 @@ class PyplisWorker:
             pcs_line = self.PCS_lines[0]
 
         if self.bg_pycam:   # Basic pycam rectangle provides background intensity
-            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-            # region of sky, rather than the same coordinates of the image
+            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the
+            # same region of sky, rather than the same coordinates of the image
             bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
             bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
@@ -2008,8 +2008,8 @@ class PyplisWorker:
             except BaseException as e:
                 print('ERROR! When attempting pyplis background modelling: {}'.format(e))
                 print('Reverting to basic rectangular background model. Note subsequent processing will attempt pyplis modelling again unless changed by the user.')
-                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-                # region of sky, rather than the same coordinates of the image
+                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the 
+                # same region of sky, rather than the same coordinates of the image
                 bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
                 bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
