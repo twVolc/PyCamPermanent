@@ -2458,7 +2458,10 @@ class PyplisWorker:
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
             tau_vals = np.column_stack((img_time, tau, cd, cd_err))
-            self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            if type(self.tau_vals) == np.ndarray:
+                self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            else:
+                self.tau_vals = tau_vals
 
             # Rerun fit if we have enough data
             # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
