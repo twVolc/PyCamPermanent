@@ -1,7 +1,0 @@
-# Geometry setup file
-volcano=Villarrica
-lat=-39.3774
-lon=-71.946386
-altitude=1170
-elev=19.0
-azim=171.3
