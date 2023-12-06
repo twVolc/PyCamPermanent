@@ -490,7 +490,10 @@ class PyplisWorker:
     @cal_series_path.setter
     def cal_series_path(self, value):
         self._cal_series_path = value
-        self.load_cal_series(self._cal_series_path)
+        # This checks against the value in the config dict as there is no guarantee
+        # that the attribute will be updated before reaching this setter.
+        if self.config["cal_type_int"] == 3:
+            self.load_cal_series(self._cal_series_path)
 
     @property
     def flow_glob(self):
