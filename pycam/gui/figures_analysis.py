@@ -2057,13 +2057,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.opt_frame)
         butt_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
-        butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
+        butt = ttk.Button(butt_frame, text='OK', command=self.save_and_close)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
         butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
+        butt = ttk.Button(butt_frame, text='Preview', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -----------------------------
@@ -2796,6 +2796,16 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.ref_check_lower = pyplis_worker.config['ref_check_lower']
         self.ref_check_upper = pyplis_worker.config['ref_check_upper']
         self.ref_check_mode = pyplis_worker.config['ref_check_mode']
+        self.frame.destroy()
+        self.in_frame = False
+
+    def save_and_close(self):
+        
+        self.gather_vars(update_pyplis=True)
+        pyplis_worker.model_background(plot=False)
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        
+        # CLose the window
         self.frame.destroy()
         self.in_frame = False
 
