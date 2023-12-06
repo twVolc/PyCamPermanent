@@ -2800,11 +2800,9 @@ class PyplisWorker:
         lags = np.arange(0, len(coeffs))
         # -----------------------------------------------------------------
 
-        # Scale the lag by line orientation (horizontal and vertical lines need no scaling, whilst diagonal lines do
-        # since their number of pixels wont match with the length of the line based on horizontal pixel width
-        relative_line_length = line.length() / (len(profile_current) * interp_step)
-        lag_in_pixels = relative_line_length * lag
-        lag_length = pixel_dist * lag_in_pixels
+        # Pyplis already interpolates onto a line of length len(profile_current) so we don't need to scale for line length
+        lag_length = pixel_dist * lag
+        lag_in_pixels = lag * interp_step
 
         # Calculate plume speed
         time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
