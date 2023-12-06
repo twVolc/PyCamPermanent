@@ -661,7 +661,7 @@ class CDSeries:
 
         # Plot new data
         self.series_scatter = self.ax.plot(times, cds, markersize=5, marker='.', color=self.cd_colour, linestyle='None')
-        self.series_errors = self.ax.errorbar(times, cds, yerr=fit_errs, ecolor=self.err_colour, linestyle='None')
+        self.series_errors = self.ax.errorbar(times, cds, yerr=fit_errs, ecolor=self.err_colour, linestyle='None', zorder = 1.5)
 
         # Plot ldfs
         self.series_ldfs = self.ax_ldf.plot(times, ldfs, markersize=5, color=self.ldf_colour,
