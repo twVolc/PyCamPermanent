@@ -4780,6 +4780,9 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
     def update_pcs_line(self, draw=True):
         """Updates plotting of PCS line if auto_nadeau_line is True, otherwise it removes the line"""
+        if not hasattr(self, 'ax_nad'):
+            return
+
         try:
             self.pcs_line_plot.pop(0).remove()
         except (AttributeError, IndexError):
