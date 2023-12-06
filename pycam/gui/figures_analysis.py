@@ -4803,7 +4803,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             return
 
         if self.in_frame:   # Need this otherwise we hit an error with trying to update an GUI object that isn't there
-            self.lag_pix.configure(text='{}'.format(info_dict['lag']))  # Want to use lag here not lag_in_pixels which is scaled for pixel contribution - just want raw result of cross correlation here
+            self.lag_pix.configure(text='{:.1f}'.format(info_dict['lag_in_pixels']))
             self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
             self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
 
@@ -4839,9 +4839,9 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         colours = ['gray', 'blue', 'red']
         alphas = [1, 0.5, 1]
         profiles = [info_dict['profile_current'], info_dict['profile_next'], info_dict['profile_next']]
-        x_dat = [np.arange(0, len(profiles[0])),
-                 np.arange(0, len(profiles[0])),
-                 np.arange(0, len(profiles[0])) - info_dict['lag']]
+        x_dat = [info_dict['x_vals'],
+                 info_dict['x_vals'],
+                 info_dict['x_vals'] - (info_dict['lag'] * info_dict['interp_step'])]
 
         for i, prof_name in enumerate(profile_names):
             self.xsect_plots[i] = self.ax_nad_lag[1].plot(x_dat[i], profiles[i], label=profile_names[i],
