@@ -3791,8 +3791,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def update_vars(self):
         """Updates FOV variables based on pyplis worker"""
         try:
-            self.centre_coords = (self.pyplis_worker.doas_fov_x, self.pyplis_worker.doas_fov_y)
-            self.fov_rad = self.pyplis_worker.doas_fov_extent
+            self.centre_coords = (self.pyplis_worker.centre_pix_x, self.pyplis_worker.centre_pix_x)
+            self.fov_rad = self.pyplis_worker.fov_rad
         except AttributeError:
             pass
 
