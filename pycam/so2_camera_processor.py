@@ -415,18 +415,19 @@ class PyplisWorker:
                           for key, value in doas_params.items()}
         self.config.update(current_params)
 
-    def save_config_plus(self, file_path):
+    def save_config_plus(self, file_path, file_name = None):
         """Save extra data associated with config file along with config"""
-        save_dir = os.path.dirname(file_path)
-        self.save_all_pcs(save_dir)
-        self.save_all_dil(save_dir)
-        self.save_img_reg(save_dir)
-        self.save_cam_geom(save_dir)
+        self.save_all_pcs(file_path)
+        self.save_all_dil(file_path)
+        self.save_img_reg(file_path)
+        self.save_cam_geom(file_path)
         self.save_doas_params()
+        if file_name is None:
+            self.save_config(file_path)
+        else:
+            self.save_config(file_path, file_name)
 
-        self.save_config(file_path)
-
-    def save_config(self, file_path, subset=None):
+    def save_config(self, file_path, file_name = "process_config.yml", subset=None):
         """Save the contents of the config attribute to a yml file"""
 
         # Allows partial update of the specified config file (useful for updating defaults) 
@@ -436,7 +437,9 @@ class PyplisWorker:
             vals = {key: self.config[key] for key in subset if key in self.config.keys()}
             self.raw_configs["default"].update(vals)
 
-        with open(file_path, "w") as file:
+        full_path = os.path.join(file_path, file_name)
+
+        with open(full_path, "w") as file:
             yaml.dump(self.raw_configs["default"], file)
 
     @property
@@ -3546,8 +3549,7 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
-        filepath = os.path.join(self.processed_dir, "process_config.yml")
-        self.save_config_plus(filepath)
+        self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True
