@@ -2267,10 +2267,16 @@ class PyplisWorker:
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=polyorder)
         self.record_fit_data()
-        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
-        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.config["centre_pix_x"], self.config["centre_pix_y"] = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.config["fov_rad"] = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
         print('DOAS FOV search complete')
+
+        # Need to convert from numpy objects otherwise causes problems saving yaml file
+        self.config["centre_pix_x"] = int(self.config["centre_pix_x"])
+        self.config["centre_pix_y"] = int(self.config["centre_pix_y"])
+        self.config["fov_rad"] = float(self.config["fov_rad"])
+        self.save_config(self.processed_dir, subset = ["doas_fov_x", "doas_fov_y", "fov_rad"])
         if self.calib_pears.polyorder == 1 and self.calib_pears.calib_coeffs[0] < 0:
             print('Warning!! Calibration shows inverse tau-CD relationship. It is likely an error has occurred')
 
@@ -2310,13 +2316,13 @@ class PyplisWorker:
 
         # self.calib_pears.update_search_settings(method='pearson')
         # self.calib_pears.merge_data(merge_type=self._settings["mergeopt"])
-        self.calib_pears.fov.result_pearson['cx_rel'] = self.doas_fov_x
-        self.calib_pears.fov.result_pearson['cy_rel'] = self.doas_fov_y
-        self.calib_pears.fov.result_pearson['rad_rel'] = self.doas_fov_extent
-        self.calib_pears.fov.img_prep['pyrlevel'] = 1
+        self.calib_pears.fov.result_pearson['cx_rel'] = self.centre_pix_x
+        self.calib_pears.fov.result_pearson['cy_rel'] = self.centre_pix_y
+        self.calib_pears.fov.result_pearson['rad_rel'] = self.fov_rad
+        self.calib_pears.fov.img_prep['pyrlevel'] = 0
         self.calib_pears.fov.search_settings['method'] = 'pearson'
         mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                  self.doas_fov_x, self.doas_fov_y, self.doas_fov_extent)
+                                  self.centre_pix_x, self.centre_pix_y, self.fov_rad)
         self.calib_pears.fov.fov_mask_rel = mask.astype(np.float64)
         self.fov = self.calib_pears.fov
         self.got_doas_fov = True
