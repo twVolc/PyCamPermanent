@@ -200,9 +200,9 @@ class PyplisWorker:
         self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=self.sens_mask)     # Pyplis object holding functions to plot results
         self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
-        self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
-        self.doas_fov_y = None                  # Y FOV of DOAS
-        self.doas_fov_extent = None             # DOAS FOV radius
+        self.centre_pix_x = None                  # X FOV of DOAS (from pyplis results)
+        self.centre_pix_y = None                  # Y FOV of DOAS
+        self.fov_rad = None             # DOAS FOV radius
         self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
@@ -1324,11 +1324,11 @@ class PyplisWorker:
         # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
         if self.cal_type_int in [1, 2] and self.got_doas_fov:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
-            #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
-            #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
+            #                                                  pos_x_abs=self.centre_pix_x, pos_y_abs=self.centre_pix_y,
+            #                                                  radius_abs=self.fov_rad, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm],
-                                                  pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                  radius=self.doas_fov_extent, pyr_lvl=2)
+                                                  pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                  radius=self.fov_rad, pyr_lvl=2)
         else:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm], radius=3, pyr_lvl=2)
@@ -1497,8 +1497,8 @@ class PyplisWorker:
             # DOAS FOV for normalisation region
             if self.cal_type_int in [1, 2] and self.got_doas_fov:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
-                                                                       pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                                       radius=self.doas_fov_extent, pyr_lvl=2)
+                                                                       pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                                       radius=self.fov_rad, pyr_lvl=2)
             else:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm], radius=3, pyr_lvl=2)
 
@@ -3872,8 +3872,8 @@ class PyplisWorker:
 
     def generate_DOAS_FOV_info(self):
 
-        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y)
-        rad_string = 'DOAS_FOV_radius={}\n'.format(self.doas_fov_extent)
+        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
+        rad_string = 'DOAS_FOV_radius={}\n'.format(self.config["fov_rad"])
         
         if self.doas_recal:
             remove_string = 'DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins)
