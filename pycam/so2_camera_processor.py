@@ -2255,6 +2255,14 @@ class PyplisWorker:
 
         return cal_img
 
+    def save_fov_search(self):
+        """Updates the fov values in config dict and yaml file after doas_fov_search completed"""
+        # Need to convert from numpy objects otherwise causes problems saving yaml file
+        self.config["centre_pix_x"] = int(self.centre_pix_x)
+        self.config["centre_pix_y"] = int(self.centre_pix_y)
+        self.config["fov_rad"] = float(self.fov_rad)
+        self.save_config(self.processed_dir, subset = ["centre_pix_x", "centre_pix_y", "fov_rad"])
+
     def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
         """
         Performs FOV search for doas
@@ -2270,16 +2278,12 @@ class PyplisWorker:
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=polyorder)
         self.record_fit_data()
-        self.config["centre_pix_x"], self.config["centre_pix_y"] = self.calib_pears.fov.pixel_position_center(abs_coords=True)
-        self.config["fov_rad"] = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.centre_pix_x, self.centre_pix_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.fov_rad = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
         print('DOAS FOV search complete')
+        self.save_fov_search()
 
-        # Need to convert from numpy objects otherwise causes problems saving yaml file
-        self.config["centre_pix_x"] = int(self.config["centre_pix_x"])
-        self.config["centre_pix_y"] = int(self.config["centre_pix_y"])
-        self.config["fov_rad"] = float(self.config["fov_rad"])
-        self.save_config(self.processed_dir, subset = ["doas_fov_x", "doas_fov_y", "fov_rad"])
         if self.calib_pears.polyorder == 1 and self.calib_pears.calib_coeffs[0] < 0:
             print('Warning!! Calibration shows inverse tau-CD relationship. It is likely an error has occurred')
 
