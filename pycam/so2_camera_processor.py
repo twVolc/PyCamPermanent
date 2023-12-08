@@ -493,7 +493,10 @@ class PyplisWorker:
     @cal_series_path.setter
     def cal_series_path(self, value):
         self._cal_series_path = value
-        self.load_cal_series(self._cal_series_path)
+        # This checks against the value in the config dict as there is no guarantee
+        # that the attribute will be updated before reaching this setter.
+        if self.config["cal_type_int"] == 3:
+            self.load_cal_series(self._cal_series_path)
 
     @property
     def flow_glob(self):
@@ -2771,13 +2774,14 @@ class PyplisWorker:
         return self.generate_nadeau_line(orientation=orientation)
 
 
-    def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None):
+    def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None, interp_step=0.2):
         """
         Uses two images and the nadeau line to calculate plume speed
         :param  img_current pyplis.Img      Current optical depth (tau) image
         :param  img_next    pyplis.Img      Next optical depth image
         :param  line        LineOnImage     Nadeau line running parallel to plume motion
-        :param  max_shift   Int             Maximum allowed shift of time series (%)
+        :param  max_shift   int             Maximum allowed shift of time series (%)
+        :param  interp_step float           Interpolation amount for line
         """
         if max_shift is not None:
             self.max_nad_shift = max_shift
@@ -2792,8 +2796,14 @@ class PyplisWorker:
             profile_current = profile_current[::-1]
             profile_next = profile_next[::-1]
 
+        # Interpolate the lines, to improve resolution
+        x_interp = np.arange(0, len(profile_current) + interp_step, interp_step)
+        x_raw = np.arange(0, len(profile_current))
+        profile_current = np.interp(x_interp, x_raw, profile_current)
+        profile_next = np.interp(x_interp, x_raw, profile_next)
+
         # Get average distance of pixel in image line profile
-        pixel_dist = line.get_line_profile(self.dist_img_step.img).mean()
+        pixel_dist = line.get_line_profile(self.dist_img_step.img).mean() * interp_step
 
         # -----------------------------------------------------------------
         # Pyplis cross-correlation - currently somewhat arbitrarily setting max shift to 50%
@@ -2802,11 +2812,9 @@ class PyplisWorker:
         lags = np.arange(0, len(coeffs))
         # -----------------------------------------------------------------
 
-        # Scale the lag by line orientation (horizontal and vertical lines need no scaling, whilst diagonal lines do
-        # since their number of pixels wont match with the length of the line based on horizontal pixel width
-        relative_line_length = line.length() / len(profile_current)
-        lag_in_pixels = relative_line_length * lag
-        lag_length = pixel_dist * lag_in_pixels
+        # Pyplis already interpolates onto a line of length len(profile_current) so we don't need to scale for line length
+        lag_length = pixel_dist * lag
+        lag_in_pixels = lag * interp_step
 
         # Calculate plume speed
         time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
@@ -2815,6 +2823,8 @@ class PyplisWorker:
         print('Nadeau plume speed (m/s): {:.2f}'.format(plume_speed))
         info_dict = {'profile_current': profile_current,
                      'profile_next': profile_next,
+                     'x_vals': x_interp,
+                     'interp_step': interp_step,
                      'lags': lags,
                      'coeffs': coeffs,
                      'lag': lag,

@@ -625,12 +625,14 @@ class IFitWorker:
         self.wavelengths = wavelengths
         self.clear_spec_raw = spectrum
 
-    def load_dir(self, spec_dir=None, prompt=True, plot=True):
+    def load_dir(self, spec_dir=None, prompt=True, plot=True, process_first=True):
         """Load spectrum directory
         :param spec_dir str     If provided this is the path to the spectra directory. prompt is ignored if spec_dir is
                                 specified.
         :param: prompt  bool    If true, a dialogue box is opened to request directory load. Else, self.spec_dir is used
-        :param: plot    bool    If true, the first spectra are plotted in the GUI"""
+        :param: plot    bool    If true, the first spectra are plotted in the GUI
+        :param: process_first   bool    If True, the first spectrum is processed.
+        """
 
         if spec_dir is not None:
             self.spec_dir = spec_dir
@@ -669,6 +671,10 @@ class IFitWorker:
                 self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
                 if self.dark_spec is None:
                     print('No dark spectrum could be found in the current spectrum directory or current dark directory')
+
+        if process_first:
+            # Try to process first spectrum
+            self.process_doas(plot=plot)
 
         # Update plots if requested
         if plot:
