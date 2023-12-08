@@ -3389,7 +3389,11 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                      'max_doas_cam_dif': int,
                      'fix_fov': int,
                      'maxrad_doas': float,
-                     'polyorder_cal': int}          # Maximum radius in pixels, not degrees, so depends on distance!
+                     'polyorder_cal': int,
+                     'centre_pix_x': int,
+                     'centre_pix_y': int,
+                     'fov_rad': float}
+        # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
         # self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
@@ -3424,11 +3428,11 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.config['max_doas_cam_dif'] = self.max_doas_cam_dif
         self.pyplis_worker.config['polyorder_cal'] = self.polyorder_cal
         self.pyplis_worker.config['fix_fov'] = self.fix_fov
+        self.pyplis_worker.config['centre_pix_x'] = self.centre_pix_x
+        self.pyplis_worker.config['centre_pix_y'] = self.centre_pix_y
+        self.pyplis_worker.config['fov_rad'] = self.fov_rad
         self.pyplis_worker.apply_config(subset=self.vars.keys()) # Not 100% sure if this is needed here or could be moved into the if-statement
         if self.fix_fov:
-            self.pyplis_worker.doas_fov_x = self.centre_pix_x
-            self.pyplis_worker.doas_fov_y = self.centre_pix_y
-            self.pyplis_worker.doas_fov_extent = self.fov_rad
             self.pyplis_worker.generate_doas_fov()
 
 
