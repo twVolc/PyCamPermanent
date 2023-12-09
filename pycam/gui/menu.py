@@ -12,7 +12,7 @@ from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line, create_video
 import pycam.gui.settings as settings
 from pycam.networking.FTP import FileTransferGUI
-from pycam.cfg import pyplis_worker
+from pycam.cfg import pyplis_worker, process_defaults_loc
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
@@ -457,6 +457,21 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.load_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         row = 0
+        default_conf_frame = tk.LabelFrame(self.load_frame, text='Set default config file', relief=tk.RAISED, borderwidth=2,
+                                           font=self.main_gui.main_font)
+        default_conf_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        conf_lab = ttk.Label(default_conf_frame, text='Current default config:', font=self.main_gui.main_font)
+        conf_lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        self.conf_file = ttk.Label(default_conf_frame, text=self.default_conf_path_short, width=self.max_len_str,
+                                           font=self.main_gui.main_font)
+        self.conf_file.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+        change_conf_butt = ttk.Button(default_conf_frame, text='Change default config', command=self.choose_default_conf)
+        change_conf_butt.grid(row=row, column=0, sticky='we', padx=self.pdx, pady=self.pdy)
+        revert_conf_butt = ttk.Button(default_conf_frame, text='Revert to original default config', command=self.revert_default_conf)
+        revert_conf_butt.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        row += 1
         pcs_frame = tk.LabelFrame(self.load_frame, text='ICA lines', relief=tk.RAISED, borderwidth=2,
                                   font=self.main_gui.main_font)
         pcs_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
@@ -600,6 +615,23 @@ class LoadFrame(LoadSaveProcessingSettings):
             return '...' + self.img_registration[-self.max_len_str+3:]
         else:
             return self.img_registration
+    
+    @property
+    def default_conf_path_short(self):
+        path = self.default_conf_path
+        if len(path) > self.max_len_str:
+            return '...' + path[-self.max_len_str+3:]
+        else:
+            return path
+        
+    @property
+    def default_conf_path(self):
+        return process_defaults_loc.read_text()
+
+    @default_conf_path.setter
+    def default_conf_path(self, value):
+        process_defaults_loc.write_text(value)
+        self.conf_file.configure(text = self.default_conf_path_short)
 
     def load_pcs(self, filename=None, new_line=False):
         """Loads PCS into GUI"""
@@ -815,6 +847,14 @@ class LoadFrame(LoadSaveProcessingSettings):
         [self.pyplis_worker.fig_dilution.del_line(line_n) for line_n in current_lines]
         self.pyplis_worker.fig_dilution.current_line = 1
 
+    def choose_default_conf(self):
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=self.init_dir,
+                                              filetypes=[('Yaml file', '*.yml')])
+        if len(filename) > 0:
+            self.default_conf_path = filename
+
+    def revert_default_conf(self):
+        self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
 class SaveFrame(LoadSaveProcessingSettings):
     """
