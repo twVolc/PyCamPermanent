@@ -2311,7 +2311,7 @@ class PyplisWorker:
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
             print('Updating DOAS FOV plot')
-            self.fig_doas_fov.update_plot()
+            self.fig_doas_fov.update_plot(reopen=False)
 
     def generate_doas_fov(self):
         """

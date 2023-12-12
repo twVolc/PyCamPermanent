@@ -3796,13 +3796,18 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         except AttributeError:
             pass
 
-    def update_plot(self, update_scat=True, update_img=True, update_params=True):
+    def update_plot(self, update_scat=True, update_img=True, update_params=True, reopen=True):
         """
         Updates plot
+        :param update_scat      bool    If True the scatter plot is updated
+        :param update_image     bool    If True the FOV image is updated
+        :param update_params    bool    If True the calibration stats are updated
+        :param reopen           bool    If True the frame is reopened if it is closed
         :return:
         """
         if not self.in_frame:
-            self.generate_frame()
+            if reopen:
+                self.generate_frame()
             return
 
         # Update FOV variables
