@@ -23,6 +23,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
+from shutil import copyfile
 import time
 import os
 import threading
@@ -848,12 +849,19 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.fig_dilution.current_line = 1
 
     def choose_default_conf(self):
+        """Choose and set the location for the the default config path"""
         filename = filedialog.askopenfilename(parent=self.frame, initialdir=self.init_dir,
                                               filetypes=[('Yaml file', '*.yml')])
         if len(filename) > 0:
             self.default_conf_path = filename
 
     def revert_default_conf(self):
+        """Revert the default config back to the original setting and reset the location"""
+
+        # Reset contents of original file to contents of backup file
+        copyfile(FileLocator.PROCESS_DEFAULTS_BACKUP, FileLocator.PROCESS_DEFAULTS)
+        
+        # Reset recorded location of default config
         self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
 class SaveFrame(LoadSaveProcessingSettings):

@@ -97,6 +97,7 @@ class FileLocator:
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
 
     PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.yml'
+    PROCESS_DEFAULTS_BACKUP = CONF_DIR_WINDOWS + 'processing_setting_backup.yml'
     PROCESS_DEFAULTS_LOC = CONF_DIR_WINDOWS + 'default_conf_location.txt'
     
 
