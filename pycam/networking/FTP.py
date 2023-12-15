@@ -506,13 +506,15 @@ class FTPClient:
                 except PermissionError:
                     print('Got permission error trying to delete lock file')
                     time.sleep(0.02)
+                except FileNotFoundError:
+                    break   # If the file doesn't exist then just ignore trying to delete it
 
         # Delete file after it has been transferred
         if rm:
             try:
                 self.connection.delete(data_name)
                 print('Deleted file {} from instrument'.format(filename))
-            except ftplib.error_perm as e:
+            except (ftplib.error_perm, EOFError) as e:
                 print(e)
 
         return local_name, local_date_dir

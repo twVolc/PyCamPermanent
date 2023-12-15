@@ -200,9 +200,9 @@ class PyplisWorker:
         self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=self.sens_mask)     # Pyplis object holding functions to plot results
         self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
-        self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
-        self.doas_fov_y = None                  # Y FOV of DOAS
-        self.doas_fov_extent = None             # DOAS FOV radius
+        self.centre_pix_x = None                  # X FOV of DOAS (from pyplis results)
+        self.centre_pix_y = None                  # Y FOV of DOAS
+        self.fov_rad = None             # DOAS FOV radius
         self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
@@ -415,18 +415,19 @@ class PyplisWorker:
                           for key, value in doas_params.items()}
         self.config.update(current_params)
 
-    def save_config_plus(self, file_path):
+    def save_config_plus(self, file_path, file_name = None):
         """Save extra data associated with config file along with config"""
-        save_dir = os.path.dirname(file_path)
-        self.save_all_pcs(save_dir)
-        self.save_all_dil(save_dir)
-        self.save_img_reg(save_dir)
-        self.save_cam_geom(save_dir)
+        self.save_all_pcs(file_path)
+        self.save_all_dil(file_path)
+        self.save_img_reg(file_path)
+        self.save_cam_geom(file_path)
         self.save_doas_params()
+        if file_name is None:
+            self.save_config(file_path)
+        else:
+            self.save_config(file_path, file_name)
 
-        self.save_config(file_path)
-
-    def save_config(self, file_path, subset=None):
+    def save_config(self, file_path, file_name = "process_config.yml", subset=None):
         """Save the contents of the config attribute to a yml file"""
 
         # Allows partial update of the specified config file (useful for updating defaults) 
@@ -436,7 +437,9 @@ class PyplisWorker:
             vals = {key: self.config[key] for key in subset if key in self.config.keys()}
             self.raw_configs["default"].update(vals)
 
-        with open(file_path, "w") as file:
+        full_path = os.path.join(file_path, file_name)
+
+        with open(full_path, "w") as file:
             yaml.dump(self.raw_configs["default"], file)
 
     @property
@@ -1324,11 +1327,11 @@ class PyplisWorker:
         # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
         if self.cal_type_int in [1, 2] and self.got_doas_fov:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
-            #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
-            #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
+            #                                                  pos_x_abs=self.centre_pix_x, pos_y_abs=self.centre_pix_y,
+            #                                                  radius_abs=self.fov_rad, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm],
-                                                  pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                  radius=self.doas_fov_extent, pyr_lvl=2)
+                                                  pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                  radius=self.fov_rad, pyr_lvl=2)
         else:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm], radius=3, pyr_lvl=2)
@@ -1497,8 +1500,8 @@ class PyplisWorker:
             # DOAS FOV for normalisation region
             if self.cal_type_int in [1, 2] and self.got_doas_fov:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
-                                                                       pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                                       radius=self.doas_fov_extent, pyr_lvl=2)
+                                                                       pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                                       radius=self.fov_rad, pyr_lvl=2)
             else:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm], radius=3, pyr_lvl=2)
 
@@ -1926,8 +1929,8 @@ class PyplisWorker:
             pcs_line = self.PCS_lines[0]
 
         if self.bg_pycam:   # Basic pycam rectangle provides background intensity
-            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-            # region of sky, rather than the same coordinates of the image
+            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the
+            # same region of sky, rather than the same coordinates of the image
             bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
             bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
@@ -2011,8 +2014,8 @@ class PyplisWorker:
             except BaseException as e:
                 print('ERROR! When attempting pyplis background modelling: {}'.format(e))
                 print('Reverting to basic rectangular background model. Note subsequent processing will attempt pyplis modelling again unless changed by the user.')
-                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-                # region of sky, rather than the same coordinates of the image
+                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the 
+                # same region of sky, rather than the same coordinates of the image
                 bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
                 bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
@@ -2252,6 +2255,14 @@ class PyplisWorker:
 
         return cal_img
 
+    def save_fov_search(self):
+        """Updates the fov values in config dict and yaml file after doas_fov_search completed"""
+        # Need to convert from numpy objects otherwise causes problems saving yaml file
+        self.config["centre_pix_x"] = int(self.centre_pix_x)
+        self.config["centre_pix_y"] = int(self.centre_pix_y)
+        self.config["fov_rad"] = float(self.fov_rad)
+        self.save_config(self.processed_dir, subset = ["centre_pix_x", "centre_pix_y", "fov_rad"])
+
     def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
         """
         Performs FOV search for doas
@@ -2267,10 +2278,12 @@ class PyplisWorker:
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=polyorder)
         self.record_fit_data()
-        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
-        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.centre_pix_x, self.centre_pix_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.fov_rad = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
         print('DOAS FOV search complete')
+        self.save_fov_search()
+
         if self.calib_pears.polyorder == 1 and self.calib_pears.calib_coeffs[0] < 0:
             print('Warning!! Calibration shows inverse tau-CD relationship. It is likely an error has occurred')
 
@@ -2310,13 +2323,13 @@ class PyplisWorker:
 
         # self.calib_pears.update_search_settings(method='pearson')
         # self.calib_pears.merge_data(merge_type=self._settings["mergeopt"])
-        self.calib_pears.fov.result_pearson['cx_rel'] = self.doas_fov_x
-        self.calib_pears.fov.result_pearson['cy_rel'] = self.doas_fov_y
-        self.calib_pears.fov.result_pearson['rad_rel'] = self.doas_fov_extent
-        self.calib_pears.fov.img_prep['pyrlevel'] = 1
+        self.calib_pears.fov.result_pearson['cx_rel'] = self.centre_pix_x
+        self.calib_pears.fov.result_pearson['cy_rel'] = self.centre_pix_y
+        self.calib_pears.fov.result_pearson['rad_rel'] = self.fov_rad
+        self.calib_pears.fov.img_prep['pyrlevel'] = 0
         self.calib_pears.fov.search_settings['method'] = 'pearson'
         mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                  self.doas_fov_x, self.doas_fov_y, self.doas_fov_extent)
+                                  self.centre_pix_x, self.centre_pix_y, self.fov_rad)
         self.calib_pears.fov.fov_mask_rel = mask.astype(np.float64)
         self.fov = self.calib_pears.fov
         self.got_doas_fov = True
@@ -2461,7 +2474,10 @@ class PyplisWorker:
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
             tau_vals = np.column_stack((img_time, tau, cd, cd_err))
-            self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            if type(self.tau_vals) == np.ndarray:
+                self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            else:
+                self.tau_vals = tau_vals
 
             # Rerun fit if we have enough data
             # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
@@ -2484,7 +2500,7 @@ class PyplisWorker:
                 self.add_doas_cal_data(cal_dict, recal=True)
 
             # Update doas figure, but no need to change the correlation image as we haven't changed that
-            self.fig_doas_fov.update_plot(update_img=False)
+            self.fig_doas_fov.update_plot(update_img=False, reopen=False)
 
     def add_doas_cal_data(self, cal_dict, recal=True):
         """
@@ -2542,7 +2558,7 @@ class PyplisWorker:
         #Extract number of headers
         with open(filename, 'r') as f:
             headerline = f.readline()
-            num_headers = int(headerline.split('=')[-1])
+            num_headers = int(headerline.split('=')[-1].split(',')[0].split('\n')[0])
 
         # Load in csv to dataframe
         self.calibration_series = pd.read_csv(filename, header=num_headers)
@@ -3553,8 +3569,7 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
-        filepath = os.path.join(self.processed_dir, "process_config.yml")
-        self.save_config_plus(filepath)
+        self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True
@@ -3877,8 +3892,8 @@ class PyplisWorker:
 
     def generate_DOAS_FOV_info(self):
 
-        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y)
-        rad_string = 'DOAS_FOV_radius={}\n'.format(self.doas_fov_extent)
+        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
+        rad_string = 'DOAS_FOV_radius={}\n'.format(self.config["fov_rad"])
         
         if self.doas_recal:
             remove_string = 'DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins)

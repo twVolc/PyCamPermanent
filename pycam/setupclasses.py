@@ -117,7 +117,6 @@ class ConfigInfo:
     port_transfer = 'port_transfer'
     port_comm = 'port_comm'
     port_ext = 'port_ext'
-    ext_ports = 'ext_ports'
 
     start_script = 'start_script'
     stop_script = 'stop_script'

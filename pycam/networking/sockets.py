@@ -525,7 +525,6 @@ class SocketClient(SocketMeths):
 
         self.host_ip = host_ip                          # IP address of server
         self.port = port                                # Communication port
-        self.port_list = None                           # List of ports that can be used
         self.server_addr = (self.host_ip, self.port)    # Tuple packaging for later use
         self.connect_stat = False                       # Bool for defining if object has a connection
         self.id = {'IDN':  'EXN'}
@@ -542,7 +541,6 @@ class SocketClient(SocketMeths):
         self.host_ip = host_ip
         self.port = port
         self.server_addr = (self.host_ip, self.port)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def connect_socket(self, event=threading.Event()):
         """Opens socket by attempting to make connection with host"""
@@ -557,7 +555,9 @@ class SocketClient(SocketMeths):
                     self.connect_stat = True
                 except OSError as e:
                     # If the socket was previously closed we may need to create a new socket object to connect
-                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    if 'WinError 10038' in '{}'.format(e):
+                        print('Creating new socket for connection attempt')
+                        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     continue
 
                 # Perform handshake to send identity to server

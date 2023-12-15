@@ -106,8 +106,12 @@ class ConnectionGUI:
 
         lab = ttk.Label(self.frame, text='IP address:', font=self.main_gui.main_font)
         lab.grid(row=0, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
+        lab = ttk.Label(self.frame, text='Port:', font=self.main_gui.main_font)
+        lab.grid(row=1, column=0, padx=self.pdx, pady=self.pdy, sticky='e')
         entry = ttk.Entry(self.frame, width=15, textvariable=self._host_ip, font=self.main_gui.main_font)
         entry.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        ttk.OptionMenu(self.frame, self._port, self.port_list[0], *self.port_list).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
+        # ttk.Entry(self.frame, width=6, textvariable=self._port).grid(row=1, column=1, padx=self.pdx, pady=self.pdy, sticky='ew')
 
         self.test_butt = ttk.Button(self.frame, text='Test Connection', command=self.test_connection)
         self.test_butt.grid(row=0, column=2, padx=self.pdx, pady=self.pdy)
@@ -116,7 +120,7 @@ class ConnectionGUI:
         self.connection_label.grid(row=0, column=3, padx=self.pdx, pady=self.pdy)
 
         self.update_butt = ttk.Button(self.frame, text='Update connection', command=self.update_connection)
-        self.update_butt.grid(row=1, column=1, padx=self.pdx, pady=self.pdy)
+        self.update_butt.grid(row=2, column=1, padx=self.pdx, pady=self.pdy)
 
     @property
     def host_ip(self):
