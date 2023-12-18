@@ -610,6 +610,8 @@ class PyplisWorker:
     def cal_type_int(self, value):
         self._cal_type_int = value
         self.use_sensitivity_mask = value in self.sens_mask_opts
+        if (value != 3) and hasattr(self, 'calibration_series'):
+            delattr(self, 'calibration_series')
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
@@ -3917,7 +3919,7 @@ class PyplisWorker:
             file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
             file.write(self.generate_DOAS_FOV_info())
 
-        if hasattr(self, 'calibration_series'):
+        if hasattr(self, 'calibration_series') and (self.cal_type_int == 3):
             full_df = self.calibration_series
         else:
             coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
