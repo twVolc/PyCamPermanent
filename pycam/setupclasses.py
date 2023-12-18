@@ -96,7 +96,10 @@ class FileLocator:
     CAM_GEOM = CONF_DIR_WINDOWS + '/cam_geom/'                  # Camera geometry settings directory
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
 
-    PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.txt'
+    PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.yml'
+    PROCESS_DEFAULTS_BACKUP = CONF_DIR_WINDOWS + 'processing_setting_backup.yml'
+    PROCESS_DEFAULTS_LOC = CONF_DIR_WINDOWS + 'default_conf_location.txt'
+    
 
     # Data
     DATA = PYCAM_ROOT_WINDOWS + '/Data/'
@@ -453,7 +456,7 @@ class SpecSpecs:
         # Set integration time (ALL IN MICROSECONDS)
         self._int_limit_lower = 100  # Lower integration time limit
         self._int_limit_upper = 20000000  # Upper integration time limit
-        self._int_time = 1000       # Starting integration time
+        self._int_time = 1000000       # Starting integration time
         self.file_int_units = 1e-3  # Shutter speed units relative to seconds
         self.min_coadd = 1
         self.max_coadd = 100
@@ -470,14 +473,13 @@ class SpecSpecs:
         self.saturation_pixels = 2  # Number of pixels to check
 
         # Predefined list of integration times for automatic exposure adjustment
-        self.int_list = np.concatenate((np.arange(1, 5, 0.5),
-                                        np.arange(5, 10, 1),
+        # Range adjusted for SR4 compatibility in seabreeze (6ms - 10000ms; 6000us - 10000000us)
+        self.int_list = np.concatenate((np.arange(6, 10, 1),
                                         np.arange(10, 50, 5),
                                         np.arange(50, 100, 10),
                                         np.arange(100, 500, 50),
                                         np.arange(500, 1000, 100),
-                                        np.arange(10 ** 3, 10 ** 4, 500),
-                                        np.array([10 ** 4])))
+                                        np.arange(10 ** 3, 10 ** 4, 500)))
 
     def estimate_focal_length(self):
         """

@@ -34,7 +34,6 @@ from pycam.io_py import load_spectrum, spec_txt_2_npy
 from ifit.parameters import Parameters
 from ifit.spectral_analysis import Analyser
 from ifit.light_dilution import generate_ld_curves
-from pycam.ifit_ld.ifit_mod.synthetic_suite import Analyser_ld
 from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
 
@@ -233,7 +232,7 @@ class IFitWorker:
                                  dark_flag=False)       # We dark correct prior to passing the spectrum to Analyser
 
         # LD attributes
-        self.corr_light_dilution = True
+        self._corr_light_dilution = True
         self.applied_ld_correction = False      # True if spectrum was corrected for light dilution during processing
         self.recal_ld_mins = 0                  # Recalibration time for light dilution correction (means don't have to calculate it for every spectrum)
         self.spec_time_last_ld = None           # Time of spectrum for last LDF lookup - used with recal_ld_mins to decide whether to lookup LDf or use previous LDF
@@ -253,6 +252,7 @@ class IFitWorker:
         self.fit_0_uncorr = None
         self.fit_1_uncorr = None
         self.ldf_best = np.nan      # Best estimate of light dilution factor
+        self._LDF = 0               # User-defined LDF to process ifit data with
 
     def reset_self(self, reset_dark=True):
         """Some resetting of object, before processing occurs"""
@@ -273,6 +273,11 @@ class IFitWorker:
         # Clear images queue
         with self.q_spec.mutex:
             self.q_spec.queue.clear()
+
+    @property
+    def plume_spec_shift(self):
+        """Shifted plume spectrum (to account for issues with spectrometer calibration"""
+        return np.roll(self.plume_spec_corr, self.shift)
 
     @property
     def start_stray_wave(self):
@@ -387,6 +392,29 @@ class IFitWorker:
         # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
         self.ref_convolved = False
 
+    @property
+    def LDF(self):
+        return self._LDF
+
+    @LDF.setter
+    def LDF(self, value):
+        self._LDF = value
+        self.analyser.params.add('LDF', value=value, vary=False)
+
+    @property
+    def corr_light_dilution(self):
+        return self._corr_light_dilution
+
+    @corr_light_dilution.setter
+    def corr_light_dilution(self, value):
+        """
+        If using light dilution correction we need to make sure we have updated the standard analyser to not have
+        light dilution in - this manual LDF differs from the automated calculation of LDF within iFit
+        """
+        self._corr_light_dilution = value
+        if value:
+            self.LDF = 0.0
+
     # -------------------------------------------
 
     def get_spec_time(self, filename, adj_time_zone=True):
@@ -469,7 +497,11 @@ class IFitWorker:
                 value = 0
 
         # Add spectrum to params for ifit
-        self.params.add(species, value=value, vary=True, xpath=pathname)
+        if species == 'SO2':
+            plume_gas = True
+        else:
+            plume_gas = False
+        self.params.add(species, value=value, vary=True, xpath=pathname, plume_gas=plume_gas)
         if update:
             self.update_analyser()
 
@@ -593,12 +625,14 @@ class IFitWorker:
         self.wavelengths = wavelengths
         self.clear_spec_raw = spectrum
 
-    def load_dir(self, spec_dir=None, prompt=True, plot=True):
+    def load_dir(self, spec_dir=None, prompt=True, plot=True, process_first=True):
         """Load spectrum directory
         :param spec_dir str     If provided this is the path to the spectra directory. prompt is ignored if spec_dir is
                                 specified.
         :param: prompt  bool    If true, a dialogue box is opened to request directory load. Else, self.spec_dir is used
-        :param: plot    bool    If true, the first spectra are plotted in the GUI"""
+        :param: plot    bool    If true, the first spectra are plotted in the GUI
+        :param: process_first   bool    If True, the first spectrum is processed.
+        """
 
         if spec_dir is not None:
             self.spec_dir = spec_dir
@@ -637,6 +671,10 @@ class IFitWorker:
                 self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
                 if self.dark_spec is None:
                     print('No dark spectrum could be found in the current spectrum directory or current dark directory')
+
+        if process_first:
+            # Try to process first spectrum
+            self.process_doas(plot=plot)
 
         # Update plots if requested
         if plot:
@@ -740,7 +778,7 @@ class IFitWorker:
                    header='Raw in-plume spectrum\n'
                           '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
-    def process_doas(self):
+    def process_doas(self, plot=False):
         """Handles the order of DOAS processing"""
         # Check we have all of the correct spectra to perform processing
         if self.plume_spec_raw is None or self.wavelengths is None:
@@ -769,7 +807,7 @@ class IFitWorker:
 
         # Run processing
         #print('IFit worker: Running fit')
-        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr], calc_od=self.ref_spec_used,
+        fit_0 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift], calc_od=self.ref_spec_used,
                                            fit_window=[self.start_fit_wave, self.end_fit_wave])
         #print('IFit worker: Finished fit')
         self.applied_ld_correction = False
@@ -793,7 +831,7 @@ class IFitWorker:
                         self.spec_time - self.spec_time_last_ld >= datetime.timedelta(minutes=self.recal_ld_mins):
 
                     # Process second fit window
-                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_corr],
+                    fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift],
                                                        calc_od=self.ref_spec_used,
                                                        fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
                     self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
@@ -803,7 +841,7 @@ class IFitWorker:
                                                                        so2_dat_err=(fit_0.params['SO2'].fit_err,
                                                                                     fit_1.params['SO2'].fit_err),
                                                                        wavelengths=self.wavelengths,
-                                                                       spectra=self.plume_spec_corr,
+                                                                       spectra=self.plume_spec_shift,
                                                                        spec_time=self.spec_time)
                     print('Fit val uncorrected: {}'.format(fit_0.params['SO2'].fit_val))
                     print('Fit val corrected: {}'.format(df_lookup['SO2'][0]))
@@ -820,7 +858,7 @@ class IFitWorker:
                     # TODO I don't think this alone works - the ldf doesn't seem to change the fit result
                     # TODO instead i will still need to run the LD lookup to find so2_best which is the column density value we
                     # TODO are interested in.
-                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_corr, self.ldf_best)
+                    fit_0, fit_1 = self.ldf_refit(self.wavelengths, self.plume_spec_shift, self.ldf_best)
 
         else:
             self.ldf_best = np.nan
@@ -839,6 +877,9 @@ class IFitWorker:
         # Set flag defining that data has been fully processed
         self.processed_data = True
         self.fit = fit_0     # Save fit in attribute
+
+        if plot:
+            self.fig_doas.update_plot()
 
     def process_dir(self, spec_dir=None, plot=False):
         """
@@ -1407,21 +1448,14 @@ class IFitWorker:
 
         # Create generator that encompasses full fit window
         pad = 1
-        # analyser = Analyser(params=self.params,
-        #                     fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
-        #                     frs_path=self.frs_path,
-        #                     stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
-        #                     dark_flag=False,
-        #                     ils_type='File',
-        #                     ils_path=self.ils_path)
+        analyser = Analyser(params=self.params,
+                            fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+                            frs_path=self.frs_path,
+                            stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
+                            dark_flag=False,
+                            ils_type='File',
+                            ils_path=self.ils_path)
 
-        analyser = Analyser_ld(params=self.params,
-                               fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
-                               frs_path=self.frs_path,
-                               stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
-                               dark_flag=False,
-                               ils_type='File',
-                               ils_path=self.ils_path)
         analyser.params.add('LDF', value=0.0, vary=False)
 
         ld_results = generate_ld_curves(analyser, [wavelengths, spec],
@@ -1468,165 +1502,6 @@ class IFitWorker:
                                                                              int(np.round(self.end_fit_wave_2)),
                                                                              self.grid_max_ppmm, self.grid_increment_ppmm,
                                                                              ldf_step)
-        file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
-        file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
-
-        # Combine fit and error arrays
-        lookup_0 = np.array([ifit_so2_0, ifit_err_0])
-        lookup_1 = np.array([ifit_so2_1, ifit_err_1])
-
-        # Save files
-        print('Saving light dilution grids: {}, {}'.format(file_path_0, file_path_1))
-        np.save(file_path_0, lookup_0)
-        np.save(file_path_1, lookup_1)
-
-        # Load in lookups
-        for i, file in enumerate([file_path_0, file_path_1]):
-            self.load_ld_lookup(file, fit_num=i)
-
-    def light_dilution_curve_generator_old(self, wavelengths, spec, spec_date=datetime.datetime.now(), is_corr=True):
-        """
-        Generates light dilution curves from the clear spectrum it is passed. Taken from Varnam et al. (2020)
-        Code in ld_curve_generator.py on light_dilution branch of ifit.
-        Lookup tables are saved to a file based on fit_window and spec_date. NOTE this will overwrite any file generated
-        from the same clear spectrum with the same fit window - it will not notify the user if it is overwriting a file
-        :param wavelengths:     np.array    Array of wavelengths
-        :param spec:            np.array    Clear spectrum intensity. Intensities should already be corrected for
-                                            stray-light and dark current if is_corr is True
-        :param spec_date:       datetime    Clear spectrum acquisition time - used for saving lookup table
-        :param is_corr:         bool        Flags if clear spectrum is corrected for stray light and dark current.
-                                            If False, the correction is applied here
-        """
-        if not is_corr:
-            self.clear_spec_raw = spec
-
-            # Ensure we have updated the pixel space of for stray light window - simply setting property runs update
-            self.start_stray_wave = self.start_stray_wave
-            self.end_stray_wave = self.end_stray_wave
-
-            # Correct clear spectrum and then reassign it to spec
-            self.dark_corr_spectra()
-            self.stray_corr_spectra()
-            spec = self.clear_spec_corr
-
-        self.update_ld_analysers()      # Update light dilution analysers if the fit windows have been changed
-
-        # Create generator that encompasses full fit window
-        pad = 1
-        analyser_prm = Analyser(params=self.params,
-                                fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
-                                frs_path=self.frs_path,
-                                stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
-                                dark_flag=False,
-                                ils_type='File',
-                                ils_path=self.ils_path)
-        fit_prm = analyser_prm.fit_spectrum([wavelengths, spec], calc_od=['SO2', 'Ring', 'O3'])
-
-        # ==============================================================================================================
-        # Create suit of synthetic spectra
-        # ==============================================================================================================
-        analyser_ld = Analyser_ld(params=self.params,
-                                  fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
-                                  frs_path=self.frs_path,
-                                  stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
-                                  dark_flag=False,
-                                  ils_type='File',
-                                  ils_path=self.ils_path)
-        analyser_ld.params.update_values(fit_prm.params.popt_list())
-        analyser_ld.params.add('LDF', value=0.0, vary=True)
-        analyser_ld.interp_method = 'cubic'
-
-        # Use shape of grid and so2 value to produce a single array
-        shape = (len(self.so2_grid), len(fit_prm.spec), len(self.ldf_grid))
-        spectra_suite = np.zeros(shape)
-
-        # Create synthetic spectra by updating parameters
-        print('Creating synthetic spectra with forward model')
-        for i, so2 in enumerate(self.so2_grid):
-            for j, ldf in enumerate(self.ldf_grid):
-
-                # Update parameters of synthetic spectra to generate
-                analyser_ld.params['SO2'].set(value=so2)
-                analyser_ld.params['LDF'].set(value=ldf)
-
-                # Extract parameter list
-                fit_params = analyser_ld.params.fittedvalueslist()
-
-                # Create synthetic spectrum
-                spectra_suite[i, ..., j] = analyser_ld.fwd_model(fit_prm.grid, *fit_params)
-
-        # =============================================================================
-        # Analyse spectra in first waveband
-        # =============================================================================
-        print('Analyse synthetic spectra in waveband 1')
-        print('---------------------------------------')
-
-        # Create arrays to store answers
-        ifit_so2_0 = np.zeros((shape[0], shape[2]))
-        ifit_err_0 = np.zeros((shape[0], shape[2]))
-
-        # Loop through each synthetic spectrum
-        for i, so2 in enumerate(self.so2_grid):
-            print('Fitting SO2 value: {}'.format('SO2'))
-            for j, ldf in enumerate(self.ldf_grid):
-
-                #Extract syntheteic spectrum for suite of spectra
-                spectrum = [fit_prm.grid, spectra_suite[i, ..., j]]
-
-                # Analyse spectrum
-                fit = self.analyser0.fit_spectrum(spectrum, calc_od=['SO2', 'Ring', 'O3'])
-
-                # Store SO2 fit parameters in array
-                ifit_so2_0[i, j] = fit.params['SO2'].fit_val
-                ifit_err_0[i, j] = fit.params['SO2'].fit_err
-
-        #Create new ifit_so2 with units in ppm.m
-        ifit_so2_ppmm0 = np.divide(ifit_so2_0, self.ppmm_conversion)
-        ifit_err_ppmm0 = np.divide(ifit_err_0, self.ppmm_conversion)
-
-        # =============================================================================
-        # Analyse spectra in second waveband
-        # =============================================================================
-        print('Analyse synthetic spectra in waveband 2')
-        print('---------------------------------------')
-
-        # Create arrays to store answers
-        ifit_so2_1 = np.zeros((shape[0],shape[2]))
-        ifit_err_1 = np.zeros((shape[0],shape[2]))
-
-        # Loop through each synthetic spectrum
-        for i, so2 in enumerate(self.so2_grid):
-            print('Fitting SO2 value: {}'.format('SO2'))
-            for j, ldf in enumerate(self.ldf_grid):
-
-                #Extract syntheteic spectrum for suite of spectra
-                spectrum = [fit_prm.grid, spectra_suite[i, ..., j]]
-
-                fit = self.analyser1.fit_spectrum(spectrum, calc_od=['SO2', 'Ring', 'O3'])
-
-                # Store SO2 fit parameters in array
-                ifit_so2_1[i, j] = fit.params['SO2'].fit_val
-                ifit_err_1[i, j] = fit.params['SO2'].fit_err
-
-        #Create new ifit_so2 with units in ppm.m
-        ifit_so2_ppmm1 = np.divide(ifit_so2_1, self.ppmm_conversion)
-        ifit_err_ppmm1 = np.divide(ifit_err_1, self.ppmm_conversion)
-
-        # Store lookup tables as attributes
-        self.ifit_so2_0, self.ifit_err_0 = ifit_so2_0, ifit_err_0
-        self.ifit_so2_1, self.ifit_err_1 = ifit_so2_1, ifit_err_1
-
-        # --------------------
-        # Save lookup tables
-        # --------------------
-        # Define filenames
-        date_str = spec_date.strftime(self.spec_specs.file_datestr)
-        filename_0 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave)),
-                                                                 int(np.round(self.end_fit_wave)),
-                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
-        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
-                                                                 int(np.round(self.end_fit_wave_2)),
-                                                                 self.grid_max_ppmm, self.grid_increment_ppmm)
         file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
         file_path_1 = os.path.join(FileLocator.LD_LOOKUP, filename_1)
 

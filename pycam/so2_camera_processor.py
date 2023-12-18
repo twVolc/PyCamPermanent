@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
 from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
-from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw
+from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
 
@@ -36,22 +36,26 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import os
 import cv2
 from skimage import transform as tf
 import warnings
+from ruamel.yaml import YAML
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
+
+yaml = YAML()
 
 
 class PyplisWorker:
     """
     Main pyplis worker class
-    :param  img_dir:    str     Directory where images are stored
+    :param  config_Path:  string        Path to config file
     :param  cam_specs:  CameraSpecs     Object containing all details of the camera/images
     :param  spec_specs:  SpecSpecs      Object containing all details of the spectrometer/spectra
     """
-    def __init__(self, img_dir=None, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
+    def __init__(self, config_path, cam_specs=CameraSpecs(), spec_specs=SpecSpecs()):
         self._conversion_factor = 2.663 * 1e-6     # Conversion for ppm.m into Kg m-2
         self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (100**2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
@@ -115,22 +119,36 @@ class PyplisWorker:
         self.ref_check_upper = 0    # Background check to ensure no gas is present in ref region
         self.ref_check_mode = True
         self.polyfit_2d_mask_thresh = 100
-        self.PCS_lines = []
-        self.PCS_lines_all = [] # TODO not sure the difference between these two - there may be one but it isn't clear...
+        self.PCS_lines = []         # PCS lines excluding the "old" xcorr line, which will not be included when summing lines
+        self.PCS_lines_all = []     # All PCS lines
         self.cross_corr_lines = {'young': None,         # Young plume LineOnImage for cross-correlation
                                  'old': None}           # Old plume LineOnImage for cross-correlation
         self.cross_corr_series = {'time': [],           # datetime list
                                   'young': [],          # Young plume series list
                                   'old': [] }           # Old plume series list
         self.got_cross_corr = False
+        self.max_nad_shift = 50                         # Maximum shift (%) for Nadeau cross-correlation (Anything above 50 is probably unrealistic - could cause unexpected results)
+        self.auto_nadeau_line = False                   # Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        self.auto_nadeau_pcs = 0                        # Integer for PCS line to be used to generate Nadeau line
+        self.nadeau_line = None                         # Pyplis LineOnImage parallel to plume direction for Nadeau cross-correlation plume speed
+        self.nadeau_line_orientation = 0                # Orientation of Nadeau line
+        self.nadeau_line_length = int(self.cam_specs.pix_num_y / 3) # Length of Nadeau line
+        self.source_coords = [int(self.cam_specs.pix_num_x/2), int(self.cam_specs.pix_num_x/2)]  # Source coordinates for Nadeau line
         self.maxrad_doas = self.spec_specs.fov * 1.1    # Max radius used for doas FOV search (degrees)
         self.opt_flow = OptflowFarneback()
+        self.opt_flow_sett_keys = [
+            'pyr_scale', 'levels', 'winsize', 'iterations',         # Values which pertain directly to optical flow settings and are
+            'poly_n', 'poly_sigma', 'min_length', 'min_count_frac', # passed straight to the pyplis optical flow object
+            'hist_dir_gnum_max', 'hist_dir_binres',
+            'hist_sigma_tol', 'use_roi', 'roi_abs'
+        ]
         self.use_multi_gauss = True                     # Option for multigauss histogram analysis in optiflow
         # Velocity modes
         self.velo_modes = {"flow_glob": False,          # Cross-correlation
                            "flow_raw": False,           # Raw optical flow output
                            "flow_histo": True,          # Histogram analysis
-                           "flow_hybrid": False}        # Hybrid histogram
+                           "flow_hybrid": False,        # Hybrid histogram
+                           "flow_nadeau": False}        # Nadeau cross-correlation technique
         self.cross_corr_recal = 10                      # Time (minutes) to rune cross-correlation analysis
         self.cross_corr_last = 0                        # Last time cross-correlation was run
         self.cross_corr_info = {}
@@ -182,9 +200,9 @@ class PyplisWorker:
         self.calib_pears = DoasCalibData(camera=self.cam, senscorr_mask=self.sens_mask)     # Pyplis object holding functions to plot results
         self.polyorder_cal = 1
         self.fov = DoasFOV(self.cam)
-        self.doas_fov_x = None                  # X FOV of DOAS (from pyplis results)
-        self.doas_fov_y = None                  # Y FOV of DOAS
-        self.doas_fov_extent = None             # DOAS FOV radius
+        self.centre_pix_x = None                  # X FOV of DOAS (from pyplis results)
+        self.centre_pix_y = None                  # Y FOV of DOAS
+        self.fov_rad = None             # DOAS FOV radius
         self.doas_filename = 'doas_fit_{}.fts'  # Filename to save DOAS calibration data
         self.doas_file_num = 1                  # File number for current filename of doas calib data
         self.doas_recal = True                  # If True the DOAS is recalibrated with AA every doas_recal_num images
@@ -202,12 +220,12 @@ class PyplisWorker:
         self.doas_last_fov_cal = datetime.datetime.now()
         self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
 
-        self.img_dir = img_dir
+        self.img_dir = None
         self.proc_name = 'Processed_{}'     # Directory name for processing
         self.processed_dir = None           # Full path for processing directory
         self.dark_dict = {'on': {},
                           'off': {}}        # Dictionary containing all retrieved dark images with their ss as the key
-        self.dark_dir = None
+        self.dark_img_dir = None
         self.img_list = None
         self.num_img_pairs = 0          # Total number of plume pairs
         self.num_img_tot = 0            # Total number of plume images
@@ -231,7 +249,10 @@ class PyplisWorker:
         self.got_doas_fov = False
         self.got_cal_cell = False
         self._cell_cal_dir = None
-        self.cal_type = 1       # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity)
+        self._cal_series_path = None
+        self.sens_mask_opts = [0,2]       # Use sensitivity mask when cal_type_int is set to one of the specified options, 0 = cell, 1 = doas, 2 = cell + doas
+        self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
+        self.cal_type_int = 1             # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity), 4 = preloaded coefficients
         self.cell_dict_A = {}
         self.cell_dict_B = {}
         self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
@@ -247,7 +268,6 @@ class PyplisWorker:
         self.cell_err = 0.1         # Cell CD error (fractional). Currently just assumed to be 10%, typical manufacturer error
         self.cell_fit = None        # The cal scalar will be [0] of this array
         self.cell_pol = None
-        self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
         self.use_cell_bg = False    # If true, the bg image for bg modelling is automatically set from the cell calibration directory. Otherwise the defined path to bg imag is used
 
         # Load background image if we are provided with one
@@ -290,6 +310,137 @@ class PyplisWorker:
 
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
+
+        self.geom_dict = {}
+
+        self.config = {}
+        self.raw_configs = {}
+        self.load_config(config_path, "default")
+        self.apply_config()
+
+    def load_config(self, file_path, conf_name):
+        """load in a yml config file and place the contents in config attribute"""
+        with open(file_path, "r") as file:
+            self.raw_configs[conf_name] = yaml.load(file)
+
+        self.config.update(self.raw_configs[conf_name])
+
+    def apply_config(self, subset = None):
+        """take items in config dict and set them as attributes in pyplis_worker"""
+        if subset is not None:
+            [setattr(self, key, value) for key, value in self.config.items() if key in subset]
+        else: 
+            [setattr(self, key, value) for key, value in self.config.items()]
+            
+    def save_all_pcs(self, path):
+        """Save all the currently loaded/drawn pcs lines to files and update config"""
+        pcs_lines = []
+        for line_n, line in enumerate(self.PCS_lines_all):
+            if line is not None:
+                filename = "pcs_line_{}.txt".format(line_n+1)
+                filepath = os.path.join(path, filename)
+                save_pcs_line(line, filepath)
+                pcs_lines.append(filepath)
+        
+        self.config["pcs_lines"] = pcs_lines
+
+    def save_all_dil(self, path):
+        dil_lines = []
+        for line_n, line in enumerate(self.fig_dilution.lines_pyplis):
+            if line is not None:
+                filename = "dil_line_{}.txt".format(line_n+1)
+                filepath = os.path.join(path, filename)
+                save_light_dil_line(line, filepath)
+                dil_lines.append(filepath)
+
+        self.config["dil_lines"] = dil_lines
+
+    def save_img_reg(self, save_dir):
+        """Save a copy of the currently used image registratioon"""
+        file_path = os.path.join(save_dir, "image_reg")
+        file_path = self.img_reg.save_registration(file_path)
+        self.config["img_registration"] = file_path
+
+    def load_cam_geom(self, filepath):
+        with open(filepath, 'r') as f:
+            for line in f:
+                # Ignore first line
+                if line[0] == '#':
+                    continue
+
+                # Extract key-value pair, remove the newline character from the value, then recast
+                key, value = line.split('=')
+                value = value.replace('\n', '')
+                if key == 'volcano':
+                    self.volcano = value
+                elif key == 'altitude':
+                    self.geom_dict[key] = int(value)
+                else:
+                    self.geom_dict[key] = float(value)
+
+
+    def save_cam_geom(self, filepath):
+        """Save a copy of the currently loaded cam geom"""
+
+        # If the file isn't specified then use a default name
+        if filepath.find(".txt") == -1:
+            filepath = os.path.join(filepath, "cam_geom.txt")
+        
+        # Open file object and write all attributes to it
+        with open(filepath, 'w') as f:
+            f.write('# Geometry setup file\n')
+            f.write('volcano={}\n'.format(self.location))
+            for key, value in self.geom_dict.items():
+                f.write('{}={}\n'.format(key, value))
+
+        self.config["default_cam_geom"] = filepath
+
+    def save_doas_params(self):
+
+        # names in doas/ifit do not always correspond to names in config file,
+        # so dict below provides translation.
+        # Keys are names in config file, Values are doas_worker attribute names
+        doas_params = {
+            "spec_dir": "spec_dir",
+            "dark_spec_dir": "dark_dir",
+            "ILS_path": "ils_path",
+            "use_light_dilution_spec": "corr_light_dilution",
+            "grid_max_ppmm": "grid_max_ppmm",
+            "grid_increment_ppmm": "grid_increment_ppmm",
+            "spec_recal_time": "recal_ld_mins",
+            "LDF": "LDF"
+        }
+        
+        current_params = {key: getattr(self.doas_worker, value)
+                          for key, value in doas_params.items()}
+        self.config.update(current_params)
+
+    def save_config_plus(self, file_path, file_name = None):
+        """Save extra data associated with config file along with config"""
+        self.save_all_pcs(file_path)
+        self.save_all_dil(file_path)
+        self.save_img_reg(file_path)
+        self.save_cam_geom(file_path)
+        self.save_doas_params()
+        if file_name is None:
+            self.save_config(file_path)
+        else:
+            self.save_config(file_path, file_name)
+
+    def save_config(self, file_path, file_name = "process_config.yml", subset=None):
+        """Save the contents of the config attribute to a yml file"""
+
+        # Allows partial update of the specified config file (useful for updating defaults) 
+        if subset is None:
+            self.raw_configs["default"].update(self.config)
+        else:
+            vals = {key: self.config[key] for key in subset if key in self.config.keys()}
+            self.raw_configs["default"].update(vals)
+
+        full_path = os.path.join(file_path, file_name)
+
+        with open(full_path, "w") as file:
+            yaml.dump(self.raw_configs["default"], file)
 
     @property
     def location(self):
@@ -334,6 +485,133 @@ class PyplisWorker:
         """When the cell calibration directory is changed we automatically load it in and process the data"""
         self._cell_cal_dir = value
         self.perform_cell_calibration_pyplis(plot=True)
+
+    @property
+    def cal_series_path(self):
+        return self._cal_series_path
+
+    @cal_series_path.setter
+    def cal_series_path(self, value):
+        self._cal_series_path = value
+        # This checks against the value in the config dict as there is no guarantee
+        # that the attribute will be updated before reaching this setter.
+        if self.config["cal_type_int"] == 3:
+            self.load_cal_series(self._cal_series_path)
+
+    @property
+    def flow_glob(self):
+        return self.velo_modes['flow_glob']
+
+    @flow_glob.setter
+    def flow_glob(self, value):
+        self.velo_modes['flow_glob'] = value
+
+    @property
+    def flow_raw(self):
+        return self.velo_modes['flow_raw']
+
+    @flow_raw.setter
+    def flow_raw(self, value):
+        self.velo_modes['flow_raw'] = value
+
+    @property
+    def flow_histo(self):
+        return self.velo_modes['flow_histo']
+
+    @flow_histo.setter
+    def flow_histo(self, value):
+        self.velo_modes['flow_histo'] = value
+
+    @property
+    def flow_hybrid(self):
+        return self.velo_modes['flow_hybrid']
+
+    @flow_hybrid.setter
+    def flow_hybrid(self, value):
+        self.velo_modes['flow_hybrid'] = value
+
+    @property
+    def flow_nadeau(self):
+        return self.velo_modes['flow_nadeau']
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self.velo_modes['flow_nadeau'] = value
+
+    @property
+    def save_img_aa(self):
+        return self.save_dict['img_aa']['save']
+
+    @save_img_aa.setter
+    def save_img_aa(self, value):
+        self.save_dict['img_aa']['save'] = value
+
+    @property
+    def type_img_aa(self):
+        return self.save_dict['img_aa']['ext']
+
+    @type_img_aa.setter
+    def type_img_aa(self, value):
+        self.save_dict['img_aa']['ext'] = value
+    
+    @property
+    def save_img_cal(self):
+        return self.save_dict['img_cal']['save']
+
+    @save_img_cal.setter
+    def save_img_cal(self, value):
+        self.save_dict['img_cal']['save'] = value
+
+    @property
+    def type_img_cal(self):
+        return self.save_dict['img_cal']['ext']
+
+    @type_img_cal.setter
+    def type_img_cal(self, value):
+        self.save_dict['img_cal']['ext'] = value
+
+    @property
+    def save_img_so2(self):
+        return self.save_dict['img_SO2']['save']
+
+    @save_img_so2.setter
+    def save_img_so2(self, value):
+        self.save_dict['img_SO2']['save'] = value
+
+    @property
+    def png_compression(self):
+        return self.save_dict['img_SO2']['save']
+
+    @png_compression.setter
+    def png_compression(self, value):
+        self.save_dict['img_SO2']['compression'] = value
+
+    @property
+    def bg_mode(self):
+        if self.bg_pycam:
+            return 7
+        else:
+            return self.plume_bg_A.mode
+
+    @bg_mode.setter
+    def bg_mode(self, value):
+        if value == 7:
+            self.bg_pycam = True
+        else:
+            self.plume_bg_A.mode = value
+            self.plume_bg_B.mode = value
+            self.bg_pycam = False
+
+    @property
+    def cal_type_int(self):
+        return self._cal_type_int
+
+    @cal_type_int.setter
+    def cal_type_int(self, value):
+        self._cal_type_int = value
+        self.use_sensitivity_mask = value in self.sens_mask_opts
+        if (value != 3) and hasattr(self, 'calibration_series'):
+            delattr(self, 'calibration_series')
 
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
@@ -461,7 +739,8 @@ class PyplisWorker:
                           'time': datetime.datetime.now() + datetime.timedelta(hours=72),   # Make sure time is always a time object, as we need to compare this to other time objects. So just set this way in the future
                           'img_tau': pyplis.Img(np.zeros([self.cam_specs.pix_num_y,
                                                           self.cam_specs.pix_num_x], dtype=np.float32)),
-                          'opt_flow': None  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'opt_flow': None,  # OptFlowFarneback object. Only saved if self.save_opt_flow = True
+                          'nadeau_plumespeed': None
                           }
                          for x in range(self.img_buff_size)]
 
@@ -586,7 +865,8 @@ class PyplisWorker:
             img_dir = filedialog.askdirectory(title='Select image sequence directory', initialdir=self.img_dir)
 
         if len(img_dir) > 0 and os.path.exists(img_dir):
-            self.img_dir = img_dir
+            self.config["img_dir"] = img_dir
+            self.apply_config(subset="img_dir")
         else:
             return
 
@@ -687,7 +967,7 @@ class PyplisWorker:
         if not ones:
             # Dark subtraction - first extract ss then hunt for dark image
             ss = str(int(img.texp * 10 ** 6))
-            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+            dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
 
             if dark_img is not None:
                 img.subtract_dark_image(dark_img)
@@ -699,7 +979,8 @@ class PyplisWorker:
         # Set variables
         setattr(self, 'bg_{}'.format(band), img)
         self.generate_vign_mask(img.img, band)
-        setattr(self, 'bg_{}_path'.format(band), bg_path)
+        if not ones:
+            self.config['bg_{}_path'.format(band)] = bg_path
 
     def save_imgs(self):
         """
@@ -756,7 +1037,7 @@ class PyplisWorker:
         # Dark subtraction - first extract ss then hunt for dark image
         try:
             ss = str(int(img.texp * 10 ** 6))
-            dark_img = self.find_dark_img(self.dark_dir, ss, band=band)[0]
+            dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
         except ImgMetaError:
             dark_img = None
 
@@ -846,7 +1127,7 @@ class PyplisWorker:
         """
         self.img_B.img_warped = self.img_reg.register_image(self.img_A.img, self.img_B.img, **kwargs)
 
-    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None):
+    def update_img_buff(self, img_tau, file_A, file_B, opt_flow=None, nadeau_plumespeed=None):
         """
         Updates the image buffer and file time buffer
         :param img_tau:     np.array        n x m image matrix of tau image
@@ -869,7 +1150,8 @@ class PyplisWorker:
                     'file_B': file_B,
                     'time': copy.deepcopy(self.get_img_time(file_A)),
                     'img_tau': copy.deepcopy(img_tau),
-                    'opt_flow': copy.deepcopy(opt_flow)
+                    'opt_flow': copy.deepcopy(opt_flow),
+                    'nadeau_plumespeed': nadeau_plumespeed
                     }
 
         # If we haven't exceeded buffer size then we simply add new data to buffer
@@ -1045,20 +1327,20 @@ class PyplisWorker:
         # TODO I have checked this with pacaya data too, and my implementation seems better, perhaps because I can use
         # TODO pyr_lvl 2, I think that is better than 1 used by pyplis. Also I only use one tau image, pyplis uses the
         # TODO whole stack. I'm not sure how it implements this but I'm pretty sure this is leading to strange results
-        if self.cal_type in [1, 2] and self.got_doas_fov:
+        if self.cal_type_int in [1, 2] and self.got_doas_fov:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa',
-            #                                                  pos_x_abs=self.doas_fov_x, pos_y_abs=self.doas_fov_y,
-            #                                                  radius_abs=self.doas_fov_extent, surface_fit_pyrlevel=1)
+            #                                                  pos_x_abs=self.centre_pix_x, pos_y_abs=self.centre_pix_y,
+            #                                                  radius_abs=self.fov_rad, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm],
-                                                  pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                  radius=self.doas_fov_extent, pyr_lvl=2)
+                                                  pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                  radius=self.fov_rad, pyr_lvl=2)
         else:
             # mask = self.cell_calib.get_sensitivity_corr_mask(calib_id='aa', radius_abs=3, surface_fit_pyrlevel=1)
             mask = self.generate_sensitivity_mask(self.cell_tau_dict[self.sens_mask_ppmm], radius=3, pyr_lvl=2)
         self.sensitivity_mask = mask.img
 
         # Plot if requested
-        if plot:
+        if plot and self.fig_cell_cal is not None:
             self.fig_cell_cal.update_plot()
 
     def perform_cell_calibration(self, plot=True, save_corr=True):
@@ -1218,10 +1500,10 @@ class PyplisWorker:
 
             # Generate mask for this cell - if calibrating with just cell we use centre of image, otherwise we use
             # DOAS FOV for normalisation region
-            if self.cal_type in [1, 2] and self.got_doas_fov:
+            if self.cal_type_int in [1, 2] and self.got_doas_fov:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm],
-                                                                       pos_x=self.doas_fov_x, pos_y=self.doas_fov_y,
-                                                                       radius=self.doas_fov_extent, pyr_lvl=2)
+                                                                       pos_x=self.centre_pix_x, pos_y=self.centre_pix_y,
+                                                                       radius=self.fov_rad, pyr_lvl=2)
             else:
                 self.cell_masks[ppmm] = self.generate_sensitivity_mask(self.cell_tau_dict[ppmm], radius=3, pyr_lvl=2)
 
@@ -1445,9 +1727,9 @@ class PyplisWorker:
             return
 
         # Get all appropriate images anf parameters based on
-        if band.upper() == 'A' or 'ON':
+        if band.upper() in ['A', 'ON']:
             ext_coeff = self.ext_on
-        elif band.upper() == 'B' or 'OFF':
+        elif band.upper() in ['B', 'OFF']:
             ext_coeff = self.ext_off
         else:
             print('Unrecognised definition of <band>, cannot perform light dilution correction')
@@ -1649,8 +1931,8 @@ class PyplisWorker:
             pcs_line = self.PCS_lines[0]
 
         if self.bg_pycam:   # Basic pycam rectangle provides background intensity
-            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-            # region of sky, rather than the same coordinates of the image
+            # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the
+            # same region of sky, rather than the same coordinates of the image
             bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
             bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
@@ -1711,6 +1993,13 @@ class PyplisWorker:
                     if img_A.edit_log['vigncorr']:
                         img_A.edit_log['vigncorr'] = False
                         img_B.edit_log['vigncorr'] = False
+
+                    # If vignette correction is not used then the bg images will not have the same properties
+                    # as the plume images (i.e. not dark corrected), so need to ensure that they are consistent.
+                    if not self.use_vign_corr:
+                        self.update_meta(self.bg_A, img_A)
+                        self.update_meta(self.bg_B, img_B)
+
                     tau_A = self.plume_bg_A.get_tau_image(img_A, self.bg_A)
                     tau_B = self.plume_bg_B.get_tau_image(img_B, self.bg_B)
 
@@ -1727,8 +2016,8 @@ class PyplisWorker:
             except BaseException as e:
                 print('ERROR! When attempting pyplis background modelling: {}'.format(e))
                 print('Reverting to basic rectangular background model. Note subsequent processing will attempt pyplis modelling again unless changed by the user.')
-                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the same
-                # region of sky, rather than the same coordinates of the image
+                # Get background intensities. BG for tau_B is same as bg for tau_B warped, just so we know its in the 
+                # same region of sky, rather than the same coordinates of the image
                 bg_a = vigncorr_A.crop(self.ambient_roi, new_img=True).mean()
                 bg_b = vigncorr_B_warped.crop(self.ambient_roi, new_img=True).mean()
 
@@ -1919,7 +2208,7 @@ class PyplisWorker:
         # idx_current - 1, but because the idx starts at 0, we need idx + 1 to find when we should be calibrating,
         # so the +1 and -1 cancel and we can just use self.idx_current here and find the remainder
         # Since this comes after
-        if self.cal_type in [1, 2]:
+        if self.cal_type_int in [1, 2]:
             # Perform any necessary DOAS calibration updates
             if doas_update:
                 self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
@@ -1928,7 +2217,7 @@ class PyplisWorker:
         cal_img = None
 
         # Perform DOAS calibration if mode is 1 or 2 (DOAS or DOAS and Cell sensitivity adjustment)
-        if self.got_doas_fov and self.cal_type in [1, 2]:
+        if self.got_doas_fov and self.cal_type_int in [1, 2]:
             if self.fix_fov and not self.had_fix_fov_cal:
                 pass
             else:
@@ -1938,7 +2227,7 @@ class PyplisWorker:
                 if self.doas_cal_adjust_offset:
                     cal_img.img = cal_img.img + self.calib_pears.y_offset
 
-        elif self.cal_type == 0:
+        elif self.cal_type_int == 0:
             if isinstance(img, pyplis.Img):
                 # cal_img = img * self.cell_fit[0]    # Just use cell gradient (not y axis intersect)
                 cal_img = img * self.cell_calib.calib_data['aa'].calib_coeffs[0]
@@ -1950,7 +2239,31 @@ class PyplisWorker:
 
             cal_img.edit_log["gascalib"] = True
 
+        elif self.cal_type_int == 3:        # Preloaded calibration coefficients from CSV file
+            if self.calibration_series is None:
+                return cal_img
+
+            # Find closest available calibration data point for current image time
+            closest_index = self.calibration_series.index.get_indexer([self.img_A.meta['start_acq']], method='nearest')
+
+            # Use index to retrieve calibration coeffients
+            intercept = self.calibration_series.iloc[closest_index]['coeff 0'][0]
+            grad = self.calibration_series.iloc[closest_index]['coeff 1'][0]
+
+            # Calibrate image
+            cal_img = img * grad
+            if self.doas_cal_adjust_offset:
+                cal_img = cal_img + intercept
+
         return cal_img
+
+    def save_fov_search(self):
+        """Updates the fov values in config dict and yaml file after doas_fov_search completed"""
+        # Need to convert from numpy objects otherwise causes problems saving yaml file
+        self.config["centre_pix_x"] = int(self.centre_pix_x)
+        self.config["centre_pix_y"] = int(self.centre_pix_y)
+        self.config["fov_rad"] = float(self.fov_rad)
+        self.save_config(self.processed_dir, subset = ["centre_pix_x", "centre_pix_y", "fov_rad"])
 
     def doas_fov_search(self, img_stack, doas_results, polyorder=1, plot=True, force_save=False):
         """
@@ -1966,10 +2279,13 @@ class PyplisWorker:
         s.g2dasym = False  # Allow only circular FOV (not eliptical)
         self.calib_pears = s.perform_fov_search(method='pearson')
         self.calib_pears.fit_calib_data(polyorder=polyorder)
-        self.doas_fov_x, self.doas_fov_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
-        self.doas_fov_extent = self.calib_pears.fov.pixel_extend(abs_coords=True)
+        self.record_fit_data()
+        self.centre_pix_x, self.centre_pix_y = self.calib_pears.fov.pixel_position_center(abs_coords=True)
+        self.fov_rad = self.calib_pears.fov.pixel_extend(abs_coords=True)
         self.fov = self.calib_pears.fov
         print('DOAS FOV search complete')
+        self.save_fov_search()
+
         if self.calib_pears.polyorder == 1 and self.calib_pears.calib_coeffs[0] < 0:
             print('Warning!! Calibration shows inverse tau-CD relationship. It is likely an error has occurred')
 
@@ -1989,7 +2305,7 @@ class PyplisWorker:
                     self.doas_file_num += 1
                     full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
                 # TODO I don't think this line actually saves data...
-                self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
+                #self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
 
                 # Set new time of most recent save
                 self.doas_last_save = self.img_A.meta['start_acq']
@@ -2001,7 +2317,7 @@ class PyplisWorker:
 
     def generate_doas_fov(self):
         """
-        Generates clibpears object from fixed DOAS FOV parameters
+        Generates calibpears object from fixed DOAS FOV parameters
         :return:
         """
         self.calib_pears = DoasCalibData(polyorder=self.polyorder_cal, camera=self.cam,
@@ -2009,13 +2325,13 @@ class PyplisWorker:
 
         # self.calib_pears.update_search_settings(method='pearson')
         # self.calib_pears.merge_data(merge_type=self._settings["mergeopt"])
-        self.calib_pears.fov.result_pearson['cx_rel'] = self.doas_fov_x
-        self.calib_pears.fov.result_pearson['cy_rel'] = self.doas_fov_y
-        self.calib_pears.fov.result_pearson['rad_rel'] = self.doas_fov_extent
-        self.calib_pears.fov.img_prep['pyrlevel'] = 1
+        self.calib_pears.fov.result_pearson['cx_rel'] = self.centre_pix_x
+        self.calib_pears.fov.result_pearson['cy_rel'] = self.centre_pix_y
+        self.calib_pears.fov.result_pearson['rad_rel'] = self.fov_rad
+        self.calib_pears.fov.img_prep['pyrlevel'] = 0
         self.calib_pears.fov.search_settings['method'] = 'pearson'
         mask = make_circular_mask(self.cam_specs.pix_num_y, self.cam_specs.pix_num_x,
-                                  self.doas_fov_x, self.doas_fov_y, self.doas_fov_extent)
+                                  self.centre_pix_x, self.centre_pix_y, self.fov_rad)
         self.calib_pears.fov.fov_mask_rel = mask.astype(np.float64)
         self.fov = self.calib_pears.fov
         self.got_doas_fov = True
@@ -2160,7 +2476,10 @@ class PyplisWorker:
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
             tau_vals = np.column_stack((img_time, tau, cd, cd_err))
-            self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            if type(self.tau_vals) == np.ndarray:
+                self.tau_vals = np.append( self.tau_vals, tau_vals, axis = 0)
+            else:
+                self.tau_vals = tau_vals
 
             # Rerun fit if we have enough data
             # For fixed FOV we first wait until we have at least as much data as the "remove_doas_mins" parameter, so
@@ -2183,7 +2502,7 @@ class PyplisWorker:
                 self.add_doas_cal_data(cal_dict, recal=True)
 
             # Update doas figure, but no need to change the correlation image as we haven't changed that
-            self.fig_doas_fov.update_plot(update_img=False)
+            self.fig_doas_fov.update_plot(update_img=False, reopen=False)
 
     def add_doas_cal_data(self, cal_dict, recal=True):
         """
@@ -2198,6 +2517,7 @@ class PyplisWorker:
         # Recalibrate
         if recal:
             self.calib_pears.fit_calib_data()
+            self.record_fit_data()
 
     def rem_doas_cal_data(self, time_obj, inplace=True, recal=True):
         """
@@ -2223,6 +2543,42 @@ class PyplisWorker:
         if recal:
             calib_dat.fit_calib_data()
         return calib_dat
+
+    def load_cal_series(self, filename):
+        """
+        Loads calibration coefficient time series from a file, to be used to calibrate optical depths.
+        Note: this calibration will be reliant on the optical depths being generated in the same way as when the
+        calibration series was produced - i.e. same background correction scheme - otherwise results are likely to
+        be erroneous.
+        :param filename str Path to calibration file
+        """
+        _, ext = os.path.splitext(filename)
+        if ext != '.csv':
+            print('PyplisWorker.load_cal_series: Cannot read file {} as it is not in the correct format (.csv)'.format(filename))
+            return
+
+        #Extract number of headers
+        with open(filename, 'r') as f:
+            headerline = f.readline()
+            num_headers = int(headerline.split('=')[-1].split(',')[0].split('\n')[0])
+
+        # Load in csv to dataframe
+        self.calibration_series = pd.read_csv(filename, header=num_headers)
+
+        # Set columns to be numeric
+        self.calibration_series = self.calibration_series.astype({'optical depth (tau)': 'float',
+                                                                  'col density (doas)': 'float',
+                                                                  'col density (error)': 'float',
+                                                                  'coeff 0': 'float',
+                                                                  'coeff 1': 'float',
+                                                                  'MSE': 'float',
+                                                                  'r-squared': 'float'})
+
+        # Convert timepoints to datetime objects (easier to work with than time strings)
+        self.calibration_series['timepoint'] = pd.to_datetime(self.calibration_series['timepoint'])
+
+        # Set timepoint as index (useful for searching for times later) and drop rows that don't contain calibration data
+        self.calibration_series = self.calibration_series.set_index('timepoint').dropna()
 
     def calc_line_dist(self, line_1, line_2):
         """
@@ -2323,6 +2679,164 @@ class PyplisWorker:
             self.fig_cross_corr.update_plot(ax, self.cross_corr_info)
 
         self.got_cross_corr = True
+
+    def calc_line_orientation(self, line, deg=True):
+        """
+        Calculates line orientation with 0 as north and
+        :param line: pyplis.LineOnImage     Line to calculate orientation
+        :return:
+        """
+        # vec = list(line._delx_dely())       # Get vector of line
+        # north_vec = [0, 1]                  # Set northern vector
+        #
+        # # Calculate angle between north vector and our line
+        # unit_vector_1 = vec / np.linalg.norm(vec)
+        # unit_vector_2 = north_vec / np.linalg.norm(north_vec)
+        # dot_product = np.dot(unit_vector_2, unit_vector_1)
+        # orientation = np.arccos(dot_product)
+
+        dx, dy = line._delx_dely()
+        complex_norm = complex(-dy, dx)
+        orientation = -(np.angle(complex_norm, deg) - 180)
+
+        return orientation
+
+    def generate_nadeau_line(self, source_coords=None, orientation=None, length=None):
+        """
+        Generates nadeau line given source coordinates, orientation and length
+        :param source_coords    tuple-like  (x, y) coordinates of the gas source
+        :param orientation      float/int   Orientation (deg) of line (0 = North, 90 = East, 180 = South, 270 = West)
+        :param length           float/int   Length of Nadeau line (in pixels)
+        """
+        if source_coords is not None:
+            self.source_coords = source_coords
+
+        if length is not None:
+            self.nadeau_line_length = length
+
+        if orientation is not None:
+            self.nadeau_line_orientation = orientation
+
+        # Calculate line end coordinates
+        orientation_rad = np.deg2rad(self.nadeau_line_orientation)
+        x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+
+        # Ensure coordinates don't extend beyond image
+        if x_coord < 0:
+            x_coord = 0
+        elif x_coord > self.cam_specs.pix_num_x - 1:
+            x_coord = self.cam_specs.pix_num_x - 1
+
+        if y_coord < 0:
+            y_coord = 0
+        elif y_coord > self.cam_specs.pix_num_y - 1:
+            y_coord = self.cam_specs.pix_num_y - 1
+
+        try:
+            self.nadeau_line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=x_coord, y1=y_coord,
+                                           normal_orientation='right', color='k', line_id='nadeau')
+            # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+            self.nadeau_line.x0 = self.source_coords[0]
+            self.nadeau_line.x1 = x_coord
+            self.nadeau_line.y0 = self.source_coords[1]
+            self.nadeau_line.y1 = y_coord
+            return self.nadeau_line
+        except ValueError as e:
+            return None
+
+    def autogenerate_nadeau_line(self, img_tau, pcs_line=None):
+        """
+        Automatically generates the nadeau cross-correlation line based on PCS line
+        :param pcs_line pyplis.LineOnImage  Line to use for automatic plume direction determination
+        :param img_tau  pyplis.Img          Line to extract SO2 values from
+        """
+        if pcs_line is None:
+            pcs_line = self.PCS_lines_all[self.auto_nadeau_pcs]
+
+        # Get line profile
+        profile = pcs_line.get_line_profile(img_tau)
+
+        # Get index of maximum SO2
+        max_idx = np.argmax(profile)
+
+        # Get coordinate of maximum SO2 (from index)
+        pcs_line.prepare_coords()
+        coords = [pcs_line.profile_coords[1, max_idx], pcs_line.profile_coords[0, max_idx]]
+
+        # Create Nadeau line (Length won't be correct)
+        line = LineOnImage(x0=self.source_coords[0], y0=self.source_coords[1], x1=coords[0], y1=coords[1],
+                                       normal_orientation='right', color='k', line_id='nadeau')
+        # Pyplis LineOnImage always adjusts coordinates so lower values are x0/y0 - we dont want that, so reset coords
+        line.x0 = self.source_coords[0]
+        line.x1 = coords[0]
+        line.y0 = self.source_coords[1]
+        line.y1 = coords[1]
+
+        # Get orientation of line
+        orientation = self.calc_line_orientation(line)
+
+        # Generate Nadeau line of desired length and return that value
+        return self.generate_nadeau_line(orientation=orientation)
+
+
+    def generate_nadeau_plumespeed(self, img_current, img_next, line, max_shift=None, interp_step=0.2):
+        """
+        Uses two images and the nadeau line to calculate plume speed
+        :param  img_current pyplis.Img      Current optical depth (tau) image
+        :param  img_next    pyplis.Img      Next optical depth image
+        :param  line        LineOnImage     Nadeau line running parallel to plume motion
+        :param  max_shift   int             Maximum allowed shift of time series (%)
+        :param  interp_step float           Interpolation amount for line
+        """
+        if max_shift is not None:
+            self.max_nad_shift = max_shift
+
+        # Extract line profiles
+        profile_current = line.get_line_profile(img_current)
+        profile_next = line.get_line_profile(img_next)
+
+        # Depending on orientation of line we may need to reverse the line profile, to ensure it always starts from source
+        orientation = self.calc_line_orientation(line)
+        if self.nadeau_line_orientation < 0 or self.nadeau_line_orientation >= 180:
+            profile_current = profile_current[::-1]
+            profile_next = profile_next[::-1]
+
+        # Interpolate the lines, to improve resolution
+        x_interp = np.arange(0, len(profile_current) + interp_step, interp_step)
+        x_raw = np.arange(0, len(profile_current))
+        profile_current = np.interp(x_interp, x_raw, profile_current)
+        profile_next = np.interp(x_interp, x_raw, profile_next)
+
+        # Get average distance of pixel in image line profile
+        pixel_dist = line.get_line_profile(self.dist_img_step.img).mean() * interp_step
+
+        # -----------------------------------------------------------------
+        # Pyplis cross-correlation - currently somewhat arbitrarily setting max shift to 50%
+        lag, coeffs, s1_ana, s2_ana, max_coeff_signal, ax, = find_signal_correlation(profile_current, profile_next,
+                                                                                     max_shift_percent=self.max_nad_shift)
+        lags = np.arange(0, len(coeffs))
+        # -----------------------------------------------------------------
+
+        # Pyplis already interpolates onto a line of length len(profile_current) so we don't need to scale for line length
+        lag_length = pixel_dist * lag
+        lag_in_pixels = lag * interp_step
+
+        # Calculate plume speed
+        time_step = img_next.meta['start_acq'] - img_current.meta['start_acq']
+        plume_speed = lag_length / time_step.total_seconds()
+
+        print('Nadeau plume speed (m/s): {:.2f}'.format(plume_speed))
+        info_dict = {'profile_current': profile_current,
+                     'profile_next': profile_next,
+                     'x_vals': x_interp,
+                     'interp_step': interp_step,
+                     'lags': lags,
+                     'coeffs': coeffs,
+                     'lag': lag,
+                     'lag_in_pixels': lag_in_pixels,
+                     'lag_length': lag_length}
+        return plume_speed, info_dict
 
     def get_cross_corr_emissions_from_buff(self, force_estimate=False, plot=True):
         """
@@ -2495,7 +3009,7 @@ class PyplisWorker:
 
         return self.flow, self.velo_img
 
-    def calculate_emission_rate(self, img, flow=None, plot=True):
+    def calculate_emission_rate(self, img, flow=None, nadeau_speed=None, plot=True):
         """
         Generates emission rate for current calibrated image/optical flow etc
         :param img:         pyplis.Img          Image to have emission rate retrieved from (must be cal)
@@ -2540,7 +3054,8 @@ class PyplisWorker:
         total_emissions = {'flow_glob': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_raw': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
-                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
+                           'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
+                           'flow_nadeau': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
 
         # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
         lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
@@ -2615,6 +3130,26 @@ class PyplisWorker:
                             total_emissions['flow_glob']['phi_err'].append(phi_err)
                             total_emissions['flow_glob']['veff'].append(vel_glob)
                             total_emissions['flow_glob']['veff_err'].append(vel_glob_err)
+
+                # Nadeau plume speed algorithm
+                if self.velo_modes['flow_nadeau']:
+                    # Calculate emission rate
+                    phi, phi_err = det_emission_rate(cds, nadeau_speed, distarr, cd_err,
+                                                     velo_err=None, pix_dists_err=disterr)
+
+                    # Update results dictionary
+                    res['flow_nadeau']._start_acq.append(img_time)
+                    res['flow_nadeau']._phi.append(phi)
+                    res['flow_nadeau']._phi_err.append(phi_err)
+                    res['flow_nadeau']._velo_eff.append(nadeau_speed)
+                    res['flow_nadeau']._velo_eff_err.append(np.nan)
+
+                    # Add to total emissions
+                    if line_id in lines_total:
+                        total_emissions['flow_nadeau']['phi'].append(phi)
+                        total_emissions['flow_nadeau']['phi_err'].append(phi_err)
+                        total_emissions['flow_nadeau']['veff'].append(nadeau_speed)
+                        total_emissions['flow_nadeau']['veff_err'].append(np.nan)
 
                 # Raw farneback velocity field emission rate retrieval
                 if self.velo_modes['flow_raw']:
@@ -2864,9 +3399,25 @@ class PyplisWorker:
             else:
                 opt_flow = None
 
+            if self.velo_modes['flow_nadeau']:
+                if self.auto_nadeau_line:
+                    self.autogenerate_nadeau_line(self.img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
+                elif self.nadeau_line is None:
+                    self.generate_nadeau_line()
+                nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
+                                                                               self.nadeau_line)
+                if plot:
+                    self.fig_cross_corr.nadeau_line = self.nadeau_line
+                    self.fig_cross_corr.update_pcs_line(draw=False)
+                    self.fig_cross_corr.update_nad_line_plot(draw=False)
+                    self.fig_cross_corr.update_nadeau_lag(info_dict, draw=True)
+                    self.fig_cross_corr.update_results(nadeau_plumespeed, info_dict)
+            else:
+                nadeau_plumespeed = None
+
             # Calibrate image if we have a calibrated image
             if self.img_cal_prev is not None:
-                results = self.calculate_emission_rate(self.img_cal_prev, opt_flow, plot=plot)
+                self.calculate_emission_rate(self.img_cal_prev, opt_flow, nadeau_speed=nadeau_plumespeed, plot=plot)
 
             # Run cross-correlation if the time is right (we run this after calculate_emission_rate() because that
             # function can add this most recent data point to the cross-corr buffer)
@@ -2885,13 +3436,15 @@ class PyplisWorker:
                                              self.cross_corr_series['old'])
                     self.get_cross_corr_emissions_from_buff()
 
+
+
             # TODO all of processing if not the first image pair
             # TODO I need to add data for DOAS calibration if I have some
 
             # Add processing results to buffer (we only do this after the first image, since we need to add optical flow
             # too
             self.update_img_buff(self.img_tau_prev, self.img_A_prev.filename,
-                                 self.img_B_prev.filename, opt_flow=opt_flow)
+                                 self.img_B_prev.filename, opt_flow=opt_flow, nadeau_plumespeed=nadeau_plumespeed)
 
     def check_buffer_size(self):
         """
@@ -2962,8 +3515,8 @@ class PyplisWorker:
                 img_cal = img_tau
 
             # If we want optical flow output but we don't have it saved we need to reanalyse
-            if buff_dict['opt_flow'] is None:
-                if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+            if self.velo_modes['flow_raw'] or self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                if buff_dict['opt_flow'] is None:
                     # Try optical flow generation, if it failes because of an index error then the buffer has no
                     # more images and we can't process this image (we must then be at the final image)
                     try:
@@ -2971,11 +3524,27 @@ class PyplisWorker:
                         flow = self.opt_flow
                     except IndexError:
                         continue
+                else:
+                    flow = buff_dict['opt_flow']
             else:
-                flow = buff_dict['opt_flow']
+                flow=None
+
+            # Calculate nadeau plumespeed if we don't have it already
+            if self.velo_modes['flow_nadeau']:
+                if buff_dict['nadeau_plumespeed'] is None:
+                    if self.auto_nadeau_line:
+                        self.autogenerate_nadeau_line(img_tau, self.PCS_lines_all[self.auto_nadeau_pcs])
+                    elif self.nadeau_line is None:
+                        self.generate_nadeau_line()
+                    nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(img_tau, img_buff[i+1]['img_tau'],
+                                                                                   self.nadeau_line)
+                else:
+                    nadeau_plumespeed = buff_dict['nadeau_plumespeed']
+            else:
+                nadeau_plumespeed = None
 
             # Calculate emission rate - don't update plot, and then we will do that at the end, for speed
-            results = self.calculate_emission_rate(img=img_cal, flow=flow, plot=False)
+            results = self.calculate_emission_rate(img=img_cal, flow=flow, nadeau_speed=nadeau_plumespeed, plot=False)
 
         self.fig_series.update_plot()
 
@@ -3002,6 +3571,9 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
+        self.set_processing_directory()
+        self.save_config_plus(self.processed_dir)
+        self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
@@ -3048,12 +3620,12 @@ class PyplisWorker:
         self.img_list = self.get_img_list()
 
         # Perform calibration work
-        if self.cal_type in [0, 2]:
+        if self.cal_type_int in [0, 2]:
             self.perform_cell_calibration_pyplis(plot=False)
         force_cal = False   # USed for forcing DOAS calibration on last image of sequence if we haven't calibrated at all yet
 
         # Fix FOV if we are using DOAS calibration
-        if self.cal_type in [1,2]:
+        if self.cal_type_int in [1,2]:
             if self.fix_fov:
                 self.generate_doas_fov()
 
@@ -3080,7 +3652,7 @@ class PyplisWorker:
             # TODO number of images - I can then check in the same way but just look at time differnce using:
             # TODO self.doas_last_save
             if i == len(self.img_list) - 1:
-                if self.cal_type in [1, 2] and not self.got_doas_fov:
+                if self.cal_type_int in [1, 2] and not self.got_doas_fov:
                     force_cal = True
 
             # Process image pair
@@ -3090,10 +3662,6 @@ class PyplisWorker:
 
             # Save all images that have been requested
             self.save_imgs()
-
-            # If a fit has been produced then save the statistics
-            if self.calib_pears.calib_coeffs is not None:
-                self.record_fit_data()
 
             # Once first image is processed we update the first_image bool
             if i == 0:
@@ -3137,7 +3705,7 @@ class PyplisWorker:
         # TODO to be checking for changes in directory and then controlling the current working directory of the object etc
 
         # Fix FOV if we are using DOAS calibration
-        if self.cal_type in [1,2]:
+        if self.cal_type_int in [1,2]:
             if self.fix_fov:
                 self.generate_doas_fov()
 
@@ -3292,6 +3860,8 @@ class PyplisWorker:
 
     def save_processing_params(self):
         """Saves processing parameters in current processing directory"""
+        # This is likely now redundant code
+
         # Cross correlation save
         if self.got_cross_corr:
             cross_corr_file = os.path.join(self.processed_dir, 'cross_corr_info.txt')
@@ -3301,32 +3871,32 @@ class PyplisWorker:
                 f.write('{}'.format(self.cross_corr_lines['young']))
 
         # Processing settings save
-        settings = os.path.join(self.processed_dir, 'processing_settings.txt')
-        with open(settings, 'a') as f:
-            if self.bg_pycam:
-                f.write('BG_mode={}\n'.format(7))
-            else:
-                f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
-            if self.cal_type in [1, 2]:
-                f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
-            f.write('ambient_roi={}\n'.format(self.ambient_roi))
-            f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
+        # settings = os.path.join(self.processed_dir, 'processing_settings.txt')
+        # with open(settings, 'a') as f:
+        #     if self.bg_pycam:
+        #         f.write('BG_mode={}\n'.format(7))
+        #     else:
+        #         f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+        #     if self.cal_type_int in [1, 2]:
+        #         f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
+        #     f.write('ambient_roi={}\n'.format(self.ambient_roi))
+        #     f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
 
-            f.write(self.generate_DOAS_FOV_info())
+        #     f.write(self.generate_DOAS_FOV_info())
 
-        # Save PCS lines info
-        lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
-        with open(settings, 'a') as f:
-            for i, line in enumerate(lines):
-                f.write('Line_{}\n'.format(i))
-                f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
-                f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
-                f.write('orientation={}\n'.format(line.normal_orientation))
+        # # Save PCS lines info
+        # lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
+        # with open(settings, 'a') as f:
+        #     for i, line in enumerate(lines):
+        #         f.write('Line_{}\n'.format(i))
+        #         f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
+        #         f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
+        #         f.write('orientation={}\n'.format(line.normal_orientation))
 
     def generate_DOAS_FOV_info(self):
 
-        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.doas_fov_x, self.doas_fov_y)
-        rad_string = 'DOAS_FOV_radius={}\n'.format(self.doas_fov_extent)
+        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
+        rad_string = 'DOAS_FOV_radius={}\n'.format(self.config["fov_rad"])
         
         if self.doas_recal:
             remove_string = 'DOAS_remove_data [minutes]={}\n'.format(self.remove_doas_mins)
@@ -3349,12 +3919,15 @@ class PyplisWorker:
             file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
             file.write(self.generate_DOAS_FOV_info())
 
-        coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+        if hasattr(self, 'calibration_series') and (self.cal_type_int == 3):
+            full_df = self.calibration_series
+        else:
+            coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
 
-        tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
-        fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
+            tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
+            fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
 
-        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+            full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
 
         full_df.to_csv(path, mode = "a")
 
@@ -3363,7 +3936,7 @@ class PyplisWorker:
         mse = np.mean(self.calib_pears.residual ** 2)
         r2 = 1 - (mse / np.var(self.calib_pears.cd_vec))
 
-        fit_data = np.hstack((self.calib_pears.stop, self.calib_pears.calib_coeffs, mse, r2))
+        fit_data = np.hstack((self.calib_pears.stop, np.flip(self.calib_pears.calib_coeffs), mse, r2))
         self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
 
@@ -3529,6 +4102,8 @@ class ImageRegistration:
             pathname = pathname.split('.')[0] + '.pkl'
             with open(pathname, 'wb') as pickle_file:
                 pickle.dump(self.cp_tform, pickle_file, pickle.HIGHEST_PROTOCOL)
+
+        return pathname
 
     def load_registration(self, pathname, img_reg_frame=None, rerun=True):
         """

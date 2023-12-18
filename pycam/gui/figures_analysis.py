@@ -212,9 +212,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         self._current_ica = tk.IntVar()
         self.current_ica = 1
         self._xcorr_ica_old = tk.IntVar()
-        self.xcorr_ica_old = 0
+        self.xcorr_ica_old = 2
         self._xcorr_ica_young = tk.IntVar()
-        self.xcorr_ica_young = 0
+        self.xcorr_ica_young = 1
         self.PCS_lines_list = [None] * self.max_lines           # Pyplis line objects list
         self.ica_plt_list = [None] * self.max_lines             # Plot line objects list
         self.ica_coords = []                                    # Coordinates for most recent line plot
@@ -283,16 +283,19 @@ class ImageSO2(LoadSaveProcessingSettings):
 
     def initiate_variables(self):
         """Initiates variables to be loaded"""
-        self.vars = {'amb_roi': list}
+        self.vars = {'ambient_roi': list}
 
         self.load_defaults()
 
-    def gather_vars(self):
+    def gather_vars(self, update_pyplis=False):
         """
         Update pyplis_worker for all attributes
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
+
+        if update_pyplis:
+            pyplis_worker.apply_config(subset=self.vars.keys())
 
         # Update full line list
         self.pyplis_worker.PCS_lines_all = self.PCS_lines_list
@@ -471,9 +474,9 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.plt_opt_flow(draw=False)
 
         # Draw ambient roi
-        crop_X = self.amb_roi[2] - self.amb_roi[0]
-        crop_Y = self.amb_roi[3] - self.amb_roi[1]
-        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+        crop_X = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_Y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
                                                         crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
 
         # Finalise canvas and gridding
@@ -636,12 +639,20 @@ class ImageSO2(LoadSaveProcessingSettings):
                                                         crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
 
         # Only update roi_abs if use_roi is true
-        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
-        self.gather_vars()
+        self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.gather_vars(update_pyplis=True)
 
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
         self.q.put(1)
+
+    def reload_roi(self):
+        self.rect.remove()
+        # Draw ambient roi
+        crop_X = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_Y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
+                                                        crop_X, crop_Y, edgecolor='black', fill=False, linewidth=1))
 
     def add_pcs_line(self, line, line_num=None, force_add=True):
         """
@@ -697,22 +708,28 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update time series lines
         self.fig_series.update_lines()
 
-    def update_ica_num(self):
-        """Makes necessary changes to update the number of ICA lines"""
-
+    def update_ica_num(self, reset_xcorr_lines=False):
+        """
+        Makes necessary changes to update the number of ICA lines
+        :param reset_xcorr_lines bool   If True, when there are fewer lines than the xcorr line designations the xcorr
+                                        line designations are reset to 0. Not typically used.
+        """
         # Edit 'to' of ica_edit_spin spinbox and if current ICA is above number of ICAs we update current ICA
         self.ica_edit_spin.configure(to=self.num_ica)
         self.current_ica = self.num_ica
 
-        # Edit cross-correlation ICA
+        # Fix the line number the spinbox can go up to (based on number fo lines we currently have)
         self.x_corr_spin_old.configure(to=self.num_ica)
-        if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
-            self.xcorr_ica_old = 0
-
-        # Edit cross-correlation ICA (young)
         self.x_corr_spin_young.configure(to=self.num_ica)
-        if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
-            self.xcorr_ica_young = 0
+
+        if reset_xcorr_lines:
+            # Edit cross-correlation ICA
+            if self.xcorr_ica_old > self.num_ica:       # If the xcorr_ica_old is deleted we set the xcorr back to 0
+                self.xcorr_ica_old = 0
+
+            # Edit cross-correlation ICA (young)
+            if self.xcorr_ica_young > self.num_ica:       # If the xcorr_ica_young is deleted we set the xcorr back to 0
+                self.xcorr_ica_young = 0
 
         # Delete any drawn lines over the new number requested if they are present
         ica_num = self.num_ica
@@ -1077,10 +1094,12 @@ class TimeSeriesFigure:
         # Plot Options
         self.style = 'default'
         self.date_fmt = '%HH:%MM'
-        self.plot_styles = {'flow_glob': {'ls': 'solid'},
-                            'flow_raw': {'ls': 'dotted'},
-                            'flow_histo': {'ls': 'dashed'},
-                            'flow_hybrid': {'ls': 'dashdot'}}
+        self.plot_styles = {'flow_glob': {'ls': 'solid', 'marker': '.', 'colour': 'mediumblue'},
+                            'flow_nadeau': {'ls': 'solid', 'marker': 'x', 'colour': 'silver'},
+                            'flow_raw': {'ls': 'dotted', 'marker': '1', 'colour': 'darkorange'},
+                            'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
+                            'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
+                            }
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
 
@@ -1223,17 +1242,19 @@ class TimeSeriesFigure:
                                                marker='.')
                             self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
-                                           color=self.colours[int(self.line_plot)],
-                                           marker=self.marker)
+                                           color=self.plot_styles[mode]['colour'],
+                                           # color=self.colours[int(self.line_plot)],
+                                           marker=None)
                             self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
                                                                                   ls=self.plot_styles[mode]['ls'],
-                                                                                  color=self.colours[
-                                                                                      int(self.line_plot)],
+                                                                                  # color=self.colours[
+                                                                                  #     int(self.line_plot)],
+                                                                                  color=self.plot_styles[mode]['colour'],
                                                                                   lw=1.5,
                                                                                   ymin=0,
                                                                                   date_fmt=self.date_fmt,
                                                                                   label=line_lab,
-                                                                                  marker=self.marker
+                                                                                  marker=None
                                                                                   )
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
@@ -1399,8 +1420,7 @@ class GeomSettings:
 
 
         # Setting start values of variables
-        with open(FileLocator.DEFAULT_GEOM, 'r') as f:
-            self.filename = f.readline()
+        self.filename = self.pyplis_worker.config["default_cam_geom"]
         self.load_instrument_setup(self.filename, show_info=False)
 
     def generate_frame(self):
@@ -1714,14 +1734,22 @@ class GeomSettings:
 
     def gather_geom(self):
         """Gathers all geometry data and adds it to the dictionary"""
-        for key in self.geom_dict:
-            self.geom_dict[key] = getattr(self, key)
+        for key in self.pyplis_worker.geom_dict:
+            self.pyplis_worker.geom_dict[key] = getattr(self, key)
 
-    def update_geom(self, show_info=True):
+    def spread_geom(self):
+        for key in self.pyplis_worker.geom_dict:
+            setattr(self, key, self.pyplis_worker.geom_dict[key])
+
+    def update_geom(self, show_info=True, toGUI=False):
         """Updates pyplis MeasGeom object with values from this frame"""
         # Update geometry dictionary and pyplis worker camera object
-        self.gather_geom()
-        self.pyplis_worker.update_cam_geom(self.geom_dict)
+        if toGUI:
+            self.spread_geom()
+        else:
+            self.gather_geom()
+    
+        self.pyplis_worker.update_cam_geom(self.pyplis_worker.geom_dict)
 
         # Update measurement setup with location
         self.volcano_search(show_info)
@@ -1803,45 +1831,29 @@ class GeomSettings:
         self.filename = '{}.txt'.format(self.filename.split('.')[0])
 
         # Open file object and write all attributes to it
-        with open(self.filename, 'w') as f:
-            f.write('# Geometry setup file\n')
-            f.write('volcano={}\n'.format(self.volcano))
-            for key in self.geom_dict:
-                f.write('{}={}\n'.format(key, self.geom_dict[key]))
+        self.pyplis_worker.save_cam_geom(self.filename)
 
     def load_instrument_setup(self, filepath=None, show_info=True):
         """Loads existing instrument setup"""
         # Get filename to load
         if filepath is None:
             self.filename = filedialog.askopenfilename(initialdir=self.geom_path)
+        else:
+            self.filename = filepath
 
-        with open(self.filename, 'r') as f:
-            for line in f:
-                # Ignore first line
-                if line[0] == '#':
-                    continue
-
-                # Extract key-value pair, remove the newline character from the value, then recast
-                key, value = line.split('=')
-                value = value.replace('\n', '')
-                if key == 'volcano':
-                    setattr(self, key, value)
-                elif key == 'altitude':
-                    setattr(self, key, int(value))
-                else:
-                    setattr(self, key, float(value))
+        self.pyplis_worker.load_cam_geom(self.filename)
+        self.volcano = self.pyplis_worker.volcano
 
         # Update geometry settings
-        self.update_geom(show_info)
+        self.update_geom(show_info, toGUI=True)
 
     def set_default_instrument_setup(self):
         """Sets default instrument setup to load on startup"""
         # First save the settings
         self.save_instrument_setup()
-
+        
         # Update default
-        with open(FileLocator.DEFAULT_GEOM, 'w') as f:
-            f.write(self.filename)
+        self.pyplis_worker.config["default_cam_geom"] = self.filename
 
     def draw_geometry(self):
         """Draws geometry through pyplis"""
@@ -1917,9 +1929,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
         """Prepares all tk variables"""
         self.main_gui = main_gui
         self.vars = {'bg_mode': int,
-                     'auto_param': int,
-                     'vign_corr': int,
-                     'polyfit_2d_thresh': int,
+                     'auto_param_bg': int,
+                     'use_vign_corr': int,
+                     'polyfit_2d_mask_thresh': int,
                      'ref_check_lower': float,  # Used to check background region for presence of gas which would hinder background model
                      'ref_check_upper': float,  # Used with ambient_roi from light dilution frame for calculations
                      'ref_check_mode': int,
@@ -1939,9 +1951,9 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
 
         self._bg_mode = tk.IntVar()
-        self._auto_param = tk.IntVar()
-        self._vign_corr = tk.IntVar()
-        self._polyfit_2d_thresh = tk.IntVar()
+        self._auto_param_bg = tk.IntVar()
+        self._use_vign_corr = tk.IntVar()
+        self._polyfit_2d_mask_thresh = tk.IntVar()
         self._ref_check_lower = tk.DoubleVar()
         self._ref_check_upper = tk.DoubleVar()
         self._ref_check_mode = tk.IntVar()
@@ -1995,7 +2007,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         row = 0
         label = ttk.Label(self.opt_frame, text='Intensity threshold (mode 0):', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
-        spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_thresh, from_=0,
+        spin = ttk.Spinbox(self.opt_frame, textvariable=self._polyfit_2d_mask_thresh, from_=0,
                            to=pyplis_worker.cam_specs._max_DN, increment=1, font=self.main_gui.main_font)
         spin.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
 
@@ -2007,8 +2019,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
         # Vignette correction
         row += 1
-        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction', variable=self._vign_corr,
-                                command=self.set_vignette_correction)
+        check = ttk.Checkbutton(self.opt_frame, text='Apply vignette correction',
+                                variable=self._use_vign_corr, command=self.set_vignette_correction)
         check.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Reference are check
@@ -2045,13 +2057,13 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.opt_frame)
         butt_frame.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
 
-        butt = ttk.Button(butt_frame, text='OK', command=self.close_window)
+        butt = ttk.Button(butt_frame, text='OK', command=self.save_and_close)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
         butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Run', command=self.run_process)
+        butt = ttk.Button(butt_frame, text='Preview', command=self.run_process)
         butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -----------------------------
@@ -2062,8 +2074,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self.ref_area_frame.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
 
         row = 0
-        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas', variable=self._auto_param,
-                                    command=self.update_draw)
+        self.auto = ttk.Checkbutton(self.ref_area_frame, text='Automatic reference areas',
+                                    variable=self._auto_param_bg, command=self.update_draw)
         self.auto.grid(row=row, column=0, columnspan=2, sticky='w')
 
         # Radiobuttons for reference area drawing
@@ -2348,7 +2360,7 @@ class PlumeBackground(LoadSaveProcessingSettings):
         1 = ygrad_rect
         2 = xgrad_rect
         """
-        if self.auto_param:
+        if self.auto_param_bg:
             self.scale_rect_rad.configure(state=tk.DISABLED)
             self.ygrad_rect_rad.configure(state=tk.DISABLED)
             self.xgrad_rect_rad.configure(state=tk.DISABLED)
@@ -2452,28 +2464,28 @@ class PlumeBackground(LoadSaveProcessingSettings):
         self._bg_mode.set(value)
 
     @property
-    def auto_param(self):
-        return self._auto_param.get()
+    def auto_param_bg(self):
+        return self._auto_param_bg.get()
 
-    @auto_param.setter
-    def auto_param(self, value):
-        self._auto_param.set(value)
-
-    @property
-    def vign_corr(self):
-        return self._vign_corr.get()
-
-    @vign_corr.setter
-    def vign_corr(self, value):
-        self._vign_corr.set(value)
+    @auto_param_bg.setter
+    def auto_param_bg(self, value):
+        self._auto_param_bg.set(value)
 
     @property
-    def polyfit_2d_thresh(self):
-        return self._polyfit_2d_thresh.get()
+    def use_vign_corr(self):
+        return self._use_vign_corr.get()
 
-    @polyfit_2d_thresh.setter
-    def polyfit_2d_thresh(self, value):
-        self._polyfit_2d_thresh.set(value)
+    @use_vign_corr.setter
+    def use_vign_corr(self, value):
+        self._use_vign_corr.set(value)
+
+    @property
+    def polyfit_2d_mask_thresh(self):
+        return self._polyfit_2d_mask_thresh.get()
+
+    @polyfit_2d_mask_thresh.setter
+    def polyfit_2d_mask_thresh(self, value):
+        self._polyfit_2d_mask_thresh.set(value)
 
     @property
     def ref_check_lower(self):
@@ -2625,39 +2637,41 @@ class PlumeBackground(LoadSaveProcessingSettings):
         to the images will be made
         :return:
         """
-        if not self.vign_corr:
-            pyplis_worker.use_vign_corr = False
+        if not self.use_vign_corr:
+            pyplis_worker.config['use_vign_corr'] = False
             # Save the old path so we can revert back to it
             if pyplis_worker.bg_A_path_old != FileLocator.ONES_MASK:
-                pyplis_worker.bg_A_path_old = pyplis_worker.bg_A_path
-                pyplis_worker.bg_B_path_old = pyplis_worker.bg_B_path
+                pyplis_worker.bg_A_path_old = pyplis_worker.config['bg_A_path']
+                pyplis_worker.bg_B_path_old = pyplis_worker.config['bg_B_path']
             pyplis_worker.load_BG_img(self.ones_mask, band='A', ones=True)
             pyplis_worker.load_BG_img(self.ones_mask, band='B', ones=True)
 
         else:
-            pyplis_worker.use_vign_corr = True
+            pyplis_worker.config['use_vign_corr'] = True
             if pyplis_worker.bg_A_path_old is not None:
                 pyplis_worker.load_BG_img(pyplis_worker.bg_A_path_old, band='A')
                 pyplis_worker.load_BG_img(pyplis_worker.bg_B_path_old, band='B')
+            else:
+                pyplis_worker.load_BG_img(pyplis_worker.bg_A_path, band='A')
+                pyplis_worker.load_BG_img(pyplis_worker.bg_B_path, band='B')
 
-    def gather_vars(self):
+
+    def gather_vars(self, update_pyplis=False):
         # BG mode 7 is separate to the pyplis background models so can't be assigned to plume_bg_A.mode
         # It is instead assigned to the bg_pycam flag, which overpowers plume_bg_A.mode
-        if self.bg_mode == 7:
-            pyplis_worker.bg_pycam = True
-        else:
-            pyplis_worker.plume_bg_A.mode = self.bg_mode
-            pyplis_worker.plume_bg_B.mode = self.bg_mode
-            pyplis_worker.bg_pycam = False
-        pyplis_worker.auto_param_bg = self.auto_param
-        pyplis_worker.polyfit_2d_mask_thresh = self.polyfit_2d_thresh
-        pyplis_worker.ref_check_lower = self.ref_check_lower
-        pyplis_worker.ref_check_upper = self.ref_check_upper
-        pyplis_worker.ref_check_mode = self.ref_check_mode
+        pyplis_worker.config['bg_mode'] = self.bg_mode
+        pyplis_worker.config['auto_param_bg'] = self.auto_param_bg
+        pyplis_worker.config['polyfit_2d_mask_thresh'] = self.polyfit_2d_mask_thresh
+        pyplis_worker.config['ref_check_lower'] = self.ref_check_lower
+        pyplis_worker.config['ref_check_upper'] = self.ref_check_upper
+        pyplis_worker.config['ref_check_mode'] = self.ref_check_mode
+
+        if update_pyplis:
+            pyplis_worker.apply_config(subset = self.vars.keys())
 
     def run_process(self, reload_seq=True):
         """Main processing for background modelling and displaying the results"""
-        self.gather_vars()
+        self.gather_vars(update_pyplis=True)
         pyplis_worker.model_background()
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
@@ -2776,15 +2790,22 @@ class PlumeBackground(LoadSaveProcessingSettings):
 
     def close_window(self):
         """Restore current settings"""
-        if pyplis_worker.bg_pycam:
-            self.bg_mode = 7
-        else:
-            self.bg_mode = pyplis_worker.plume_bg_A.mode
-        self.auto_param = pyplis_worker.auto_param_bg
-        self.polyfit_2d_thresh = pyplis_worker.polyfit_2d_mask_thresh
-        self.ref_check_lower = pyplis_worker.ref_check_lower
-        self.ref_check_upper = pyplis_worker.ref_check_upper
-        self.ref_check_mode = pyplis_worker.ref_check_mode
+        self.bg_mode = pyplis_worker.config['bg_mode']
+        self.auto_param_bg = pyplis_worker.config['auto_param_bg']
+        self.polyfit_2d_mask_thresh = pyplis_worker.config['polyfit_2d_mask_thresh']
+        self.ref_check_lower = pyplis_worker.config['ref_check_lower']
+        self.ref_check_upper = pyplis_worker.config['ref_check_upper']
+        self.ref_check_mode = pyplis_worker.config['ref_check_mode']
+        self.frame.destroy()
+        self.in_frame = False
+
+    def save_and_close(self):
+        
+        self.gather_vars(update_pyplis=True)
+        pyplis_worker.model_background(plot=False)
+        pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        
+        # CLose the window
         self.frame.destroy()
         self.in_frame = False
 
@@ -2830,6 +2851,8 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.parent = parent
         self.frame = None
         self.in_frame = False
+        self.pyplis_worker = pyplis_worker
+
 
         self.path_str_length = 50
         self.path_widg_length = self.path_str_length + 2
@@ -2846,16 +2869,17 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """
         # List of all variables to be read in and saved
         self.vars = {'plot_iter': int,
-                     'bg_A': str,
-                     'bg_B': str,
+                     'bg_A_path': str,
+                     'bg_B_path': str,
                      'dark_img_dir': str,
+                     'spec_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
+                     'cal_series_path': str,
                      'cal_type_int': int,        # 0 = cell, 1 = doas, 2 = cell + doas
-                     'use_sensitivity_mask': int,
                      'use_light_dilution': int,
                      'min_cd': float,
-                     'buff_size': int,
+                     'img_buff_size': int,
                      'save_opt_flow': int,       # If True, optical flow is saved to buffer (takes up more space)
                      'time_zone': int
                      }
@@ -2867,9 +2891,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
         self._cell_cal_dir = tk.StringVar()
+        self._cal_series_path = tk.StringVar()
         self._cal_type = tk.StringVar()
-        self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS']
-        self._use_sensitivity_mask = tk.IntVar()
+        self.cal_opts = ['Cell', 'DOAS', 'Cell + DOAS', 'Preloaded']
         self._use_light_dilution = tk.IntVar()
         self._min_cd = tk.DoubleVar()
         self._buff_size = tk.IntVar()
@@ -2949,6 +2973,15 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
+        # Cell calibration directory
+        label = ttk.Label(path_frame, text='Calibration time series file:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.cal_series_label = ttk.Label(path_frame, text=self.cal_series_path_short, width=self.path_widg_length,
+                                        font=self.main_gui.main_font, anchor='e')
+        self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose File', command=self.get_cal_series_path)
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
         # Processing
         settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
         settings_frame.grid(row=1, column=0, sticky='nsw', padx=5, pady=5)
@@ -2992,16 +3025,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Calibration type
         label = ttk.Label(settings_frame, text='Calibration method:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts,
-                                            command=self.update_sens_mask)
+        self.cal_type_widg = ttk.OptionMenu(settings_frame, self._cal_type, self.cal_type, *self.cal_opts)
         self.cal_type_widg.configure(width=15)
         self.cal_type_widg.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        row += 1
-
-        # Use sensitivity mask checkbutton
-        self.sens_check = ttk.Checkbutton(settings_frame, text='Use sensitivity mask',
-                                          variable=self._use_sensitivity_mask)
-        self.sens_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
 
         # Use light dilution checkbutton
@@ -3014,7 +3040,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.plot_check = ttk.Checkbutton(settings_frame, text='Update plots iteratively', variable=self._plot_iter)
         self.plot_check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         row += 1
-        self.update_sens_mask()
 
         self.butt_frame = ttk.Frame(self.frame)
         self.butt_frame.grid(row=2, columnspan=4, sticky='nsew')
@@ -3086,6 +3111,21 @@ class ProcessSettings(LoadSaveProcessingSettings):
         return '...' + self.cell_cal_dir[-self.path_str_length:]
 
     @property
+    def cal_series_path(self):
+        return self._cal_series_path.get()
+
+    @cal_series_path.setter
+    def cal_series_path(self, value):
+        self._cal_series_path.set(value)
+        if hasattr(self, 'cal_series_label') and self.in_frame:
+            self.cal_series_label.configure(text=self.cal_series_path_short)
+
+    @property
+    def cal_series_path_short(self):
+        """Returns shorter label for dark directory"""
+        return '...' + self.cal_series_path[-self.path_str_length:]
+
+    @property
     def cal_type(self):
         return self._cal_type.get()
 
@@ -3102,14 +3142,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_type = self.cal_opts[value]
 
     @property
-    def use_sensitivity_mask(self):
-        return self._use_sensitivity_mask.get()
-
-    @use_sensitivity_mask.setter
-    def use_sensitivity_mask(self, value):
-        self._use_sensitivity_mask.set(value)
-
-    @property
     def use_light_dilution(self):
         return self._use_light_dilution.get()
 
@@ -3118,30 +3150,30 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._use_light_dilution.set(value)
 
     @property
-    def bg_A(self):
+    def bg_A_path(self):
         return self._bg_A.get()
 
-    @bg_A.setter
-    def bg_A(self, value):
+    @bg_A_path.setter
+    def bg_A_path(self, value):
         self._bg_A.set(value)
 
     @property
     def bg_A_short(self):
         """Returns shorter label for bg_A file"""
-        return '...' + self.bg_A[-self.path_str_length:]
+        return '...' + self.bg_A_path[-self.path_str_length:]
 
     @property
-    def bg_B(self):
+    def bg_B_path(self):
         return self._bg_B.get()
 
-    @bg_B.setter
-    def bg_B(self, value):
+    @bg_B_path.setter
+    def bg_B_path(self, value):
         self._bg_B.set(value)
 
     @property
     def bg_B_short(self):
         """Returns shorter label for bg_B file"""
-        return '...' + self.bg_B[-self.path_str_length:]
+        return '...' + self.bg_B_path[-self.path_str_length:]
 
     @property
     def min_cd(self):
@@ -3152,11 +3184,11 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._min_cd.set(value / 10 ** 16)
 
     @property
-    def buff_size(self):
+    def img_buff_size(self):
         return self._buff_size.get()
 
-    @buff_size.setter
-    def buff_size(self, value):
+    @img_buff_size.setter
+    def img_buff_size(self, value):
         self._buff_size.set(value)
 
     @property
@@ -3174,18 +3206,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @time_zone.setter
     def time_zone(self, value):
         self._time_zone.set(value)
-
-    def update_sens_mask(self, val=None):
-        """Updates sensitivity mask depending on currently selected calibration option"""
-        if self.cal_type == 'Cell':
-            self.sens_check.configure(state=tk.NORMAL)
-            self.use_sensitivity_mask = 1
-        elif self.cal_type == 'Cell + DOAS':
-            self.sens_check.configure(state=tk.DISABLED)
-            self.use_sensitivity_mask = 1
-        elif self.cal_type == 'DOAS':
-            self.sens_check.configure(state=tk.DISABLED)
-            self.use_sensitivity_mask = 0
 
     def get_dark_img_dir(self):
         """Gives user options for retrieving dark image directory"""
@@ -3228,7 +3248,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
 
         # Update pyplis worker value if requested (done when using submenu selection
         if set_var:
-            pyplis_worker.cell_cal_dir = self.cell_cal_dir
+            pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
 
     def set_cell_cal_dir(self, cal_dir):
         """Directly sets cell calibration directory without filedialog"""
@@ -3236,7 +3256,29 @@ class ProcessSettings(LoadSaveProcessingSettings):
             print('Cannot set calibration directory as requested directory does not exist')
             return
         self.cell_cal_dir = cal_dir
-        pyplis_worker.cell_cal_dir = self.cell_cal_dir
+        pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
+
+    def get_cal_series_path(self, set_var=False):
+        """
+        Gives user options for retrieving calibration coefficients from file
+        :param set_var: bool
+            If true, this will set the pyplis_worker value automatically. This means that this function can be used
+            from outside of the process_settings widget and the directory will automatically be updated, without
+            requiring the OK click from the settings widget which usually instigates gather_vars. This is probably not
+            used anywhere currently
+        """
+        cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
+
+        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
+        if self.in_frame:
+            self.frame.lift()
+
+        if len(cal_series_path) > 0:
+            self.cal_series_path = cal_series_path
+
+        # Update pyplis worker value if requested (done when using submenu selection
+        if set_var:
+            pyplis_worker.config['cal_series_path'] = cal_series_path
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
@@ -3247,7 +3289,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
             self.frame.lift()
 
         if len(bg_file) > 0:
-            setattr(self, 'bg_{}'.format(band), bg_file)
+            setattr(self, 'bg_{}_path'.format(band), bg_file)
             getattr(self, 'bg_{}_label'.format(band)).configure(text=getattr(self, 'bg_{}_short'.format(band)))
 
     def gather_vars(self):
@@ -3255,45 +3297,51 @@ class ProcessSettings(LoadSaveProcessingSettings):
         Gathers all variables and sets associated objects to the values
         :return:
         """
-        pyplis_worker.plot_iter = self.plot_iter
+        pyplis_worker.config['plot_iter'] = self.plot_iter
         doas_worker.plot_iter = self.plot_iter
-        pyplis_worker.dark_dir = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
-        pyplis_worker.cell_cal_dir = self.cell_cal_dir
-        pyplis_worker.cal_type = self.cal_type_int
-        pyplis_worker.use_sensitivity_mask = bool(self.use_sensitivity_mask)
-        pyplis_worker.use_light_dilution = bool(self.use_light_dilution)
+        pyplis_worker.config['dark_img_dir'] = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
+        pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
+        pyplis_worker.config["cal_series_path"] = self.cal_series_path
+        pyplis_worker.config['cal_type_int'] = self.cal_type_int
+        pyplis_worker.config['use_light_dilution'] = bool(self.use_light_dilution)
+        doas_worker.spec_dir = self.spec_dir
         doas_worker.dark_dir = self.dark_spec_dir
-        if pyplis_worker.use_vign_corr:
-            pyplis_worker.load_BG_img(self.bg_A, band='A')
-            pyplis_worker.load_BG_img(self.bg_B, band='B')
-        pyplis_worker.min_cd = self.min_cd
-        pyplis_worker.img_buff_size = self.buff_size
-        pyplis_worker.save_opt_flow = self.save_opt_flow
-        pyplis_worker.time_zone - self.time_zone
+        pyplis_worker.config['min_cd'] = self.min_cd
+        pyplis_worker.config['img_buff_size'] = self.img_buff_size
+        pyplis_worker.config['save_opt_flow'] = self.save_opt_flow
+        pyplis_worker.config['time_zone'] - self.time_zone
+        if pyplis_worker.config["use_vign_corr"]:
+            pyplis_worker.apply_config(subset=["dark_img_dir"])
+            pyplis_worker.load_BG_img(self.bg_A_path, band='A')
+            pyplis_worker.load_BG_img(self.bg_B_path, band='B')
+        else:
+            pyplis_worker.load_BG_img(FileLocator.ONES_MASK, band='A', ones=True)
+            pyplis_worker.load_BG_img(FileLocator.ONES_MASK, band='B', ones=True)
 
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
         self.close_window()
+        pyplis_worker.apply_config(subset=self.vars.keys())
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
 
     def close_window(self):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
-        self.plot_iter = self.vars['plot_iter'](pyplis_worker.plot_iter)
-        self.bg_A = pyplis_worker.bg_A_path
-        self.bg_B = pyplis_worker.bg_B_path
-        self.dark_img_dir = pyplis_worker.dark_dir
+        self.plot_iter = self.vars['plot_iter'](pyplis_worker.config['plot_iter'])
+        self.bg_A_path = pyplis_worker.config['bg_A_path']
+        self.bg_B_path = pyplis_worker.config['bg_B_path']
+        self.dark_img_dir = pyplis_worker.config['dark_img_dir']
         self.dark_spec_dir = doas_worker.dark_dir
-        self.cell_cal_dir = pyplis_worker.cell_cal_dir
-        self.cal_type_int = pyplis_worker.cal_type
-        self.use_sensitivity_mask = int(pyplis_worker.use_sensitivity_mask)
-        self.use_light_dilution = int(pyplis_worker.use_light_dilution)
-        self.min_cd = pyplis_worker.min_cd
-        self.buff_size = pyplis_worker.img_buff_size
-        self.save_opt_flow = pyplis_worker.save_opt_flow
-        self.time_zone = pyplis_worker.time_zone
+        self.cell_cal_dir = pyplis_worker.config['cell_cal_dir']
+        self.cal_series_path = pyplis_worker.config['cal_series_path']
+        self.cal_type_int = pyplis_worker.config['cal_type_int']
+        self.use_light_dilution = int(pyplis_worker.config['use_light_dilution'])
+        self.min_cd = pyplis_worker.config['min_cd']
+        self.img_buff_size = pyplis_worker.config['img_buff_size']
+        self.save_opt_flow = pyplis_worker.config['save_opt_flow']
+        self.time_zone = pyplis_worker.config['time_zone']
 
         self.in_frame = False
         self.frame.destroy()
@@ -3351,7 +3399,11 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                      'max_doas_cam_dif': int,
                      'fix_fov': int,
                      'maxrad_doas': float,
-                     'polyorder_cal': int}          # Maximum radius in pixels, not degrees, so depends on distance!
+                     'polyorder_cal': int,
+                     'centre_pix_x': int,
+                     'centre_pix_y': int,
+                     'fov_rad': float}
+        # Maximum radius in pixels, not degrees, so depends on distance!
         self._maxrad_doas = tk.DoubleVar()
         # self.maxrad_doas = self.spec_specs.fov * 1.1
         self._centre_pix_x = tk.IntVar()
@@ -3377,19 +3429,20 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
 
     def gather_vars(self, message=False):
         """Updates pyplis worker settings"""
-        self.pyplis_worker.doas_cal_adjust_offset = self.doas_cal_adjust_offset
-        self.pyplis_worker.maxrad_doas = self.maxrad_doas
-        self.pyplis_worker.remove_doas_mins = self.remove_doas_mins
-        self.pyplis_worker.doas_recal = self.doas_recal
-        self.pyplis_worker.doas_fov_recal_mins = self.doas_fov_recal_mins
-        self.pyplis_worker.doas_fov_recal = self.doas_fov_recal
-        self.pyplis_worker.max_doas_cam_dif = self.max_doas_cam_dif
-        self.pyplis_worker.polyorder_cal = self.polyorder_cal
-        self.pyplis_worker.fix_fov = self.fix_fov
+        self.pyplis_worker.config['doas_cal_adjust_offset'] = self.doas_cal_adjust_offset
+        self.pyplis_worker.config['maxrad_doas'] = self.maxrad_doas
+        self.pyplis_worker.config['remove_doas_mins'] = self.remove_doas_mins
+        self.pyplis_worker.config['doas_recal'] = self.doas_recal
+        self.pyplis_worker.config['doas_fov_recal_mins'] = self.doas_fov_recal_mins
+        self.pyplis_worker.config['doas_fov_recal'] = self.doas_fov_recal
+        self.pyplis_worker.config['max_doas_cam_dif'] = self.max_doas_cam_dif
+        self.pyplis_worker.config['polyorder_cal'] = self.polyorder_cal
+        self.pyplis_worker.config['fix_fov'] = self.fix_fov
+        self.pyplis_worker.config['centre_pix_x'] = self.centre_pix_x
+        self.pyplis_worker.config['centre_pix_y'] = self.centre_pix_y
+        self.pyplis_worker.config['fov_rad'] = self.fov_rad
+        self.pyplis_worker.apply_config(subset=self.vars.keys()) # Not 100% sure if this is needed here or could be moved into the if-statement
         if self.fix_fov:
-            self.pyplis_worker.doas_fov_x = self.centre_pix_x
-            self.pyplis_worker.doas_fov_y = self.centre_pix_y
-            self.pyplis_worker.doas_fov_extent = self.fov_rad
             self.pyplis_worker.generate_doas_fov()
 
 
@@ -3584,8 +3637,10 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         self.ax_cal_params_1 = self.fig_cal_params.subplots(1, 1)
         self.ax_cal_params_2 = self.ax_cal_params_1.twinx()
         # self.fig_cal_params.subplots_adjust(left=0.05, right=0.9, top=0.95, bottom=0.05)
-        self.ax_cal_params_1.set_ylabel('Fit 1st order')
-        self.ax_cal_params_2.set_ylabel('Fit error')
+        self.ax_cal_params_1.set_ylabel('1st order coefficient', color = "red")
+        self.ax_cal_params_2.set_ylabel('R squared', color = "blue")
+        self.ax_cal_params_2.set_yticks([0,0.2,0.4,0.6,0.8,1])
+        self.ax_cal_params_2.set_ylim(0, 1)
 
         self.frame_cal_params = ttk.Frame(self.frame_plots, relief=tk.RAISED, borderwidth=3)
         self.cal_params_canvas = FigureCanvasTkAgg(self.fig_cal_params, master=self.frame_cal_params)
@@ -3736,18 +3791,23 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
     def update_vars(self):
         """Updates FOV variables based on pyplis worker"""
         try:
-            self.centre_coords = (self.pyplis_worker.doas_fov_x, self.pyplis_worker.doas_fov_y)
-            self.fov_rad = self.pyplis_worker.doas_fov_extent
+            self.centre_coords = (self.pyplis_worker.centre_pix_x, self.pyplis_worker.centre_pix_y)
+            self.fov_rad = self.pyplis_worker.fov_rad
         except AttributeError:
             pass
 
-    def update_plot(self, update_scat=True, update_img=True, update_params=True):
+    def update_plot(self, update_scat=True, update_img=True, update_params=True, reopen=True):
         """
         Updates plot
+        :param update_scat      bool    If True the scatter plot is updated
+        :param update_image     bool    If True the FOV image is updated
+        :param update_params    bool    If True the calibration stats are updated
+        :param reopen           bool    If True the frame is reopened if it is closed
         :return:
         """
         if not self.in_frame:
-            self.generate_frame()
+            if reopen:
+                self.generate_frame()
             return
 
         # Update FOV variables
@@ -3758,6 +3818,7 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
             try:
                 self.ax_fit.cla()
                 self.pyplis_worker.calib_pears.plot(add_label_str="Pearson", color="b", ax=self.ax_fit)
+                self.ax_fit.get_children()[2].set_zorder(1.9)
             except (AttributeError, ValueError):
                 pass
 
@@ -3770,10 +3831,15 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
                 print('Calib time: {}'.format(self.pyplis_worker.img_tau.meta['start_acq']))
                 print('Calib coeffs: {}'.format(self.pyplis_worker.calib_pears.calib_coeffs))
                 print('Calib err: {}'.format(self.pyplis_worker.calib_pears.err()))
-                self.ax_cal_params_1.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.calib_coeffs[0], color='red', marker='o')
-                self.ax_cal_params_2.plot(self.pyplis_worker.img_tau.meta['start_acq'],
-                                          self.pyplis_worker.calib_pears.err(), color='blue', marker='o')
+
+                # Plot slope coefficient
+                self.ax_cal_params_1.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 2],
+                                          color='red', marker='o', linestyle='none', markersize=3)
+                # Plot R squared value for fit
+                self.ax_cal_params_2.plot(self.pyplis_worker.fit_data[:, 0],
+                                          self.pyplis_worker.fit_data[:, 4],
+                                          color='blue', marker='o', linestyle='none', markersize=3)
                 self.ax_cal_params_1.margins(0.05)
                 self.ax_cal_params_2.margins(0.05)
             except (AttributeError, ValueError, TypeError) as e:
@@ -3801,17 +3867,21 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         Closes frame
         :return:
         """
+        # This appears in the self.vars dict and the gather_vars, may be needed here too?
+        self.doas_cal_adjust_offset = self.pyplis_worker.config['doas_cal_adjust_offset']
+
         # Ensure all settings match pyplis worker (if Update settings button hasn't been pressed we don't want to update
         # those settings)
-        self.maxrad_doas = self.pyplis_worker.maxrad_doas
 
-        self.remove_doas_mins = self.pyplis_worker.remove_doas_mins
-        self.doas_recal = self.pyplis_worker.doas_recal
-        self.doas_fov_recal_misn = self.pyplis_worker.doas_fov_recal_mins
-        self.doas_fov_recal = self.pyplis_worker.doas_fov_recal
-        self.fix_fov = self.pyplis_worker.fix_fov
-        self.max_doas_cam_dif = self.pyplis_worker.max_doas_cam_dif
-        self.polyorder_cal = self.pyplis_worker.polyorder_cal
+        self.maxrad_doas = self.pyplis_worker.config['maxrad_doas']
+
+        self.remove_doas_mins = self.pyplis_worker.config['remove_doas_mins']
+        self.doas_recal = self.pyplis_worker.config['doas_recal']
+        self.doas_fov_recal_mins = self.pyplis_worker.config['doas_fov_recal_mins']
+        self.doas_fov_recal = self.pyplis_worker.config['doas_fov_recal']
+        self.fix_fov = self.pyplis_worker.config['fix_fov']
+        self.max_doas_cam_dif = self.pyplis_worker.config['max_doas_cam_dif']
+        self.polyorder_cal = self.pyplis_worker.config['polyorder_cal']
         self.update_vars()
 
         self.in_frame = False
@@ -3994,9 +4064,9 @@ class CellCalibFrame:
     @property
     def cal_dir_short(self):
         try:
-            val = '...' + self.pyplis_worker.cell_cal_dir[-50:]
+            val = '...' + self.pyplis_worker.config['cell_cal_dir'][-50:]
         except:
-            val = self.pyplis_worker.cell_cal_dir
+            val = self.pyplis_worker.config['cell_cal_dir']
         return val
 
     @property
@@ -4183,6 +4253,9 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_setts = fig_setts
         self.dpi = self.fig_setts.dpi
         self.fig_size = self.fig_setts.fig_cross_corr
+        self.fig_size_nad = (6,6)   #TODO build in options to change size of this figure
+        self.h_ratio = 3
+        self.w_ratio = 25
 
         self.pdx = 5
         self.pdy = 5
@@ -4203,13 +4276,38 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         :return:
         """
         self.main_gui = main_gui
-        self.vars = {'cross_corr_recal': int
+   
+        self.vars = {'cross_corr_recal': int,
+                     'auto_nadeau_line': int,
+                     'source_coords': list,
+                     'nadeau_line_orientation': int,
+                     'nadeau_line_length': int,
+                     'max_nad_shift': int,
+                     'auto_nadeau_pcs': int
                      }
         self._cross_corr_recal = tk.IntVar()
+        self._auto_nadeau_line = tk.BooleanVar()
+        self._source_x = tk.IntVar()
+        self._source_y = tk.IntVar()
+        self._nadeau_line_orientation = tk.IntVar()
+        self._nadeau_line_length = tk.IntVar()
+        self._max_nad_shift = tk.IntVar()
+        self._auto_nadeau_pcs = tk.IntVar()
+        self.update_variables()
 
-    def gather_vars(self):
-        # Set cross-correlation recalibration
-        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+    def update_variables(self):
+        """Updates variables with current pyplis settings"""
+        for key in self.vars.keys():
+            setattr(self, key, self.pyplis_worker.config[key])
+
+    def gather_vars(self, update_pyplis=False):
+        # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
+        for key in self.vars:
+            self.pyplis_worker.config[key] = getattr(self, key)
+
+        # Apply the config if requested
+        if update_pyplis:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
 
     def generate_frame(self):
         """
@@ -4221,16 +4319,29 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             self.frame.attributes('-topmost', 0)
             return
 
+        self.update_variables() # Update to current settings
+
         self.in_frame = True
 
         self.frame = tk.Toplevel()
         self.frame.title('Cross-correlation settings')
         self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
 
+        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
+        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
+
+        self.frame_ica = ttk.Frame(self.windows)
+        self.frame_ica.pack()
+        self.frame_nadeau = ttk.Frame(self.windows)
+        self.frame_nadeau.pack()
+
+        self.windows.add(self.frame_ica, text='ICA cross-correlation')
+        self.windows.add(self.frame_nadeau, text='Nadeau cross-correlation')
+
         # -------------------------------------
         # Information frame
         row = 0
-        self.frame_info = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_info = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
         self.frame_info.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         label_1 = ttk.Label(self.frame_info, text='ICA gap [m]:')
@@ -4258,7 +4369,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Figure frame
         row += 1
-        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -------------------------------------------
@@ -4277,6 +4388,169 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
+
+        # ----------------------------------------------
+        # Building Nadeau frame
+        self.frame_opts_nad = ttk.LabelFrame(self.frame_nadeau, text='Options', relief=tk.RAISED, borderwidth=3)
+        self.frame_opts_nad.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_fig_nad = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig_nad.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_nad_xcorr = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_xcorr.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+
+        self.frame_nad_res = ttk.Frame(self.frame_nad_xcorr, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_res.pack(side=tk.TOP)
+
+        # Make frame for Nadeau options
+        row = 0
+        lab = ttk.Label(self.frame_opts_nad, text='Gas source coordinates:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        frame_coords = ttk.Frame(self.frame_opts_nad)
+        frame_coords.grid(row=row, column=1, sticky='nsew')
+        lab = ttk.Label(frame_coords, text='x')
+        lab.grid(row=0, column=0, sticky='e', pady=self.pdy)
+        spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_x-1, increment=1,
+                           textvariable=self._source_x, width=4, command=self.run_nadeau_line)
+        spin.grid(row=0, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(frame_coords, text='y')
+        lab.grid(row=0, column=2, sticky='e', pady=self.pdy)
+        spin = ttk.Spinbox(frame_coords, from_=0, to=self.cam_specs.pix_num_y-1, increment=1,
+                           textvariable=self._source_y, width=4, command=self.run_nadeau_line)
+        spin.grid(row=0, column=3, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row+=1
+        lab = ttk.Label(self.frame_opts_nad, text='Line orientation:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=359, increment=1,
+                           textvariable=self._nadeau_line_orientation, width=4, command=self.run_nadeau_line)
+                           # textvariable=self._nadeau_line_orientation, width=4, command=self.update_nad_line_plot)
+        spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        row+=1
+        lab = ttk.Label(self.frame_opts_nad, text='Line length:')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=self.cam_specs.pix_num_x, increment=1,
+                           textvariable=self._nadeau_line_length, width=4, command=self.run_nadeau_line)
+        spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        row += 1
+        lab = ttk.Label(self.frame_opts_nad, text='Maximum shift (%):')
+        lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        spin = ttk.Spinbox(self.frame_opts_nad, from_=0, to=99, increment=1,
+                           textvariable=self._max_nad_shift, width=4, command=self.run_nadeau_line)
+        spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+        # Auto retrieval frame
+        row += 1
+        auto_frame = tk.Frame(self.frame_opts_nad, relief=tk.RAISED, borderwidth=2)
+        auto_frame.grid(row=row, column=0, rowspan=2, columnspan=2, sticky='nsew')
+
+        row = 0
+        auto_nad_check = ttk.Checkbutton(auto_frame, text="Automatic line generation",
+                                         variable=self._auto_nadeau_line, command=self.run_nadeau_line)
+        auto_nad_check.grid(row=row, column=0, columnspan=2, sticky='w', padx=self.pdx, pady=self.pdy)
+
+        row += 1
+        lab = ttk.Label(auto_frame, text='ICA line:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        pcs_spin = ttk.Spinbox(auto_frame, textvariable=self._auto_nadeau_pcs,
+                               from_=1, to=len(self.pyplis_worker.PCS_lines_all), command=self.run_nadeau_line)
+        pcs_spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
+
+
+        # -------------------------------------------
+        # Build figure displaying cross-correlation
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_nad'):
+            # Create figure
+            self.fig_nad, self.axes = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi,
+                                                   gridspec_kw={'height_ratios': [self.h_ratio, 1]})
+        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
+
+        self.ax_nad = self.axes[0]
+        self.ax_nad.set_aspect(1)
+
+        self.ax_xsect = self.axes[1]
+        self.ax_xsect.grid()
+
+        # Figure colour
+        self.fig_nad.set_facecolor(fig_face_colour)
+        for child in self.ax_nad.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_nad.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        for child in self.ax_xsect.get_children():
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_xsect.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
+        self.ax_xsect.set_xlabel('Pixel')
+        self.ax_xsect.set_ylabel('\u03C4')
+        self.update_xsect_plot(draw=False)
+
+        # Image display
+        self.img_tau = self.pyplis_worker.img_tau_prev.img
+        self.img_disp = self.ax_nad.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
+                                           vmax=0.5, aspect='equal')
+
+        self.fig_canvas_nad = FigureCanvasTkAgg(self.fig_nad, master=self.frame_fig_nad)
+        self.fig_canvas_nad.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_nad.draw()
+
+        # Add toolbar so figures can be saved
+        toolbar = NavigationToolbar2Tk(self.fig_canvas_nad, self.frame_fig_nad)
+        toolbar.update()
+        self.fig_canvas_nad._tkcanvas.pack(side=tk.TOP)
+
+        # -------------------------
+        # Setup results labels
+        row = 0
+        lab = tk.Label(self.frame_nad_res, text='Lag [pixels]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        lab = tk.Label(self.frame_nad_res, text='Lag [distance; m]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        lab = tk.Label(self.frame_nad_res, text='Plume speed [m/s]:')
+        lab.grid(row=row, column=0, padx=self.pdx, pady=self.pdy, sticky='w')
+
+        row=0
+        self.lag_pix = tk.Label(self.frame_nad_res, text='N/A')
+        self.lag_pix.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        self.lag_dist = tk.Label(self.frame_nad_res, text='N/A')
+        self.lag_dist.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        row += 1
+        self.plume_speed = tk.Label(self.frame_nad_res, text='N/A')
+        self.plume_speed.grid(row=row, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        # --------------------
+
+        # --------------------------------
+        # Build cross correlation plot for Nadeau
+        # Make empty figure if we don't have a figure to use
+        if not hasattr(self, 'fig_nad_corr'):
+            # Create figure
+            self.fig_nad_lag, self.ax_nad_lag = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi)
+        self.fig_nad_lag.set_facecolor(fig_face_colour)
+        for child in self.ax_nad_lag:
+            if isinstance(child, matplotlib.spines.Spine):
+                child.set_color(axes_colour)
+        self.ax_nad_lag[0].set_xlabel('Lag [pixels]')
+        self.ax_nad_lag[0].set_ylabel('Correlation coefficient')
+        self.ax_nad_lag[0].grid()
+        self.ax_nad_lag[0].set_ylim(-1.05,1.05)
+        self.ax_nad_lag[1].set_xlabel('Pixel')
+        self.ax_nad_lag[1].set_ylabel('\u03C4')
+        self.ax_nad_lag[1].grid()
+
+        self.fig_canvas_lag = FigureCanvasTkAgg(self.fig_nad_lag, master=self.frame_nad_xcorr)
+        self.fig_canvas_lag.get_tk_widget().pack(side=tk.TOP)
+        self.fig_canvas_lag.draw()
+
+        # Draw/update all plots on opening of frame
+        self.run_nadeau_line()
+
     @property
     def cross_corr_recal(self):
         """Time in minutes to rerun cross-correlation analysis"""
@@ -4285,6 +4559,96 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
     @cross_corr_recal.setter
     def cross_corr_recal(self, value):
         self._cross_corr_recal.set(value)
+
+    @property
+    def auto_nadeau_line(self):
+        """
+        Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        """
+        return self._auto_nadeau_line.get()
+
+    @auto_nadeau_line.setter
+    def auto_nadeau_line(self, value):
+        self._auto_nadeau_line.set(value)
+
+    @property
+    def auto_nadeau_pcs(self):
+        """Index of PCS line to be used for autogeneration of Nadeau line"""
+        return self._auto_nadeau_pcs.get() - 1  # Adjust for 0-indexing when retrieving this value
+
+    @auto_nadeau_pcs.setter
+    def auto_nadeau_pcs(self, value):
+        self._auto_nadeau_pcs.set(value + 1)    # Adjust for 0-indexing in PyplisWorker
+
+    @property
+    def nadeau_line_orientation(self):
+        """
+        Orientation of Nadeau line
+        """
+        return 180 - self._nadeau_line_orientation.get()    # Remove 180 so 0 is upwards on plot
+
+    @nadeau_line_orientation.setter
+    def nadeau_line_orientation(self, value):
+        self._nadeau_line_orientation.set(value)
+
+    @property
+    def nadeau_line_length(self):
+        """
+        Length of Nadeau line
+        """
+        return self._nadeau_line_length.get()    # Remove 180 so 0 is upwards on plot
+
+    @nadeau_line_length.setter
+    def nadeau_line_length(self, value):
+        self._nadeau_line_length.set(value)
+
+    @property
+    def max_nad_shift(self):
+        """
+        Maximum shift in nadeau line (%) for cross-correlation.
+        """
+        return self._max_nad_shift.get()
+
+    @max_nad_shift.setter
+    def max_nad_shift(self, value):
+        self._max_nad_shift.set(value)
+
+    @property
+    def source_x(self):
+        """Gas source x pixel coordinate"""
+        return self._source_x.get()
+
+    @source_x.setter
+    def source_x(self, value):
+        self._source_x.set(value)
+
+    @property
+    def source_y(self):
+        """Gas source y pixel coordinate"""
+        return self._source_y.get()
+
+    @source_y.setter
+    def source_y(self, value):
+        self._source_y.set(value)
+
+    @property
+    def source_coords(self):
+        """
+        Whether to automatically calculate Nadeau line position using user-defined gas source and maximum of ICA gas
+        """
+        return [self._source_x.get(), self._source_y.get()]
+
+    @source_coords.setter
+    def source_coords(self, value):
+        try:
+            if len(value) == 2:
+                self._source_x.set(value[0])
+                self._source_y.set(value[1])
+            else:
+                raise IndexError
+        except (IndexError, TypeError):
+            print('Error when attempting to set gas source coordinates. Aborting setting.\n'
+                  'Expected list with length 2, got type: {}'.format(type(value)))
 
     def update_plot(self, ax, info=None):
         """Updates cross-correlation plot"""
@@ -4325,11 +4689,191 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         except KeyError:
             print('No cross-correlation info to update')
 
+    def update_source_plot(self):
+        """Draws source coordinate marker on plot"""
+        try:
+            self.source_scat.remove()
+        except AttributeError:
+            pass
+        self.source_scat = self.ax_nad.scatter(self.source_x, self.source_y, c='blue')
+
+    def update_nad_line_plot(self, draw=True):
+        """
+        Updates drawing of Nadeau cross-correlation line
+        :param draw bool    If True, the canvas is asked to be drawn
+        """
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'ax_nad'):
+            return
+
+        # Update the source coordinate
+        self.update_source_plot()
+
+        # Remove previous plot line then plot new line
+        try:
+            self.nadeau_line_plot.pop(0).remove()
+        except AttributeError:
+            pass
+        try:
+            self.nadeau_line_plot = self.ax_nad.plot([self.source_x, self.nadeau_line.x1],
+                                                     [self.source_y, self.nadeau_line.y1], 'k-')
+        except AttributeError:
+            pass
+
+        # Make suure even if line goes off the image the axes for the image remain the same
+        self.ax_nad.set_ylim([self.cam_specs.pix_num_y, 0])
+        self.ax_nad.set_xlim([0, self.cam_specs.pix_num_x])
+
+        try:
+            self.update_xsect_plot(draw=False)
+        except ValueError:
+            pass
+
+        if draw:
+            self.q.put(1)
+
+    def update_xsect_plot(self, draw=True):
+        """
+        Update plume transect plot
+        :return:
+        """
+        # Clear old line
+        self.ax_xsect.clear()
+
+        # Try to plot new line, if instance exists
+        try:
+            if self.pyplis_worker.nadeau_line_orientation < 0 or self.pyplis_worker.nadeau_line_orientation == 180:
+                profile = self.nadeau_line.get_line_profile(self.img_tau)[::-1]
+            else:
+                profile = self.nadeau_line.get_line_profile(self.img_tau)
+            self.ax_xsect.plot(profile, color=self.nadeau_line.color,
+                               label=self.nadeau_line.line_id)
+        except AttributeError:
+            pass
+
+        # Set xsection aspect ratio
+        self.ax_xsect.autoscale(axis='x')
+        xlims = self.ax_xsect.get_xlim()
+        self.ax_xsect.set_xlim([0, xlims[-1]])
+        asp = np.diff(self.ax_xsect.get_xlim())[0] / np.diff(self.ax_xsect.get_ylim())[0]
+        asp /= np.abs(np.diff(self.ax_nad.get_xlim())[0] / np.diff(self.ax_nad.get_ylim())[0])
+        asp /= self.h_ratio
+        self.ax_xsect.set_aspect(asp)
+
+        self.ax_xsect.grid(b=True, which='major')
+        self.ax_xsect.set_xlabel('Pixel')
+        self.ax_xsect.set_ylabel('\u03C4')
+
+        if draw:
+            self.q.put(1)
+
+    def run_nadeau_line(self):
+        """Instigates automatic generation of the Nadeau line and plots current line pased on this"""
+        # Update pyplis_worker config
+        self.gather_vars(update_pyplis=True)
+
+        # If auto we automate line generation
+        self.update_pcs_line(draw=False)
+        if self.auto_nadeau_line:
+            self.nadeau_line = self.pyplis_worker.autogenerate_nadeau_line(self.pyplis_worker.img_tau)
+        else:
+            self.nadeau_line = self.pyplis_worker.generate_nadeau_line()
+        self.update_nad_line_plot(draw=False)
+
+        # Now run cross correlation on current images and update plots and results
+        plume_speed, info_dict = self.pyplis_worker.generate_nadeau_plumespeed(self.pyplis_worker.img_tau_prev,
+                                                                               self.pyplis_worker.img_tau,
+                                                                               self.pyplis_worker.nadeau_line)
+        self.update_nadeau_lag(info_dict, draw=True)
+        self.update_results(plume_speed, info_dict)
+
+    def update_pcs_line(self, draw=True):
+        """Updates plotting of PCS line if auto_nadeau_line is True, otherwise it removes the line"""
+        if not hasattr(self, 'ax_nad'):
+            return
+
+        try:
+            self.pcs_line_plot.pop(0).remove()
+        except (AttributeError, IndexError):
+            pass
+
+        # Try to draw PCS line if using auto_nadeau line
+        if self.auto_nadeau_line:
+            line = self.pyplis_worker.PCS_lines_all[self.auto_nadeau_pcs]
+            self.pcs_line_plot = self.ax_nad.plot([line.x0, line.x1], [line.y0, line.y1], 'c-')
+
+        if draw == True:
+            self.q.put(1)
+
+    def update_results(self, plume_speed, info_dict):
+        """Updates result labels based on info dictionary"""
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'lag_pix'):
+            return
+
+        if self.in_frame:   # Need this otherwise we hit an error with trying to update an GUI object that isn't there
+            self.lag_pix.configure(text='{:.1f}'.format(info_dict['lag_in_pixels']))
+            self.lag_dist.configure(text='{:.1f}'.format(info_dict['lag_length']))
+            self.plume_speed.configure(text='{:.1f}'.format(plume_speed))
+
+    def update_nadeau_lag(self, info_dict, draw=True):
+        """Updates Nadeau lag"""
+        # If this is run on startup the frame hasn't yet been generated so we just return
+        if not hasattr(self, 'ax_nad_lag'):
+            return
+
+        try:
+            self.lag_line_plot.pop(0).remove()
+            self.lag_line_peak.pop(0).remove()
+            self.lag_peak_scat.remove()
+        except (AttributeError, IndexError):
+            pass
+
+        max_coeff = np.nanmax(info_dict['coeffs'])
+        self.lag_line_plot = self.ax_nad_lag[0].plot(info_dict['lags'], info_dict['coeffs'], 'b-')
+        self.lag_line_peak = self.ax_nad_lag[0].plot([info_dict['lag'], info_dict['lag']],
+                                                     [-1.05, max_coeff], 'k-')
+        self.lag_peak_scat = self.ax_nad_lag[0].scatter(info_dict['lag'], max_coeff, c='red', zorder=2)
+
+        # Lag plots
+        try:
+            for line in self.xsect_plots:
+                line.pop(0).remove()
+        except (AttributeError, IndexError):
+            pass
+
+        self.xsect_plots = [None, None, None]
+        profile_names = ['Current', 'Next', 'Next [aligned]']
+        ls = ['solid', 'dashed', 'dotted']
+        colours = ['gray', 'blue', 'red']
+        alphas = [1, 0.5, 1]
+        profiles = [info_dict['profile_current'], info_dict['profile_next'], info_dict['profile_next']]
+        x_dat = [info_dict['x_vals'],
+                 info_dict['x_vals'],
+                 info_dict['x_vals'] - (info_dict['lag'] * info_dict['interp_step'])]
+
+        for i, prof_name in enumerate(profile_names):
+            self.xsect_plots[i] = self.ax_nad_lag[1].plot(x_dat[i], profiles[i], label=profile_names[i],
+                                                          linestyle=ls[i], color=colours[i], linewidth=1.5,
+                                                          alpha=alphas[i])
+        self.ax_nad_lag[1].legend()
+
+        # Axes limits
+        self.ax_nad_lag[0].set_xlim(0, info_dict['lags'][-1])
+        self.ax_nad_lag[1].relim()
+        self.ax_nad_lag[1].autoscale()
+
+        if draw:
+            self.q.put(1)
+
     def close_frame(self):
         """
         Closes frame and makes sure current values are correct
         :return:
         """
+        # UPDATE CURRENT SETTINGS FROM CONFIG FILE
+        self.update_variables()
+
         self.in_frame = False
         # Close frame
         self.frame.destroy()
@@ -4341,6 +4885,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             if update == 1:
                 if self.in_frame:
                     self.fig_canvas.draw()
+                    self.fig_canvas_nad.draw()
+                    self.fig_canvas_lag.draw()
             else:
                 pass
         except queue.Empty:
@@ -4404,25 +4950,13 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                      'flow_raw': int,
                      'flow_histo': int,
                      'flow_hybrid': int,
+                     'flow_nadeau': int,
                      'use_multi_gauss': int,
                      'cross_corr_recal': int
                      }
 
-        self.settings_vars = {'pyr_scale': float,       # Alternative vars dict containing only those values which
-                              'levels': int,            # pertain directly to optical flow settings which will be
-                              'winsize': int,           # passed straight to the pyplis optical flow object
-                              'iterations': int,
-                              'poly_n': int,
-                              'poly_sigma': float,
-                              'min_length': float,
-                              'min_count_frac': float,
-                              'hist_dir_gnum_max': int,
-                              'hist_dir_binres': int,
-                              'hist_sigma_tol': int,
-                              'use_roi': int,
-                              'roi_abs': list
-                              }
-
+        self.settings_vars = self.pyplis_worker.opt_flow_sett_keys
+      
         self._pyr_scale = tk.DoubleVar()
         self._levels = tk.IntVar()
         self._winsize = tk.IntVar()
@@ -4443,6 +4977,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._flow_raw = tk.IntVar()
         self._flow_histo = tk.IntVar()
         self._flow_hybrid = tk.IntVar()
+        self._flow_nadeau = tk.IntVar()
 
         # Load default values
         self.load_defaults()
@@ -4564,6 +5099,8 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         check_glob.grid(row=0, column=2, padx=2, pady=2, sticky='w')
         check_glob = ttk.Checkbutton(self.flow_frame, text='Hybrid', variable=self._flow_hybrid)
         check_glob.grid(row=0, column=3, padx=2, pady=2, sticky='w')
+        check_glob = ttk.Checkbutton(self.flow_frame, text='Nadeau', variable=self._flow_nadeau)
+        check_glob.grid(row=0, column=4, padx=2, pady=2, sticky='w')
         # ----------------------------------
 
         # Set buttons
@@ -4710,6 +5247,14 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self._flow_hybrid.set(value)
 
     @property
+    def flow_nadeau(self):
+        return self._flow_nadeau.get()
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self._flow_nadeau.set(value)
+
+    @property
     def use_multi_gauss(self):
         return self._use_multi_gauss.get()
 
@@ -4742,16 +5287,21 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
 
         # Pass settings to pyplis worker update function
         self.pyplis_worker.update_opt_flow_settings(**settings)
-        self.pyplis_worker.use_multi_gauss = self.use_multi_gauss
+        self.pyplis_worker.config.update(settings)
 
-        # Loop through flow options and set them
-        for key in self.pyplis_worker.velo_modes:
-            self.pyplis_worker.velo_modes[key] = bool(getattr(self, key))
+        self.pyplis_worker.config['use_multi_gauss'] = self.use_multi_gauss
 
         # Set cross-correlation recalibration
-        self.pyplis_worker.cross_corr_recal = self.cross_corr_recal
+        self.pyplis_worker.config['cross_corr_recal'] = self.cross_corr_recal
+        
+        # Loop through flow options and set them
+        for key in self.pyplis_worker.velo_modes:
+            self.pyplis_worker.config[key] = bool(getattr(self, key))
+
+        non_opt_flow_setts = self.vars.keys() - self.settings_vars
 
         if run:
+            self.pyplis_worker.apply_config(subset=non_opt_flow_setts)
             self.run_flow()
 
     def run_flow(self):
@@ -4831,7 +5381,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.ax_vel.tick_params(axis='both', colors=axes_colour, direction='in', top='on', right='on')
 
         # Image display
-        self.img_vel = self.pyplis_worker.velo_img
+        try:
+            self.img_vel = self.pyplis_worker.velo_img
+        except AttributeError:
+            self.gather_vars(run=False)
+            self.pyplis_worker.generate_opt_flow(plot=False)
+            self.img_vel = self.pyplis_worker.velo_img
         # self.img_disp = self.ax.imshow(self.img_tau, cmap=cm.Oranges, interpolation='none', vmin=0,
         #                                vmax=0.5, aspect='auto')
         self.img_vel.show_img(ax=self.ax_vel, tit='Optical flow velocities', cbar=False, cmap='Greens')
@@ -5027,17 +5582,18 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._draw_meth = tk.IntVar()
         self.draw_meth = 1
 
-        self.vars = {'amb_roi': list,
+        self.vars = {'ambient_roi': list,
                      'I0_MIN': int,
                      'tau_thresh': float,
                      'dil_recal_time': int,     # Time [minutes] until recalibration of light dilution
-                     'use_ligh_dilution_spec': int,
+                     'use_light_dilution_spec': int,
                      'grid_max_ppmm': int,
                      'grid_increment_ppmm': int,
-                     'spec_recal_time': int}
+                     'spec_recal_time': int,
+                     'LDF': float}
 
 
-        self.amb_roi = [0, 0, 0, 0]
+        self.ambient_roi = [0, 0, 0, 0]
         self._I0_MIN = tk.IntVar()
         self._tau_thresh = tk.DoubleVar()
         self._dil_recal_time = tk.IntVar()
@@ -5047,6 +5603,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         self._grid_max_ppmm = tk.IntVar()
         self._grid_increment_ppmm = tk.IntVar()
         self._spec_recal_time = tk.IntVar()
+        self._LDF = tk.DoubleVar()
 
         # Load default values
         self.load_defaults()
@@ -5122,6 +5679,14 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     @grid_increment_ppmm.setter
     def grid_increment_ppmm(self, value):
         self._grid_increment_ppmm.set(value)
+
+    @property
+    def LDF(self):
+        return self._LDF.get()
+
+    @LDF.setter
+    def LDF(self, value):
+        self._LDF.set(value)
 
     @property
     def dark_spec_path_short(self):
@@ -5319,6 +5884,16 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         recal_spin.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
 
+        # LDF widget
+        tk.Label(options_frame, text='Fix LDF:', font=self.gui.main_font).grid(row=2, column=0, sticky='w', padx=2, pady=2)
+        self.LDF_box = ttk.Spinbox(options_frame, from_=0, to=1, increment=0.01, width=4, textvariable=self._LDF,
+                                   command=lambda: self.gather_vars(rerun_doas=True), font=self.gui.main_font)
+        self.LDF_box.grid(row=2, column=1, sticky='ew', padx=2, pady=2)
+        if self.use_light_dilution_spec:
+            self.LDF = 0.0
+            self.LDF_box.configure(state=tk.DISABLED)
+
+
         # Load spectra
         self.load_spec = ttk.LabelFrame(self.frame_spec, text='Load spectra')
         self.load_spec.grid(row=1, column=0, sticky='nsew', padx=2, pady=2)
@@ -5388,6 +5963,11 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                  'Please switch from DOAS to iFit and then attempt correction')
             return
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+        if self.use_light_dilution_spec:
+            self.LDF_box.configure(state=tk.DISABLED)
+            self.LDF = 0.00
+        else:
+            self.LDF_box.configure(state=tk.ACTIVE)
 
     def set_spec_recal(self):
         """Updates doas_worker recalibration time for light dilution factor generation"""
@@ -5468,6 +6048,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             use_new_window = False
         self.doas_worker.load_ld_lookup(grid_path, fit_num=grid_num, use_new_window=use_new_window)
         setattr(self, 'grid_{}_path'.format(grid_num), grid_path)
+        self.pyplis_worker.config["ld_lookup_{}".format(grid_num+1)] = grid_path
         if self.in_frame:
             getattr(self, 'name_grid_{}'.format(grid_num)).configure(text=getattr(self,
                                                                                   'grid_{}_path_short'.format(grid_num)))
@@ -5610,9 +6191,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         for i, line in enumerate(self.lines_pyplis):
             if isinstance(line, LineOnImage):
                 self.draw_line_obj(line, line_idx=i, draw=False)
-        crop_x = self.amb_roi[2] - self.amb_roi[0]
-        crop_y = self.amb_roi[3] - self.amb_roi[1]
-        self.rect = self.ax.add_patch(patches.Rectangle((self.amb_roi[0], self.amb_roi[1]),
+        crop_x = self.ambient_roi[2] - self.ambient_roi[0]
+        crop_y = self.ambient_roi[3] - self.ambient_roi[1]
+        self.rect = self.ax.add_patch(patches.Rectangle((self.ambient_roi[0], self.ambient_roi[1]),
                                                         crop_x, crop_y, edgecolor='green', fill=False, linewidth=3))
 
         # # Draw canvas
@@ -5746,8 +6327,9 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         """Deletes line"""
         # Get line
         try:
-            self.lines_A[idx].pop(0).remove()
-            self.lines_A[idx] = None
+            if self.in_frame:
+                self.lines_A[idx].pop(0).remove()
+                self.lines_A[idx] = None
             self.lines_pyplis[idx] = None
         except AttributeError:
             pass
@@ -5775,22 +6357,31 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
                                                         crop_X, crop_Y, edgecolor='green', fill=False, linewidth=3))
 
         # Only update roi_abs if use_roi is true
-        self.amb_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
-        self.pyplis_worker.ambient_roi = self.amb_roi
+        self.ambient_roi = [self.roi_start_x, self.roi_start_y, self.roi_end_x, self.roi_end_y]
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
 
         self.q.put(1)
 
-    def gather_vars(self):
+    def gather_vars(self, update_pyplis=False, rerun_doas=False):
         """
         Gathers all parameters and sets them to pyplis worker
+        rerun_doas  bool    If True, DOAS is reprocessed and the plot updated - used by LDF so it immediately displays
+                            the results of chaning the LDF
         :return:
         """
-        self.pyplis_worker.ambient_roi = self.amb_roi
-        self.pyplis_worker.I0_MIN = self.I0_MIN
-        self.pyplis_worker.tau_thresh = self.tau_thresh
-        self.pyplis_worker.dil_recal_time = self.dil_recal_time
+        self.pyplis_worker.config['ambient_roi'] = self.ambient_roi
+        self.pyplis_worker.config['I0_MIN'] = self.I0_MIN
+        self.pyplis_worker.config['tau_thresh'] = self.tau_thresh
+        self.pyplis_worker.config['dil_recal_time'] = self.dil_recal_time
+        self.doas_worker.LDF = self.LDF
         self.doas_worker.recal_ld_mins = self.spec_recal_time
         self.doas_worker.corr_light_dilution = self.use_light_dilution_spec
+
+        if update_pyplis:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
+
+        if rerun_doas:
+            self.doas_worker.process_doas(plot=True)
 
     def run_dil_corr(self, draw=True):
         """Wrapper for pyplis_worker light dilution correction function"""
@@ -5801,7 +6392,7 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
             self.frame.attributes('-topmost', 0)
             return
 
-        self.gather_vars()
+        self.gather_vars(update_pyplis=True)
         self.pyplis_worker.model_light_dilution(draw=draw)
 
         # Reload whole sequence to show updated plots
@@ -5861,10 +6452,10 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         :return:
         """
         # Make sure any non-saved settings are reverted back to pyplis settings
-        self.amb_roi = self.pyplis_worker.ambient_roi
-        self.I0_MIN = self.pyplis_worker.I0_MIN
-        self.tau_thresh = self.pyplis_worker.tau_thresh
-        self.dil_recal_time = self.pyplis_worker.dil_recal_time
+        self.ambient_roi = self.pyplis_worker.config['ambient_roi']
+        self.I0_MIN = self.pyplis_worker.config['I0_MIN']
+        self.tau_thresh = self.pyplis_worker.config['tau_thresh']
+        self.dil_recal_time = self.pyplis_worker.config['dil_recal_time']
 
         self.in_frame = False
 

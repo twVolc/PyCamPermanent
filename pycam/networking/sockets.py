@@ -592,6 +592,26 @@ class SocketClient(SocketMeths):
         # If we get to allotted time and no connection has been made we raise a connection error
         raise ConnectionError
 
+    def connect_socket_try_all(self, timeout=None, port_list=None):
+        """Trys all possible socket ports form a list of port numbers"""
+        if port_list is not None:
+            self.port_list = port_list
+
+        for port_num in self.port_list:
+            self.close_socket()
+            self.update_address(self.host_ip, port_num)
+            try:
+                print('Testing connection to port: {}'.format(self.port))
+                self.connect_socket_timeout(timeout=timeout)
+                break
+            except ConnectionError:
+                pass
+
+    def get_ports(self, key, file_path=FileLocator.NET_PORTS_FILE_WINDOWS):
+        """Gets list of all ports that might be used for comms"""
+        info = read_file(file_path)
+        self.port_list = [int(x) for x in info[key].split(',')]
+
     def send_handshake(self):
         """Send client identity information to server"""
         handshake_msg = self.encode_comms(self.id)

@@ -16,9 +16,10 @@ from pycam.doas.ifit_worker import IFitWorker
 from pycam.doas.cfg import doas_worker, species
 from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
 # from acquisition_gui import AcquisitionFrame
-from pycam.cfg import pyplis_worker, process_settings
+from pycam.cfg import pyplis_worker
 from pycam.setupclasses import SpecSpecs
 from pycam.gui.settings import GUISettings
+from pycam.gui.misc import LoadSaveProcessingSettings
 
 # plt.style.use('dark_background')
 plt.style.use('default')
@@ -273,7 +274,7 @@ class SpectraPlot:
         # print('Added to q')
 
 
-class DOASPlot:
+class DOASPlot(LoadSaveProcessingSettings):
     """
     Generates a widget containing the DOAS fit plot
     """
@@ -296,7 +297,21 @@ class DOASPlot:
 
         self.acq_obj = None
 
+        self.initiate_variables()
         self.__setup_gui__(frame)
+
+    def initiate_variables(self):
+        self.vars = {'shift': int,
+                     'shift_tol': int,
+                     'stretch': int}
+
+        self._shift = tk.IntVar()
+        self._shift_tol = tk.IntVar()
+        self._stretch = tk.IntVar()
+
+        self.shift = self.doas_worker.shift
+        self.shift_tol = self.doas_worker.shift_tol
+        self.stretch = self.doas_worker.stretch
 
     def __setup_gui__(self, frame):
         """Organise widget"""
@@ -311,33 +326,30 @@ class DOASPlot:
         # Shift widgets
         label = tk.Label(self.frame2, text='Shift spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label.grid(row=0, column=0)
-        self.shift = tk.IntVar()
-        self.shift.set(self.doas_worker.shift)
+
         self.shift_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3,
-                                     textvariable=self.shift, command=self.update_shift, font=self.gui.main_font)
+                                     textvariable=self._shift, command=self.gather_vars, font=self.gui.main_font)
         # self.fit_wind_box_start.grid(row=0, column=1)
         self.shift_box.pack(side=tk.LEFT)
 
         # Shift tolerance widgets
         label = ttk.Label(self.frame2, text='Shift tolerance', font=self.gui.main_font).pack(side=tk.LEFT)
-        self._shift_tol = tk.IntVar()
-        self.shift_tol = self.doas_worker.shift_tol
+
         self.shift_tol_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3, font=self.gui.main_font,
-                                         textvariable=self._shift_tol, command=self.update_shift_tol)
+                                         textvariable=self._shift_tol, command=self.gather_vars)
         self.shift_tol_box.pack(side=tk.LEFT)
 
         label2 = tk.Label(self.frame2, text='Stretch spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label2.grid(row=0, column=2)
-        self.stretch = tk.IntVar()
-        self.stretch.set(self.doas_worker.stretch)
+
         self.stretch_box = ttk.Spinbox(self.frame2, from_=-999, to=999, increment=1, width=4, font=self.gui.main_font,
-                                       textvariable=self.stretch, command=self.update_stretch)
+                                       textvariable=self._stretch, command=self.gather_vars)
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
 
-        # If we are working with ifit we don't have these options - it does it automatically
+        # # If we are working with ifit we don't have these options - it does it automatically
         if isinstance(self.doas_worker, IFitWorker):
-            self.shift_box.configure(state=tk.DISABLED)
+        #     self.shift_box.configure(state=tk.DISABLED)
             self.shift_tol_box.configure(state=tk.DISABLED)
             self.stretch_box.configure(state=tk.DISABLED)
 
@@ -393,42 +405,36 @@ class DOASPlot:
         self.__draw_canv__()
 
     @property
+    def shift(self):
+        return self._shift.get()
+
+    @shift.setter
+    def shift(self, value):
+        self._shift.set(value)
+
+    @property
     def shift_tol(self):
         return self._shift_tol.get()
 
     @shift_tol.setter
     def shift_tol(self, value):
         self._shift_tol.set(value)
-        self.doas_worker.shift_tol = value
 
-    def update_shift_tol(self):
-        """Updates DOASWorker shift value for aligning spectra"""
-        # Set shift in DOASWorker object
-        self.doas_worker.shift_tol = self.shift_tol
+    @property
+    def stretch(self):
+        return self._stretch.get()
 
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
+    @stretch.setter
+    def stretch(self, value):
+        self._stretch.set(value)
 
-    def update_shift(self):
-        """Updates DOASWorker shift value for aligning spectra"""
-        # Set shift in DOASWorker object
-        self.doas_worker.shift = self.shift.get()
+    def gather_vars(self):
+        """Sets all current settings to the correct worker and reprocesses DOAS"""
+        for key in self.vars:
+            setattr(self.doas_worker, key, getattr(self, key))
 
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
-
-    def update_stretch(self):
-        """Updates DOASWorker stretch value for aligning spectra"""
-        self.doas_worker.stretch = self.stretch.get()
-
-        # If we have a processed spectrum we now must update it
-        if self.doas_worker.processed_data:
-            self.doas_worker.process_doas()
-            self.update_plot()
+        self.doas_worker.process_doas()
+        self.update_plot()
 
     def update_plot(self):
         """Updates doas plot"""
@@ -655,7 +661,7 @@ class CDSeries:
 
         # Plot new data
         self.series_scatter = self.ax.plot(times, cds, markersize=5, marker='.', color=self.cd_colour, linestyle='None')
-        self.series_errors = self.ax.errorbar(times, cds, yerr=fit_errs, ecolor=self.err_colour, linestyle='None')
+        self.series_errors = self.ax.errorbar(times, cds, yerr=fit_errs, ecolor=self.err_colour, linestyle='None', zorder = 1.5)
 
         # Plot ldfs
         self.series_ldfs = self.ax_ldf.plot(times, ldfs, markersize=5, color=self.ldf_colour,
@@ -899,7 +905,7 @@ class ILSFrame:
     Frame containing widgets for ILS extraction from a calibration spectrum
     """
     def __init__(self, parent=None, doas_work=DOASWorker(), spec_specs=SpecSpecs(), fig_setts=GUISettings(),
-                 config=process_settings, save_path='C:\\'):
+                 config=pyplis_worker.config, save_path='C:\\'):
         # Setup some main variables
         self.parent = parent
         self.frame = None
@@ -907,7 +913,7 @@ class ILSFrame:
         self.spec_specs = spec_specs
         self.save_path = save_path
         if 'ILS_path' in config.keys():
-            self.ILS_path = config['ILS_path'].split('\'')[1]
+            self.ILS_path = config['ILS_path']
         else:
             self.ILS_path = None
 

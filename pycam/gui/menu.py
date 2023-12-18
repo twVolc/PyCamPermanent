@@ -12,7 +12,7 @@ from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line, create_video
 import pycam.gui.settings as settings
 from pycam.networking.FTP import FileTransferGUI
-from pycam.cfg import pyplis_worker
+from pycam.cfg import pyplis_worker, process_defaults_loc
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
@@ -23,6 +23,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
+from shutil import copyfile
 import time
 import os
 import threading
@@ -63,6 +64,7 @@ class PyMenu:
         self.load_frame = LoadFrame(self.parent, pyplis_work=pyplis_worker, doas_work=doas_worker)
         self.submenu_load = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Load', menu=self.submenu_load)
+        self.submenu_load.add_command(label='Load config file', command=self.load_frame.load_config_file)
         self.submenu_load.add_command(label='Load PCS line', command=self.load_frame.load_pcs)
         self.submenu_load.add_command(label='Load light dilution line', command=self.load_frame.load_dil)
         self.submenu_load.add_command(label='Load image registration', command=self.load_frame.load_img_reg)
@@ -74,6 +76,7 @@ class PyMenu:
         self.submenu_save = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Save', menu=self.submenu_save)
         self.submenu_save.add_command(label='Options', command=self.save_frame.generate_frame)
+        self.submenu_save.add_command(label='Save config file', command=self.save_frame.save_config_file)
 
         # Export
         self.submenu_export = tk.Menu(self.frame, tearoff=0)
@@ -455,92 +458,28 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.load_frame.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         row = 0
-        pcs_frame = tk.LabelFrame(self.load_frame, text='ICA lines', relief=tk.RAISED, borderwidth=2,
-                                  font=self.main_gui.main_font)
-        pcs_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        self.pcs_lines_labs = [None] * self.num_pcs_lines
-        self.pcs_add_butt = [None] * self.num_pcs_lines
-        self.pcs_rem_butt = [None] * self.num_pcs_lines
-        row_line = 0
-        for i in range(self.num_pcs_lines):
-            lab = ttk.Label(pcs_frame, text='File:', font=self.main_gui.main_font)
-            lab.grid(row=row_line, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.pcs_lines_labs[i] = ttk.Label(pcs_frame, text=self.pcs_lines_short[i], width=self.max_len_str,
-                                               font=self.main_gui.main_font)
-            self.pcs_lines_labs[i].grid(row=row_line, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-            self.pcs_add_butt[i] = ttk.Button(pcs_frame, text='Change line',
-                                              command=lambda i=i: self.add_pcs_startup(i))
-            self.pcs_add_butt[i].grid(row=row_line, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
-            self.pcs_rem_butt[i] = ttk.Button(pcs_frame, text='Remove line',
-                                              command=lambda i=i: self.remove_pcs_startup(i))
-            self.pcs_rem_butt[i].grid(row=row_line, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
-            row_line += 1
+        default_conf_frame = tk.LabelFrame(self.load_frame, text='Set default config file', relief=tk.RAISED, borderwidth=2,
+                                           font=self.main_gui.main_font)
+        default_conf_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        conf_lab = ttk.Label(default_conf_frame, text='Current default config:', font=self.main_gui.main_font)
+        conf_lab.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
 
-        # Image registration load
+        self.conf_file = ttk.Label(default_conf_frame, text=self.default_conf_path_short, width=self.max_len_str,
+                                           font=self.main_gui.main_font)
+        self.conf_file.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
-        img_reg_frame = tk.LabelFrame(self.load_frame, text='Image registration', relief=tk.RAISED, borderwidth=2,
-                                      font=self.main_gui.main_font)
-        img_reg_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        lab = ttk.Label(img_reg_frame, text='File:', font=self.main_gui.main_font)
-        lab.grid(row=0, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.img_reg_lab = ttk.Label(img_reg_frame, text=self.img_reg_short, width=self.max_len_str,
-                                     font=self.main_gui.main_font)
-        self.img_reg_lab.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        self.reg_add_butt = ttk.Button(img_reg_frame, text='Change', command=self.add_reg_startup)
-        self.reg_add_butt.grid(row=0, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
-        self.reg_rem_butt = ttk.Button(img_reg_frame, text='Remove', command=self.remove_reg_startup)
-        self.reg_rem_butt.grid(row=0, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
-
-        # Light dilution lines
-        row += 1
-        dil_frame = tk.LabelFrame(self.load_frame, text='Light dilution lines', relief=tk.RAISED, borderwidth=2,
-                                  font=self.main_gui.main_font)
-        dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        self.dil_lines_labs = [None] * self.num_dil_lines
-        self.dil_add_butt = [None] * self.num_dil_lines
-        self.dil_rem_butt = [None] * self.num_dil_lines
-        for i in range(self.num_dil_lines):
-            lab = ttk.Label(dil_frame, text='File:', font=self.main_gui.main_font)
-            lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.dil_lines_labs[i] = ttk.Label(dil_frame, text=self.dil_lines_short[i], width=self.max_len_str,
-                                               font=self.main_gui.main_font)
-            self.dil_lines_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-            self.dil_add_butt[i] = ttk.Button(dil_frame, text='Change line',
-                                              command=lambda i=i: self.add_dil_startup(i))
-            self.dil_add_butt[i].grid(row=i, column=2, sticky='ew', padx=self.pdx, pady=self.pdy)
-            self.dil_rem_butt[i] = ttk.Button(dil_frame, text='Remove line',
-                                              command=lambda i=i: self.remove_dil_startup(i))
-            self.dil_rem_butt[i].grid(row=i, column=3, sticky='ew', padx=self.pdx, pady=self.pdy)
-
-        # Light dilution spectrometer lookup
-        row += 1
-        spec_dil_frame = tk.LabelFrame(self.load_frame, text='Spectrometer light dilution lookup',
-                                       relief=tk.RAISED, borderwidth=2, font=self.main_gui.main_font)
-        spec_dil_frame.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        self.spec_dil_labs = [None, None]
-        self.spec_dil_butt = [None, None]
-        for i in range(2):
-            lab = ttk.Label(spec_dil_frame, text='Fit window {}:'.format(i+1), font=self.main_gui.main_font)
-            lab.grid(row=i, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-            self.spec_dil_labs[i] = ttk.Label(spec_dil_frame, text=self.ld_lookup_short[i], width=self.max_len_str,
-                                              font=self.main_gui.main_font)
-            self.spec_dil_labs[i].grid(row=i, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-            self.spec_dil_butt[i] = ttk.Button(spec_dil_frame, text='Change grid',
-                                               command=lambda i=i: self.add_lookup_startup(i))
-            self.spec_dil_butt[i].grid(row=i, column=2, sticky='e', padx=self.pdx, pady=self.pdy)
-
-        row += 1
-        update_butt = ttk.Button(self.load_frame, text='Save changes', command=lambda: self.set_defaults(self.frame))
-        update_butt.grid(row=row, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
+        change_conf_butt = ttk.Button(default_conf_frame, text='Change default config', command=self.choose_default_conf)
+        change_conf_butt.grid(row=row, column=0, sticky='we', padx=self.pdx, pady=self.pdy)
+        revert_conf_butt = ttk.Button(default_conf_frame, text='Revert to original default config', command=self.revert_default_conf)
+        revert_conf_butt.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
 
     @property
     def pcs_lines(self):
-        return self.sep.join([line for line in self._pcs_lines if line != self.no_line])
+        return [line for line in self._pcs_lines if line != self.no_line]
 
     @pcs_lines.setter
-    def pcs_lines(self, value):
+    def pcs_lines(self, lines):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
         for i, line in enumerate(lines):
             if i < self.num_pcs_lines:
                 if line == '':
@@ -560,13 +499,13 @@ class LoadFrame(LoadSaveProcessingSettings):
 
     @property
     def dil_lines(self):
-        return self.sep.join([line for line in self._dil_lines if line != self.no_line])
+        return [line for line in self._dil_lines if line != self.no_line]
 
     @dil_lines.setter
     def dil_lines(self, value):
         """Given a string which may contain multiple file paths we split it and individually set them to tk variables"""
-        lines = value.split(self.sep)
-        for i, line in enumerate(lines):
+
+        for i, line in enumerate(value):
             if i < self.num_dil_lines:
                 if line == '':
                     line = self.no_line
@@ -599,6 +538,23 @@ class LoadFrame(LoadSaveProcessingSettings):
             return '...' + self.img_registration[-self.max_len_str+3:]
         else:
             return self.img_registration
+    
+    @property
+    def default_conf_path_short(self):
+        path = self.default_conf_path
+        if len(path) > self.max_len_str:
+            return '...' + path[-self.max_len_str+3:]
+        else:
+            return path
+        
+    @property
+    def default_conf_path(self):
+        return process_defaults_loc.read_text()
+
+    @default_conf_path.setter
+    def default_conf_path(self, value):
+        process_defaults_loc.write_text(value)
+        self.conf_file.configure(text = self.default_conf_path_short)
 
     def load_pcs(self, filename=None, new_line=False):
         """Loads PCS into GUI"""
@@ -759,11 +715,76 @@ class LoadFrame(LoadSaveProcessingSettings):
         # Don't need to run pyplis_worker.load_sequence on startup as it is run later elsewhere
         self.load_img_reg(filename=self.img_registration, rerun=False)
 
+    def reload_all(self):
+        """Reruns all load functions to prepare pyplis worker after config loaded"""
+        self.reset_pcs_lines()
+        self.reset_dil_lines()
+        self.load_all()
+
     def close_frame(self):
         """CLose window"""
         self.in_frame = False
         self.frame.destroy()
 
+    def load_config_file(self):
+        """Load in a config file selected by the user"""
+        filename = filedialog.askopenfilename(
+            title='Select config file',
+            initialdir=self.init_dir)
+        
+        if len(filename) > 0:
+            self.pyplis_worker.load_config(filename, "user")
+
+            self.reload_config()
+
+    def reload_config(self):
+        """Update the GUI with the new config settings"""
+        self.load_defaults()
+        self.pyplis_worker.fig_tau.load_defaults()
+        self.pyplis_worker.fig_tau.reload_roi()
+        self.reload_all()
+        geom_settings.load_instrument_setup(self.pyplis_worker.config["default_cam_geom"], show_info=False)
+        process_settings.load_defaults()
+        plume_bg.load_defaults()
+        opti_flow.load_defaults()
+        light_dilution.load_defaults()
+        cross_correlation.load_defaults()
+        doas_fov.load_defaults()
+        calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
+        calibration_wind.ils_frame.load_ILS()
+
+        self.pyplis_worker.apply_config()
+        self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
+        self.doas_worker.load_dir(prompt=False, plot=True)
+
+    def reset_pcs_lines(self):
+        """Reset current PCS lines"""
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_tau.PCS_lines_list) if v is not None]
+        [self.pyplis_worker.fig_tau.del_ica(line_n) for line_n in current_lines]
+
+    def reset_dil_lines(self):
+        """Reset current DIL lines"""
+
+        current_lines = [i for i, v in enumerate(self.pyplis_worker.fig_dilution.lines_pyplis) if v is not None]
+        [self.pyplis_worker.fig_dilution.del_line(line_n) for line_n in current_lines]
+        self.pyplis_worker.fig_dilution.current_line = 1
+
+    def choose_default_conf(self):
+        """Choose and set the location for the the default config path"""
+        filename = filedialog.askopenfilename(parent=self.frame, initialdir=self.init_dir,
+                                              filetypes=[('Yaml file', '*.yml')])
+        if len(filename) > 0:
+            self.default_conf_path = filename
+
+    def revert_default_conf(self):
+        """Revert the default config back to the original setting and reset the location"""
+
+        # Reset contents of original file to contents of backup file
+        copyfile(FileLocator.PROCESS_DEFAULTS_BACKUP, FileLocator.PROCESS_DEFAULTS)
+        
+        # Reset recorded location of default config
+        self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
 class SaveFrame(LoadSaveProcessingSettings):
     """
@@ -814,16 +835,16 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._save_doas_cal = tk.BooleanVar()
 
     def gather_vars(self):
-        self.pyplis_worker.save_dict['img_aa']['save'] = self.save_img_aa
-        self.pyplis_worker.save_dict['img_aa']['ext'] = self.type_img_aa
+        self.pyplis_worker.config['save_img_aa'] = self.save_img_aa
+        self.pyplis_worker.type_img_aa = self.type_img_aa
 
-        self.pyplis_worker.save_dict['img_cal']['save'] = self.save_img_cal
-        self.pyplis_worker.save_dict['img_cal']['ext'] = self.type_img_cal
+        self.pyplis_worker.config['save_img_cal'] = self.save_img_cal
+        self.pyplis_worker.type_img_cal = self.type_img_cal
 
-        self.pyplis_worker.save_dict['img_SO2']['save'] = self.save_img_so2
-        self.pyplis_worker.save_dict['img_SO2']['compression'] = self.png_compression
+        self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
+        self.pyplis_worker.png_compression = self.png_compression
 
-        self.pyplis_worker.save_doas_cal = self.save_doas_cal
+        self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
         if hasattr(self, 'frame'):
             tk.messagebox.showinfo('Save settings updated',
@@ -1054,3 +1075,19 @@ class SaveFrame(LoadSaveProcessingSettings):
             if self.reg_ext[self.img_reg] not in filename:
                 filename += self.reg_ext[self.img_reg]
             self.pyplis_worker.img_reg.save_registration(filename, method=self.img_reg)
+
+
+    def save_config_file(self):
+        """Save a config file and additional data in location selected by the user"""
+        full_path = filedialog.asksaveasfilename(
+            title='Save config file',
+            initialdir=self.init_dir,
+            initialfile="process_config",
+            defaultextension=".yml",
+            filetypes = (("yml files","*.yml"),("all files","*.*")))
+        
+        
+        if len(full_path) > 0:
+            file_path = os.path.dirname(full_path)
+            file_name = os.path.basename(full_path)
+            self.pyplis_worker.save_config_plus(file_path, file_name)
