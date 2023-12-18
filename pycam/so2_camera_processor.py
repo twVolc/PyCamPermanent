@@ -3871,27 +3871,27 @@ class PyplisWorker:
                 f.write('{}'.format(self.cross_corr_lines['young']))
 
         # Processing settings save
-        settings = os.path.join(self.processed_dir, 'processing_settings.txt')
-        with open(settings, 'a') as f:
-            if self.bg_pycam:
-                f.write('BG_mode={}\n'.format(7))
-            else:
-                f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
-            if self.cal_type_int in [1, 2]:
-                f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
-            f.write('ambient_roi={}\n'.format(self.ambient_roi))
-            f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
+        # settings = os.path.join(self.processed_dir, 'processing_settings.txt')
+        # with open(settings, 'a') as f:
+        #     if self.bg_pycam:
+        #         f.write('BG_mode={}\n'.format(7))
+        #     else:
+        #         f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
+        #     if self.cal_type_int in [1, 2]:
+        #         f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
+        #     f.write('ambient_roi={}\n'.format(self.ambient_roi))
+        #     f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
 
-            f.write(self.generate_DOAS_FOV_info())
+        #     f.write(self.generate_DOAS_FOV_info())
 
-        # Save PCS lines info
-        lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
-        with open(settings, 'a') as f:
-            for i, line in enumerate(lines):
-                f.write('Line_{}\n'.format(i))
-                f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
-                f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
-                f.write('orientation={}\n'.format(line.normal_orientation))
+        # # Save PCS lines info
+        # lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
+        # with open(settings, 'a') as f:
+        #     for i, line in enumerate(lines):
+        #         f.write('Line_{}\n'.format(i))
+        #         f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
+        #         f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
+        #         f.write('orientation={}\n'.format(line.normal_orientation))
 
     def generate_DOAS_FOV_info(self):
 
