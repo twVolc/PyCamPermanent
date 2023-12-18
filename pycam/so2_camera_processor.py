@@ -3569,6 +3569,7 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
+        self.set_processing_directory()
         self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
