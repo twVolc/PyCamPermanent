@@ -2659,10 +2659,8 @@ class PyplisWorker:
         # plume speed extraction via cross_correlation is needed
         self.cross_corr_last = self.img_A.meta['start_acq']
 
-        # Reset the time series
-        self.cross_corr_series = {'time': [],   # datetime list
-                                  'young': [],  # Young plume series list
-                                  'old': []}    # Old plume series list
+        # Remove first element from time series
+        self.cross_corr_series = {key: np.delete(value, 0) for key, value in self.cross_corr_series.items()}
 
         print('Cross-correlation plume speed results:\n'
               '--------------------------------------\n'
@@ -3430,7 +3428,8 @@ class PyplisWorker:
                     self.cross_corr_last = self.img_A.meta['start_acq']
                     time_gap = self.img_A.meta['start_acq'] - self.cross_corr_last
                 time_gap = time_gap.total_seconds() / 60
-                if cross_corr or time_gap >= self.cross_corr_recal:
+
+                if cross_corr or time_gap >= self.cross_corr_recal or self.got_cross_corr:
                     self.generate_cross_corr(self.cross_corr_series['time'],
                                              self.cross_corr_series['young'],
                                              self.cross_corr_series['old'])
