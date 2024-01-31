@@ -83,7 +83,7 @@ def load_spectrum(filename):
     return wavelengths, spectrum
 
 
-def create_video(directory=None, band='on', save_dir=None, fps=60):
+def create_video(directory=None, band='on', save_dir=None, fps=60, overwrite=True):
     """
     Generates video from image sequence.
     :param directory: str   Directory to take images from
@@ -113,6 +113,10 @@ def create_video(directory=None, band='on', save_dir=None, fps=60):
         save_dir = directory
     # videoname = '{}/{}_{}_{}.avi'.format(save_dir, start_datetime, end_datetime, band_str)
     videoname = '{}/{}_{}_{}.mp4'.format(save_dir, start_datetime, end_datetime, band_str)
+    if not overwrite:
+        if os.path.exists(videoname):
+            print('Video file already exists, not overwriting: {}'.format(videoname))
+            return
 
     # Setup video writer object
     # fourcc = cv2.VideoWriter_fourcc(*'DIVX')
