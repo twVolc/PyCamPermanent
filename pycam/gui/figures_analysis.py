@@ -2872,7 +2872,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
                      'bg_A_path': str,
                      'bg_B_path': str,
                      'dark_img_dir': str,
-                     'spec_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
                      'cal_series_path': str,
@@ -3304,7 +3303,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.config["cal_series_path"] = self.cal_series_path
         pyplis_worker.config['cal_type_int'] = self.cal_type_int
         pyplis_worker.config['use_light_dilution'] = bool(self.use_light_dilution)
-        doas_worker.spec_dir = self.spec_dir
         doas_worker.dark_dir = self.dark_spec_dir
         pyplis_worker.config['min_cd'] = self.min_cd
         pyplis_worker.config['img_buff_size'] = self.img_buff_size
@@ -3325,6 +3323,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         pyplis_worker.apply_config(subset=self.vars.keys())
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
+        doas_worker.load_dir(prompt=False)
 
     def close_window(self):
         """Closes window"""

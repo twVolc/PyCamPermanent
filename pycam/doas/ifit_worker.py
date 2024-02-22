@@ -661,16 +661,13 @@ class IFitWorker:
             self.wavelengths, self.plume_spec_raw = load_spectrum(os.path.join(self.spec_dir,
                                                                                self.spec_dict['plume'][0]))
             self.spec_time = self.get_spec_time(self.spec_dict['plume'][0])
-        if len(self.spec_dict['dark']) > 0:
+
+            # Get respective dark spectrum
             ss_id = self.spec_specs.file_ss.replace('{}', '')
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
-
-            # Try to find dark spectrum in current directory - if we can't, we revert to set dark directory
-            self.dark_spec = self.find_dark_spectrum(self.spec_dir, ss)
+            self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
             if self.dark_spec is None:
-                self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
-                if self.dark_spec is None:
-                    print('No dark spectrum could be found in the current spectrum directory or current dark directory')
+                print('No dark spectrum could be found in the current spectrum directory or current dark directory')
 
         if process_first:
             # Try to process first spectrum
