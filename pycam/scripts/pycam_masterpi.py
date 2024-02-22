@@ -22,14 +22,21 @@ import os
 import time
 import atexit
 
-if len(sys.argv) - 1 == 1:
-    if sys.argv[-1] == '1':
-        start_cont = 1
-        print('Continuous capture on start-up is activated')
-    else:
-        print('Continuous capture on start-up not activated')
-        start_cont = 0
+# if len(sys.argv) - 1 == 1:
+#     if sys.argv[-1] == '1':
+#         start_cont = 1
+#         print('Continuous capture on start-up is activated')
+#     else:
+#         print('Continuous capture on start-up not activated')
+#         start_cont = 0
+# else:
+#     start_cont = 0
+
+if '1' in sys.argv:
+    start_cont = 1
+    print('Continuous capture on start-up is activated')
 else:
+    print('Continuous capture on start-up not activated')
     start_cont = 0
 
 # Read configuration file which contains important information for various things
