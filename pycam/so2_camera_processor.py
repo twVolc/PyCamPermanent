@@ -2578,7 +2578,7 @@ class PyplisWorker:
         self.calibration_series['timepoint'] = pd.to_datetime(self.calibration_series['timepoint'])
 
         # Set timepoint as index (useful for searching for times later) and drop rows that don't contain calibration data
-        self.calibration_series = self.calibration_series.set_index('timepoint').dropna()
+        self.calibration_series = self.calibration_series.set_index('timepoint').dropna(subset=['coeff 0', 'coeff 1'])
 
     def calc_line_dist(self, line_1, line_2):
         """
