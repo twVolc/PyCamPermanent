@@ -325,7 +325,15 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
     file_fmt = "pyplis_EmissionRates_{}_{}_{}.txt"
     date_fmt = "%Y%m%d"
     time_fmt = "%H%M"
-    emis_attrs = ['_start_acq', '_phi', '_phi_err', '_velo_eff', '_velo_eff_err']
+
+    emis_cols = {
+        "_phi": "flux_(kg/s)",
+        "_phi_err": "flux_err",
+        "_velo_eff": "velo_eff_(m/s)",
+        "_velo_eff_err": "velo_eff_err",
+        "_frac_optflow_ok": "frac_optflow_ok",
+        "_frac_optflow_ok_ica": "frac_optflow_ok_ica"
+    }
 
     # Try to make directory if it is not valid
     if not os.path.exists(path):
@@ -379,17 +387,25 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                 if os.path.exists(pathname):
                     continue
                 else:
-                    # Make new emission rates object to save
-                    emis_rates = EmissionRates(line_id, velo_mode=flow_mode)
-                    indices = tuple([(file_start_time <= np.array(emis_dict._start_acq)) &
-                                     (np.array(emis_dict._start_acq) <= file_end_time)])
-                    # Loop through attributes in emission rate object and set them to new object
-                    # This loop is just cleaner than writing out each attribute...
-                    for attr in emis_attrs:
-                        setattr(emis_rates, attr, np.array(getattr(emis_dict, attr))[indices])
+                    # Convert emis_dict object to dataframe
+                    emission_df = emis_dict.to_pandas_dataframe()
 
-                    # Save object
-                    emis_rates.to_pandas_dataframe().to_csv(pathname)
+                    # Generate limits for data time period
+                    indices = (file_start_time <= emission_df.index) & (emission_df.index <= file_end_time)
+                    
+                    # Filter by index
+                    emission_df = emission_df.loc[indices].copy()
+
+                    # Convert units
+                    emission_df["_phi"] = emission_df["_phi"].div(1000)
+
+                    # Adjust headings
+                    emission_df.index.name = "datetime"
+                    emission_df = emission_df.rename(columns=emis_cols)
+
+                    # Save as csv
+                    emission_df.to_csv(pathname)
+
 
 
 def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_off_2=None):
