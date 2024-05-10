@@ -396,9 +396,6 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                     # Filter by index
                     emission_df = emission_df.loc[indices].copy()
 
-                    # Convert units
-                    emission_df["_phi"] = emission_df["_phi"].div(1000)
-
                     # Adjust headings
                     emission_df.index.name = "datetime"
                     emission_df = emission_df.rename(columns=emis_cols)

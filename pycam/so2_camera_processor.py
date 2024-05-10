@@ -2886,7 +2886,7 @@ class PyplisWorker:
 
                 # Determine emission rate if we have a velocity
                 if vel_glob is not None:
-                    phi, phi_err = det_emission_rate(cd_buff['cds'][i],
+                    phi, phi_err = self.det_emission_rate_kgs(cd_buff['cds'][i],
                                                      vel_glob,
                                                      cd_buff['distarr'][i],
                                                      cd_buff['cd_err'][i],
@@ -3114,7 +3114,7 @@ class PyplisWorker:
                         self.cross_corr_buff[line_id]['distarr'].append(distarr)
                         self.cross_corr_buff[line_id]['disterr'].append(disterr)
                     else:
-                        phi, phi_err = det_emission_rate(cds, vel_glob, distarr,
+                        phi, phi_err = self.det_emission_rate_kgs(cds, vel_glob, distarr,
                                                          cd_err, vel_glob_err, disterr)
 
                         # Pack results into dictionary
@@ -3134,7 +3134,7 @@ class PyplisWorker:
                 # Nadeau plume speed algorithm
                 if self.velo_modes['flow_nadeau']:
                     # Calculate emission rate
-                    phi, phi_err = det_emission_rate(cds, nadeau_speed, distarr, cd_err,
+                    phi, phi_err = self.det_emission_rate_kgs(cds, nadeau_speed, distarr, cd_err,
                                                      velo_err=None, pix_dists_err=disterr)
 
                     # Update results dictionary
@@ -3171,7 +3171,7 @@ class PyplisWorker:
                         veff_err = veff_avg * self.optflow_err_rel_veff
 
                         # Get emission rate
-                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
                         # Update results dictionary
                         res['flow_raw']._start_acq.append(img_time)
@@ -3200,7 +3200,7 @@ class PyplisWorker:
                         # results from histogram analysis
                         (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
                                                        sigma_tol=flow.settings.hist_sigma_tol)
-                        phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, v, distarr, cd_err, verr, disterr)
 
                         # Update results dictionary
                         res['flow_histo']._start_acq.append(img_time)
@@ -3296,7 +3296,7 @@ class PyplisWorker:
                         veff_err_arr[indices] = verr
 
                         # Determine emission rate
-                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
                         veff_err_avg = veff_err_arr.mean()
 
                         # Add to EmissionRates object
@@ -3339,6 +3339,13 @@ class PyplisWorker:
             self.fig_series.update_plot()
 
         return self.results
+
+    @staticmethod
+    def det_emission_rate_kgs(*args, **kwargs):
+        """Convert emission rate from g/s to kg/s"""
+        phi, phi_err = det_emission_rate(*args, **kwargs)
+
+        return (phi/1000, phi_err)
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False,
                      cross_corr=False, overwrite=False):
