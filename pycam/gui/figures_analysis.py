@@ -4584,7 +4584,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         Orientation of Nadeau line
         """
-        return 180 - self._nadeau_line_orientation.get()    # Remove 180 so 0 is upwards on plot
+        return self._nadeau_line_orientation.get()
 
     @nadeau_line_orientation.setter
     def nadeau_line_orientation(self, value):
@@ -4595,7 +4595,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         Length of Nadeau line
         """
-        return self._nadeau_line_length.get()    # Remove 180 so 0 is upwards on plot
+        return self._nadeau_line_length.get()
 
     @nadeau_line_length.setter
     def nadeau_line_length(self, value):
