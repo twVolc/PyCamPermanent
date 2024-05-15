@@ -802,6 +802,7 @@ class PyplisWorker:
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
         self.got_cross_corr = False
+        self.nadeau_line = None
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
