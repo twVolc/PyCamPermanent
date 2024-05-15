@@ -2738,7 +2738,7 @@ class PyplisWorker:
         # Calculate line end coordinates
         orientation_rad = np.deg2rad(self.nadeau_line_orientation)
         x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
-        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] - (self.nadeau_line_length * np.cos(orientation_rad))))
 
         # Ensure coordinates don't extend beyond image
         if x_coord < 0:
