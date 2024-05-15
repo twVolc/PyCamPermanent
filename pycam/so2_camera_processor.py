@@ -2714,7 +2714,7 @@ class PyplisWorker:
         # orientation = np.arccos(dot_product)
 
         dx, dy = line._delx_dely()
-        complex_norm = complex(-dy, dx)
+        complex_norm = complex(dy, dx)
         orientation = -(np.angle(complex_norm, deg) - 180)
 
         return orientation
