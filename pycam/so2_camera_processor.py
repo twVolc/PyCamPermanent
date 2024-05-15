@@ -613,6 +613,24 @@ class PyplisWorker:
         if (value != 3) and hasattr(self, 'calibration_series'):
             delattr(self, 'calibration_series')
 
+    @property
+    def nadeau_line_orientation(self):
+        """
+        Orientation of Nadeau line
+        """
+        return self._nadeau_line_orientation
+
+    @nadeau_line_orientation.setter
+    def nadeau_line_orientation(self, value):
+
+        # Should wrap values between 0 and 359
+        if value < 0:
+            value += (360 * abs(value//360))
+        elif value >= 360:
+            value -= (360 * abs(value//360))
+
+        self._nadeau_line_orientation = value
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
 
