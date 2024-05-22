@@ -175,6 +175,7 @@ class IFitWorker:
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
         self.fig_series = None          # pycam.doas.CDSeries object
+        self.dir_info = None            
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')

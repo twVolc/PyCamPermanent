@@ -158,6 +158,7 @@ class DOASWorker:
         # Figures
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
+        self.dir_info = None
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
