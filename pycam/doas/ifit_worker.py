@@ -674,6 +674,7 @@ class IFitWorker:
             # Try to process first spectrum
             self.process_doas(plot=plot)
 
+        self.dir_info.update_dir()
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()

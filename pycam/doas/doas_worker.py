@@ -461,6 +461,8 @@ class DOASWorker:
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
             self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
+
+        self.dir_info.update_dir()
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()
