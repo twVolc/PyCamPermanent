@@ -287,6 +287,12 @@ def get_spec_time(filename, date_loc=0, date_fmt="%Y-%m-%dT%H%M%S"):
 
     return spec_time
 
+def truncate_path(path, max_length):
+    """Utility function for truncating path when it exeeds a max_length"""
+    if len(path) > max_length:
+        return '...' + path[-max_length:]
+    else:
+        return path
 
 class StorageMount:
     """
