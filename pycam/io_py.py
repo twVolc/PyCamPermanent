@@ -26,7 +26,7 @@ try:
     import cv2
 except ModuleNotFoundError:
     print('OpenCV could not be imported, there may be some issues caused by this')
-
+from pandas import DataFrame
 
 def save_img(img, filename, ext='.png'):
     """Saves image
@@ -403,9 +403,16 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
                     emission_df.index.name = "datetime"
                     emission_df = emission_df.rename(columns=emis_cols)
 
-                    # Save as csv
-                    emission_df.to_csv(pathname)
-
+def get_last_emission_vals(emission_obj):
+    """
+    Gets the most recent values from an EmissionRate object and returns them
+    in a pandas dataframe
+    """
+    index = [emission_obj._start_acq[-1]]
+    last_vals = {key: [value[-1]] if len(value) > 0 else [np.nan]
+                    for key, value in emission_obj.to_dict().items()}
+    del last_vals["_start_acq"]
+    return DataFrame(last_vals, index = index)
 
 
 def write_witty_schedule_file(filename, time_on, time_off, time_on_2=None, time_off_2=None):
