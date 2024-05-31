@@ -1245,17 +1245,16 @@ class TimeSeriesFigure:
                                            color=self.plot_styles[mode]['colour'],
                                            # color=self.colours[int(self.line_plot)],
                                            marker=None)
-                            self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
-                                                                                  ls=self.plot_styles[mode]['ls'],
-                                                                                  # color=self.colours[
-                                                                                  #     int(self.line_plot)],
-                                                                                  color=self.plot_styles[mode]['colour'],
-                                                                                  lw=1.5,
-                                                                                  ymin=0,
-                                                                                  date_fmt=self.date_fmt,
-                                                                                  label=line_lab,
-                                                                                  marker=None
-                                                                                  )
+                            self.pyplis_worker.results[self.line_plot][mode].plot(
+                                ax=self.axes[0],
+                                ls=self.plot_styles[mode]['ls'],
+                                color=self.plot_styles[mode]['colour'],
+                                lw=1.5,
+                                ymin=0,
+                                date_fmt=self.date_fmt,
+                                label=line_lab,
+                                marker=None,
+                                in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
 
@@ -1265,14 +1264,16 @@ class TimeSeriesFigure:
                 if self.pyplis_worker.velo_modes[mode]:
                     try:
                         if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
-                            self.pyplis_worker.results['total'][mode].plot(ax=self.axes[0],
-                                                                           ls=self.plot_styles[mode]['ls'],
-                                                                           color='black',
-                                                                           lw=2,
-                                                                           ymin=0,
-                                                                           date_fmt=self.date_fmt,
-                                                                           label='total: {}'.format(mode),
-                                                                           marker=self.marker)
+                            self.pyplis_worker.results['total'][mode].plot(
+                                ax=self.axes[0],
+                                ls=self.plot_styles[mode]['ls'],
+                                color='black',
+                                lw=2,
+                                ymin=0,
+                                date_fmt=self.date_fmt,
+                                label='total: {}'.format(mode),
+                                marker=self.marker,
+                                in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for sum of all ICA lines')
 
@@ -1281,6 +1282,7 @@ class TimeSeriesFigure:
         lims = self.axes[0].get_ylim()
         self.axes[0].set_ylim((0, lims[1]))
         self.axes[0].legend(loc='upper left')
+        self.axes[0].set_ylabel('$\\Phi$ [kg/s]') # if in_kg is false: ylabel will be g/s, we want kg/s
         self.axes[1].set_ylabel(r"$v_{eff}$ [m/s]")
         self.axes[2].set_ylabel(r"$\varphi\,[^{\circ}$]")
         self.axes[3].set_ylabel(r"$ROI_{BG}\,[cm^{-2}]$")
