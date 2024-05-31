@@ -3659,6 +3659,7 @@ class PyplisWorker:
 
         # Loop through img_list and process data
         self.first_image = True
+        save_last_val_only = False
         for i in range(len(self.img_list)):
 
             try:
@@ -3692,6 +3693,10 @@ class PyplisWorker:
             # Once first image is processed we update the first_image bool
             if i == 0:
                 self.first_image = False
+
+            if self.had_fix_fov_cal:
+                self.save_results(only_last_value=save_last_val_only)
+                save_last_val_only = True
 
             # Increment current index, so that buffer is in the right place
             self.idx_current += 1
@@ -3982,6 +3987,8 @@ class PyplisWorker:
         self.doas_worker.stop_watching()
         self.stop_watching()
 
+    def save_results(self, only_last_value=False):
+        save_emission_rates_as_txt(self.processed_dir, self.results, only_last_value=only_last_value)
 
 class ImageRegistration:
     """
