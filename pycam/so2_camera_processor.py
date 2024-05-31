@@ -3345,7 +3345,7 @@ class PyplisWorker:
         """Convert emission rate from g/s to kg/s"""
         phi, phi_err = det_emission_rate(*args, **kwargs)
 
-        return (phi/1000, phi_err)
+        return (phi/1000, phi_err/1000)
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False,
                      cross_corr=False, overwrite=False):
