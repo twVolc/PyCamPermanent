@@ -320,5 +320,3 @@ class LoadSaveProcessingSettings:
             kwargs['parent'] = parent
         messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
                                               'These will now be the program start-up settings.', **kwargs)
-
-

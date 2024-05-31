@@ -16,6 +16,7 @@ from pycam.cfg import pyplis_worker, process_defaults_loc
 from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
+from pycam.utils import truncate_path
 
 from pyplis import LineOnImage
 
@@ -490,10 +491,7 @@ class LoadFrame(LoadSaveProcessingSettings):
     def pcs_lines_short(self):
         short_list = [''] * self.num_pcs_lines
         for i, line in enumerate(self._pcs_lines):
-            if len(line) > self.max_len_str:
-                short_list[i] = '...' + line[-self.max_len_str+3:]
-            else:
-                short_list[i] = line
+            short_list[i] = truncate_path(line, self.max_len_str)
 
         return short_list
 
@@ -515,10 +513,7 @@ class LoadFrame(LoadSaveProcessingSettings):
     def dil_lines_short(self):
         short_list = [''] * self.num_dil_lines
         for i, line in enumerate(self._dil_lines):
-            if len(line) > self.max_len_str:
-                short_list[i] = '...' + line[-self.max_len_str+3:]
-            else:
-                short_list[i] = line
+            short_list[i] = truncate_path(line, self.max_len_str)
 
         return short_list
 
@@ -526,26 +521,17 @@ class LoadFrame(LoadSaveProcessingSettings):
     def ld_lookup_short(self):
         short_list = ['None'] * 2
         for i, line in enumerate([self.ld_lookup_1, self.ld_lookup_2]):
-            if len(line) > self.max_len_str:
-                short_list[i] = '...' + line[-self.max_len_str+3:]
-            else:
-                short_list[i] = line
+            short_list[i] = truncate_path(line, self.max_len_str)
+
         return short_list
 
     @property
     def img_reg_short(self):
-        if len(self.img_registration) > self.max_len_str:
-            return '...' + self.img_registration[-self.max_len_str+3:]
-        else:
-            return self.img_registration
-    
+        return truncate_path(self.img_registration, self.max_len_str)
+
     @property
     def default_conf_path_short(self):
-        path = self.default_conf_path
-        if len(path) > self.max_len_str:
-            return '...' + path[-self.max_len_str+3:]
-        else:
-            return path
+        return truncate_path(self.default_conf_path, self.max_len_str)
         
     @property
     def default_conf_path(self):

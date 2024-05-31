@@ -20,6 +20,7 @@ from pycam.cfg import pyplis_worker
 from pycam.setupclasses import SpecSpecs
 from pycam.gui.settings import GUISettings
 from pycam.gui.misc import LoadSaveProcessingSettings
+from pycam.utils import truncate_path
 
 # plt.style.use('dark_background')
 plt.style.use('default')
@@ -830,11 +831,7 @@ class RefPlot:
 
     @property
     def ref_spec_path_short(self):
-        try:
-            return_str = '...' + self.ref_spec_path[-(self.max_str_len-3):]
-        except IndexError:
-            return_str = self.ref_spec_path
-        return return_str
+        return truncate_path(self.ref_spec_path, self.max_str_len)
 
     def choose_ref_spec(self):
         """Load reference spectrum"""
@@ -874,10 +871,7 @@ class RefPlot:
             self.ax_SO2.set_ylim([lim_0, lim_1])
         else:
             self.ax_SO2.set_ylim([0, np.amax(self.doas_worker.ref_spec[self.species][:, 1])])
-        if len(self.ref_spec_path) > 53:
-            ref_spec_abbr = '...' + self.ref_spec_path[-50:]
-        else:
-            ref_spec_abbr = self.ref_spec_path
+        ref_spec_abbr = truncate_path(self.ref_spec_path, 50)
         self.ax_SO2.set_title('Reference Spectrum: %s' % ref_spec_abbr)
         self.refCanvas.draw()
 
@@ -1133,10 +1127,9 @@ class ILSFrame:
         """Updates ILS label"""
         # Update label in widget
         ILS_filename = self.ILS_path.split('/')[-1].split('\\')[-1]
-        if len(ILS_filename) > self.str_len_max:
-            self.ILS_load_label.configure(text='...' + ILS_filename[-(self.str_len_max - 3):])
-        else:
-            self.ILS_load_label.configure(text=ILS_filename)
+
+        ILS_filename_short = truncate_path(ILS_filename, self.str_len_max)
+        self.ILS_load_label.configure(text=ILS_filename_short)
 
     def load_ILS(self):
         """Loads ILS from text file"""
