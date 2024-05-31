@@ -313,18 +313,17 @@ def save_so2_img(path, img, filename=None, compression=0, max_val=None):
     cv2.imwrite(full_path, im2save, png_compression)
 
 
-def save_emission_rates_as_txt(path, emission_dict, save_all=False):
+def save_emission_rates_as_txt(path, emission_dict, only_last_value=False):
     """
     Saves emission rates as text files every hour - emission rates are split into hour-long
     :param path:            str     Directory to save to
     :param emission_dict:   dict    Dictionary of emission rates for different lines and different flow modes
                                     Assumed to be time-sorted
-    :param save_all:        bool    If True, the entire time series is saved, even if the hour isn't complete
+    :param only_last_value: bool    If True, add only the most recent values to the output file
     :return:
     """
-    file_fmt = "pyplis_EmissionRates_{}_{}_{}.txt"
+    file_fmt = "{}_EmissionRates_{}.txt"
     date_fmt = "%Y%m%d"
-    time_fmt = "%H%M"
 
     emis_cols = {
         "_phi": "flux_(kg/s)",
@@ -335,73 +334,47 @@ def save_emission_rates_as_txt(path, emission_dict, save_all=False):
         "_frac_optflow_ok_ica": "frac_optflow_ok_ica"
     }
 
-    # Try to make directory if it is not valid
-    if not os.path.exists(path):
-        try:
-            os.mkdir(path)
-        except BaseException as e:
-            print('Could not save emission rate data as path definition is not valid:\n'
-                  '{}'.format(e))
-
     # Loop through lines (includes 'total' and save data to it
     for line_id in emission_dict:
         # Make dir for specific line if it doesn't already exist
         line_path = os.path.join(path, 'line_{}'.format(line_id))
-        if not os.path.exists(line_path):
-            os.mkdir(line_path)
 
+        # Try and make the output dir for the emission data
+        try:
+            os.makedirs(line_path, exist_ok=True)
+        except BaseException as e:
+            print('Could not save emission rate data as path definition is not valid:\n'
+                  '{}'.format(e))
+                
         for flow_mode in emission_dict[line_id]:
             emis_dict = emission_dict[line_id][flow_mode]
             # Check there is data in this dictionary - if not, we don't save this data
             if len(emis_dict._start_acq) == 0:
                 continue
 
-            # Make line directory
-            full_path = os.path.join(line_path, flow_mode)
-            if not os.path.exists(full_path):
-                os.mkdir(full_path)
+            start_date = emis_dict._start_acq[0].strftime(date_fmt)
+            filename = file_fmt.format(start_date, flow_mode)
+            pathname = os.path.join(line_path, filename)
 
-            start_time = emis_dict._start_acq[0]
-            start_time_hr = start_time.hour
-            end_time_hr = emis_dict._start_acq[-1].hour
-            if not save_all:
-                end_time_hr -= 1           # We don't want the most recent hour as this may contain incomplete data
-                if end_time_hr < start_time_hr:
-                    # In this case there is no data to be saved, so we move to next dataset
-                    continue
+            if only_last_value:
+                emission_df = get_last_emission_vals(emis_dict)
+                header = False
+            elif os.path.exists(pathname):
+                continue
+            else:
+                # Convert emis_dict object to dataframe
+                emission_df = emis_dict.to_pandas_dataframe()
+                header = True
 
-            # Have to make a new EmissionRates object to save data
-            for hour in range(start_time_hr, end_time_hr + 1):
-                # Arrange times of file
-                file_date = start_time.strftime(date_fmt)
-                file_start_time = start_time.replace(hour=hour, minute=0, second=0)
-                file_end_time = start_time.replace(hour=hour, minute=59, second=59)
-                start_time_str = file_start_time.strftime(time_fmt)
-                end_time_str = file_end_time.strftime(time_fmt)
+            # Round to 3 decimal places
+            emission_df = emission_df.round(3)
 
-                # Generate filename
-                filename = file_fmt.format(file_date, start_time_str, end_time_str)
-                pathname = os.path.join(full_path, filename)
+            # Adjust headings
+            emission_df.index.name = "datetime"
+            emission_df = emission_df.rename(columns=emis_cols)
 
-                # We don't overwrite data, so if the file already exists we continue without saving
-                if os.path.exists(pathname):
-                    continue
-                else:
-                    # Convert emis_dict object to dataframe
-                    emission_df = emis_dict.to_pandas_dataframe()
-
-                    # Generate limits for data time period
-                    indices = (file_start_time <= emission_df.index) & (emission_df.index <= file_end_time)
-                    
-                    # Filter by index
-                    emission_df = emission_df.loc[indices].copy()
-
-                    # Round to 3 decimal places
-                    emission_df = emission_df.round(3)
-
-                    # Adjust headings
-                    emission_df.index.name = "datetime"
-                    emission_df = emission_df.rename(columns=emis_cols)
+            # Save as csv
+            emission_df.to_csv(pathname, mode='a', header=header)
 
 def get_last_emission_vals(emission_obj):
     """
