@@ -674,7 +674,10 @@ class IFitWorker:
             # Try to process first spectrum
             self.process_doas(plot=plot)
 
-        self.dir_info.update_dir()
+        # Only update dir_info widget if it has been initialised
+        if self.dir_info is not None:
+            self.dir_info.update_dir()
+
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()
