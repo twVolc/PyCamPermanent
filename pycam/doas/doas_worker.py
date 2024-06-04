@@ -168,6 +168,7 @@ class DOASWorker:
         """Some resetting of object, before processing occurs"""
         # Reset results objecct
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        self.reset_stray_pix()
 
     @property
     def start_stray_wave(self):

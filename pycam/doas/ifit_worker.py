@@ -262,6 +262,7 @@ class IFitWorker:
 
         # Reset results object
         self.reset_doas_results()
+        self.reset_stray_pix()
 
         # Reset last LDF correction
         self.spec_time_last_ld = None
