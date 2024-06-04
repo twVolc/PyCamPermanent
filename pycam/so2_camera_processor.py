@@ -613,6 +613,24 @@ class PyplisWorker:
         if (value != 3) and hasattr(self, 'calibration_series'):
             delattr(self, 'calibration_series')
 
+    @property
+    def nadeau_line_orientation(self):
+        """
+        Orientation of Nadeau line
+        """
+        return self._nadeau_line_orientation
+
+    @nadeau_line_orientation.setter
+    def nadeau_line_orientation(self, value):
+
+        # Should wrap values between 0 and 359
+        if value < 0:
+            value += (360 * abs(value//360))
+        elif value >= 360:
+            value -= (360 * abs(value//360))
+
+        self._nadeau_line_orientation = value
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
 
@@ -784,6 +802,7 @@ class PyplisWorker:
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
         self.got_cross_corr = False
+        self.nadeau_line = None
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
@@ -2696,7 +2715,7 @@ class PyplisWorker:
         # orientation = np.arccos(dot_product)
 
         dx, dy = line._delx_dely()
-        complex_norm = complex(-dy, dx)
+        complex_norm = complex(dy, dx)
         orientation = -(np.angle(complex_norm, deg) - 180)
 
         return orientation
@@ -2720,7 +2739,7 @@ class PyplisWorker:
         # Calculate line end coordinates
         orientation_rad = np.deg2rad(self.nadeau_line_orientation)
         x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
-        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] - (self.nadeau_line_length * np.cos(orientation_rad))))
 
         # Ensure coordinates don't extend beyond image
         if x_coord < 0:
