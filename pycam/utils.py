@@ -288,9 +288,11 @@ def get_spec_time(filename, date_loc=0, date_fmt="%Y-%m-%dT%H%M%S"):
     return spec_time
 
 def truncate_path(path: str, max_length: int) -> str:
-    """Utility function for truncating path when it exeeds a max_length"""
-    if len(path) <= 0:
-        raise ValueError("path length should be greater than 0")
+    """Utility function for truncating path when it exceeds a max_length"""
+    if len(path) == 0 or path is None:
+        return ''
+    elif len(path) < 0:
+        raise ValueError("Error fetching path length")
 
     if max_length <= 0:
         raise ValueError("max_length should be greater than 0")
