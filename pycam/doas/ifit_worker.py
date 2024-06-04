@@ -175,6 +175,7 @@ class IFitWorker:
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
         self.fig_series = None          # pycam.doas.CDSeries object
+        self.dir_info = None            
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
@@ -675,6 +676,10 @@ class IFitWorker:
         if process_first:
             # Try to process first spectrum
             self.process_doas(plot=plot)
+
+        # Only update dir_info widget if it has been initialised
+        if self.dir_info is not None:
+            self.dir_info.update_dir()
 
         # Update plots if requested
         if plot:

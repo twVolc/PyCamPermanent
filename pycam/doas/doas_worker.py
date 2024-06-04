@@ -158,6 +158,7 @@ class DOASWorker:
         # Figures
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
+        self.dir_info = None
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
@@ -463,6 +464,10 @@ class DOASWorker:
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
             self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
+        # Only update dir_info widget if it has been initialised
+        if self.dir_info is not None:
+            self.dir_info.update_dir()
+        
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()

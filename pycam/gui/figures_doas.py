@@ -27,6 +27,26 @@ plt.style.use('default')
 
 refresh_rate = 200
 
+class DirIndicator:
+    """
+    Class to create widget displaying the current spec_dir in the DOAS window
+    """
+    def __init__(self, main_gui, frame, doas_worker) -> None:
+        """ Initialise and build widget"""
+        self.doas_worker = doas_worker
+        self.doas_worker.dir_info = self
+
+        self.padx = 5
+        self.pady = 5
+
+        self.label = ttk.LabelFrame(frame, text='DOAS directory:',)
+        self.label.grid(row=0, column=1, sticky='nsew', pady=self.pady)
+        self.img_dir_lab = ttk.Label(self.label, text=self.doas_worker.spec_dir, font=main_gui.main_font)
+        self.img_dir_lab.grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+
+    def update_dir(self):
+        """ Update widget with current spec_dir"""
+        self.img_dir_lab.configure(text=self.doas_worker.spec_dir)
 
 class SpectraPlot:
     """

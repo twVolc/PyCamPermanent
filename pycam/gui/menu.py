@@ -741,7 +741,7 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         self.pyplis_worker.apply_config()
         self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
-        self.doas_worker.load_dir(prompt=False, plot=True)
+        self.doas_worker.load_dir(self.pyplis_worker.spec_dir, prompt=False, plot=True)
 
     def reset_pcs_lines(self):
         """Reset current PCS lines"""
