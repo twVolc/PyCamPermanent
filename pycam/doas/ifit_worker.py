@@ -262,6 +262,7 @@ class IFitWorker:
 
         # Reset results object
         self.reset_doas_results()
+        self.reset_stray_pix()
 
         # Reset last LDF correction
         self.spec_time_last_ld = None
@@ -650,6 +651,8 @@ class IFitWorker:
         # Update first_spec flag TODO possibly not used in DOASWorker, check
         self.first_spec = True
 
+        self.reset_stray_pix()
+
         # Get list of all files in directory
         self.spec_dict = self.get_spec_list()
 
@@ -678,6 +681,10 @@ class IFitWorker:
             self.fig_spec.update_clear()
             self.fig_spec.update_dark()
             self.fig_spec.update_plume()
+
+    def reset_stray_pix(self):
+        self._start_stray_pix = None
+        self._end_stray_pix = None
 
     def get_spec_list(self):
         """
