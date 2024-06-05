@@ -171,8 +171,6 @@ class PyMenu:
                                         command=lambda: self.parent.windows.select(1))
         self.menus[tab].add_radiobutton(label='Analysis window', value=2, var=self.init_var,
                                         command=lambda: self.parent.windows.select(2))
-        self.menus[tab].add_separator()
-        self.menus[tab].add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
 
         # -------------------------------------------------------------------------------------------------
 
@@ -184,7 +182,18 @@ class PyMenu:
         self.menus[tab].add_command(label='Setup paths', command=process_settings.generate_frame)
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
         self.menus[tab].add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
+        self.menus[tab].add_command(label='Cross-correlation', command=cross_correlation.generate_frame)
         self.menus[tab].add_command(label='Light dilution settings', command=light_dilution.generate_frame)
+        self.menus[tab].add_separator()
+
+        # Calibration cascade
+        self.submenu_cal = tk.Menu(self.frame, tearoff=0)
+        self.submenu_cal.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
+        self.submenu_cal.add_command(label='Cell calibration',
+                                     command=lambda: cell_calib.update_plot(generate_frame=True))
+        self.submenu_cal.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
+        self.menus[tab].add_cascade(label="Calibration", menu=self.submenu_cal)
+
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Unpack data', command=self.unpack_data)
         self.menus[tab].add_separator()
@@ -209,18 +218,7 @@ class PyMenu:
         self.menus[tab].add_command(label='Stop processing', command=self.stop_sequence_processing)
 
         # -------------------------------------------------------------------------------------------------------
-        # Calibration tab
-        tab = 'Calibration'
 
-        keys.append(tab)
-        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
-
-        self.menus[tab].add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
-        self.menus[tab].add_command(label='Cell calibration',
-                                         command=lambda: cell_calib.update_plot(generate_frame=True))
-        self.menus[tab].add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
-
-        # -------------------------------------------------------------------------------------------------------
         # Help tab
         tab = 'Help'
         keys.append(tab)
