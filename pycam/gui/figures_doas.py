@@ -719,6 +719,8 @@ class CalibrationWindow:
     """
     def __init__(self, fig_setts=GUISettings(), gui=None):
         self.gui = None
+        self.in_frame = False
+        self.frame = None
 
         # Setup reference spectra objects
         self.ref_frame = dict()
@@ -733,8 +735,14 @@ class CalibrationWindow:
         self.gui = gui
 
     def generate_frame(self):
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
         self.frame = tk.Toplevel()
+        self.in_frame = True
         self.frame.title('DOAS calibration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
         self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 1.2),
                                                  int(self.frame.winfo_screenheight() / 1.2),
                                                  int(self.frame.winfo_screenwidth() / 10),
@@ -759,6 +767,12 @@ class CalibrationWindow:
         # ILS frame
         self.ils_frame.generate_frame(self.frame)
         self.ils_frame.frame.pack(side=tk.LEFT, anchor='nw')
+
+    def close_frame(self):
+        """Correctly close frame and set necessary flags"""
+        self.frame.destroy()
+        self.in_frame = False
+        self.ils_frame.in_frame = False
 
 
 class RefPlot:
