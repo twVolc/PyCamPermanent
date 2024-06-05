@@ -208,14 +208,16 @@ class PyMenu:
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
-        self.menus[tab].add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
-        self.menus[tab].add_separator()
-        self.menus[tab].add_command(label='Load DOAS results', command=doas_worker.load_results)
-        self.menus[tab].add_command(label='Load DOAS directory', command=doas_worker.load_dir)
+        self.menus[tab].add_command(label='Load DOAS Results', command=doas_worker.load_results)
+        self.menus[tab].add_command(label='Load DOAS Directory', command=doas_worker.load_dir)
         self.menus[tab].add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.menus[tab].add_separator()
-        self.menus[tab].add_command(label='Run', command=pyplis_worker.process_sequence)
-        self.menus[tab].add_command(label='Stop processing', command=self.stop_sequence_processing)
+
+        self.menus[tab].add_command(label='Load Image Directory', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
+        self.menus[tab].add_command(label='Process Image Sequence', command=pyplis_worker.process_sequence)
+        self.menus[tab].add_separator()
+
+        self.menus[tab].add_command(label='Stop Processing', command=self.stop_sequence_processing)
 
         # -------------------------------------------------------------------------------------------------------
 
