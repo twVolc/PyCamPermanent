@@ -11,7 +11,7 @@ from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.doas.ifit_worker import IFitWorker
 from pycam.so2_camera_processor import UnrecognisedSourceError
-from pycam.utils import make_circular_mask_line
+from pycam.utils import make_circular_mask_line, truncate_path
 from pycam.io_py import save_pcs_line, load_pcs_line
 
 from pyplis import LineOnImage, Img
@@ -121,7 +121,7 @@ class SequenceInfo:
 
     @property
     def img_dir_short(self):
-        return '...' + self.img_dir[-self.path_str_length:]
+        return truncate_path(self.img_dir, self.path_str_length)
 
     @property
     def num_img_pairs(self):
@@ -1245,17 +1245,16 @@ class TimeSeriesFigure:
                                            color=self.plot_styles[mode]['colour'],
                                            # color=self.colours[int(self.line_plot)],
                                            marker=None)
-                            self.pyplis_worker.results[self.line_plot][mode].plot(ax=self.axes[0],
-                                                                                  ls=self.plot_styles[mode]['ls'],
-                                                                                  # color=self.colours[
-                                                                                  #     int(self.line_plot)],
-                                                                                  color=self.plot_styles[mode]['colour'],
-                                                                                  lw=1.5,
-                                                                                  ymin=0,
-                                                                                  date_fmt=self.date_fmt,
-                                                                                  label=line_lab,
-                                                                                  marker=None
-                                                                                  )
+                            self.pyplis_worker.results[self.line_plot][mode].plot(
+                                ax=self.axes[0],
+                                ls=self.plot_styles[mode]['ls'],
+                                color=self.plot_styles[mode]['colour'],
+                                lw=1.5,
+                                ymin=0,
+                                date_fmt=self.date_fmt,
+                                label=line_lab,
+                                marker=None,
+                                in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
 
@@ -1265,14 +1264,16 @@ class TimeSeriesFigure:
                 if self.pyplis_worker.velo_modes[mode]:
                     try:
                         if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
-                            self.pyplis_worker.results['total'][mode].plot(ax=self.axes[0],
-                                                                           ls=self.plot_styles[mode]['ls'],
-                                                                           color='black',
-                                                                           lw=2,
-                                                                           ymin=0,
-                                                                           date_fmt=self.date_fmt,
-                                                                           label='total: {}'.format(mode),
-                                                                           marker=self.marker)
+                            self.pyplis_worker.results['total'][mode].plot(
+                                ax=self.axes[0],
+                                ls=self.plot_styles[mode]['ls'],
+                                color='black',
+                                lw=2,
+                                ymin=0,
+                                date_fmt=self.date_fmt,
+                                label='total: {}'.format(mode),
+                                marker=self.marker,
+                                in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for sum of all ICA lines')
 
@@ -1281,6 +1282,7 @@ class TimeSeriesFigure:
         lims = self.axes[0].get_ylim()
         self.axes[0].set_ylim((0, lims[1]))
         self.axes[0].legend(loc='upper left')
+        self.axes[0].set_ylabel('$\\Phi$ [kg/s]') # if in_kg is false: ylabel will be g/s, we want kg/s
         self.axes[1].set_ylabel(r"$v_{eff}$ [m/s]")
         self.axes[2].set_ylabel(r"$\varphi\,[^{\circ}$]")
         self.axes[3].set_ylabel(r"$ROI_{BG}\,[cm^{-2}]$")
@@ -3077,7 +3079,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def dark_dir_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.dark_img_dir[-self.path_str_length:]
+        return truncate_path(self.dark_img_dir, self.path_str_length)
 
     @property
     def dark_spec_dir(self):
@@ -3092,7 +3094,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def dark_spec_dir_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.dark_spec_dir[-self.path_str_length:]
+        return truncate_path(self.dark_spec_dir, self.path_str_length)
 
     @property
     def cell_cal_dir(self):
@@ -3107,7 +3109,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def cell_cal_dir_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.cell_cal_dir[-self.path_str_length:]
+        return truncate_path(self.cell_cal_dir, self.path_str_length)
 
     @property
     def cal_series_path(self):
@@ -3122,7 +3124,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def cal_series_path_short(self):
         """Returns shorter label for dark directory"""
-        return '...' + self.cal_series_path[-self.path_str_length:]
+        return truncate_path(self.cal_series_path, self.path_str_length)
 
     @property
     def cal_type(self):
@@ -3159,7 +3161,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def bg_A_short(self):
         """Returns shorter label for bg_A file"""
-        return '...' + self.bg_A_path[-self.path_str_length:]
+        return truncate_path(self.bg_A_path, self.path_str_length)
 
     @property
     def bg_B_path(self):
@@ -3172,7 +3174,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
     @property
     def bg_B_short(self):
         """Returns shorter label for bg_B file"""
-        return '...' + self.bg_B_path[-self.path_str_length:]
+        return truncate_path(self.bg_B_path, self.path_str_length)
 
     @property
     def min_cd(self):
@@ -4062,11 +4064,7 @@ class CellCalibFrame:
 
     @property
     def cal_dir_short(self):
-        try:
-            val = '...' + self.pyplis_worker.config['cell_cal_dir'][-50:]
-        except:
-            val = self.pyplis_worker.config['cell_cal_dir']
-        return val
+        return truncate_path(self.pyplis_worker.config['cell_cal_dir'], 50)
 
     @property
     def cal_crop(self):
@@ -4584,7 +4582,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         Orientation of Nadeau line
         """
-        return 180 - self._nadeau_line_orientation.get()    # Remove 180 so 0 is upwards on plot
+        return self._nadeau_line_orientation.get()
 
     @nadeau_line_orientation.setter
     def nadeau_line_orientation(self, value):
@@ -4595,7 +4593,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         Length of Nadeau line
         """
-        return self._nadeau_line_length.get()    # Remove 180 so 0 is upwards on plot
+        return self._nadeau_line_length.get()
 
     @nadeau_line_length.setter
     def nadeau_line_length(self, value):
@@ -5691,41 +5689,25 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
     def dark_spec_path_short(self):
         if self.dark_spec_path is None:
             return 'None'
-        try:
-            return_str = '...' + self.dark_spec_path[-(self.max_str_len-3):]
-        except (IndexError, TypeError):
-            return_str = self.dark_spec_path
-        return return_str
+        return truncate_path(self.dark_spec_path, self.max_str_len)
 
     @property
     def clear_spec_path_short(self):
         if self.clear_spec_path is None:
             return 'None'
-        try:
-            return_str = '...' + self.clear_spec_path[-(self.max_str_len-3):]
-        except (IndexError, TypeError):
-            return_str = self.clear_spec_path
-        return return_str
+        return truncate_path(self.clear_spec_path, self.max_str_len)
 
     @property
     def grid_0_path_short(self):
         if self.grid_0_path is None:
             return 'None'
-        try:
-            return_str = '...' + self.grid_0_path[-(self.max_str_len-3):]
-        except (IndexError, TypeError):
-            return_str = self.grid_0_path
-        return return_str
-
+        return truncate_path(self.grid_0_path, self.max_str_len)
+        
     @property
     def grid_1_path_short(self):
         if self.grid_1_path is None:
             return 'None'
-        try:
-            return_str = '...' + self.grid_1_path[-(self.max_str_len-3):]
-        except (IndexError, TypeError):
-            return_str = self.grid_1_path
-        return return_str
+        return truncate_path(self.grid_1_path, self.max_str_len)
 
     def generate_frame(self):
         """

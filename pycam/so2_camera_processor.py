@@ -613,6 +613,24 @@ class PyplisWorker:
         if (value != 3) and hasattr(self, 'calibration_series'):
             delattr(self, 'calibration_series')
 
+    @property
+    def nadeau_line_orientation(self):
+        """
+        Orientation of Nadeau line
+        """
+        return self._nadeau_line_orientation
+
+    @nadeau_line_orientation.setter
+    def nadeau_line_orientation(self, value):
+
+        # Should wrap values between 0 and 359
+        if value < 0:
+            value += (360 * abs(value//360))
+        elif value >= 360:
+            value -= (360 * abs(value//360))
+
+        self._nadeau_line_orientation = value
+
     def update_cam_geom(self, geom_info):
         """Updates camera geometry info by creating a new object and updating MeasSetup object
 
@@ -784,6 +802,7 @@ class PyplisWorker:
                                   'young': [],  # Young plume series list
                                   'old': []}  # Old plume series list
         self.got_cross_corr = False
+        self.nadeau_line = None
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
@@ -2578,7 +2597,7 @@ class PyplisWorker:
         self.calibration_series['timepoint'] = pd.to_datetime(self.calibration_series['timepoint'])
 
         # Set timepoint as index (useful for searching for times later) and drop rows that don't contain calibration data
-        self.calibration_series = self.calibration_series.set_index('timepoint').dropna()
+        self.calibration_series = self.calibration_series.set_index('timepoint').dropna(subset=['coeff 0', 'coeff 1'])
 
     def calc_line_dist(self, line_1, line_2):
         """
@@ -2696,7 +2715,7 @@ class PyplisWorker:
         # orientation = np.arccos(dot_product)
 
         dx, dy = line._delx_dely()
-        complex_norm = complex(-dy, dx)
+        complex_norm = complex(dy, dx)
         orientation = -(np.angle(complex_norm, deg) - 180)
 
         return orientation
@@ -2720,7 +2739,7 @@ class PyplisWorker:
         # Calculate line end coordinates
         orientation_rad = np.deg2rad(self.nadeau_line_orientation)
         x_coord = int(np.round(self.source_coords[0] + (self.nadeau_line_length * np.sin(orientation_rad))))
-        y_coord = int(np.round(self.source_coords[1] + (self.nadeau_line_length * np.cos(orientation_rad))))
+        y_coord = int(np.round(self.source_coords[1] - (self.nadeau_line_length * np.cos(orientation_rad))))
 
         # Ensure coordinates don't extend beyond image
         if x_coord < 0:
@@ -2886,7 +2905,7 @@ class PyplisWorker:
 
                 # Determine emission rate if we have a velocity
                 if vel_glob is not None:
-                    phi, phi_err = det_emission_rate(cd_buff['cds'][i],
+                    phi, phi_err = self.det_emission_rate_kgs(cd_buff['cds'][i],
                                                      vel_glob,
                                                      cd_buff['distarr'][i],
                                                      cd_buff['cd_err'][i],
@@ -3114,7 +3133,7 @@ class PyplisWorker:
                         self.cross_corr_buff[line_id]['distarr'].append(distarr)
                         self.cross_corr_buff[line_id]['disterr'].append(disterr)
                     else:
-                        phi, phi_err = det_emission_rate(cds, vel_glob, distarr,
+                        phi, phi_err = self.det_emission_rate_kgs(cds, vel_glob, distarr,
                                                          cd_err, vel_glob_err, disterr)
 
                         # Pack results into dictionary
@@ -3134,7 +3153,7 @@ class PyplisWorker:
                 # Nadeau plume speed algorithm
                 if self.velo_modes['flow_nadeau']:
                     # Calculate emission rate
-                    phi, phi_err = det_emission_rate(cds, nadeau_speed, distarr, cd_err,
+                    phi, phi_err = self.det_emission_rate_kgs(cds, nadeau_speed, distarr, cd_err,
                                                      velo_err=None, pix_dists_err=disterr)
 
                     # Update results dictionary
@@ -3171,7 +3190,7 @@ class PyplisWorker:
                         veff_err = veff_avg * self.optflow_err_rel_veff
 
                         # Get emission rate
-                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
                         # Update results dictionary
                         res['flow_raw']._start_acq.append(img_time)
@@ -3200,7 +3219,7 @@ class PyplisWorker:
                         # results from histogram analysis
                         (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
                                                        sigma_tol=flow.settings.hist_sigma_tol)
-                        phi, phi_err = det_emission_rate(cds, v, distarr, cd_err, verr, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, v, distarr, cd_err, verr, disterr)
 
                         # Update results dictionary
                         res['flow_histo']._start_acq.append(img_time)
@@ -3296,7 +3315,7 @@ class PyplisWorker:
                         veff_err_arr[indices] = verr
 
                         # Determine emission rate
-                        phi, phi_err = det_emission_rate(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
+                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
                         veff_err_avg = veff_err_arr.mean()
 
                         # Add to EmissionRates object
@@ -3339,6 +3358,13 @@ class PyplisWorker:
             self.fig_series.update_plot()
 
         return self.results
+
+    @staticmethod
+    def det_emission_rate_kgs(*args, **kwargs):
+        """Convert emission rate from g/s to kg/s"""
+        phi, phi_err = det_emission_rate(*args, **kwargs)
+
+        return (phi/1000, phi_err/1000)
 
     def process_pair(self, img_path_A=None, img_path_B=None, plot=True, plot_bg=False, force_cal=False,
                      cross_corr=False, overwrite=False):

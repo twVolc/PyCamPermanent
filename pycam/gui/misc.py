@@ -19,7 +19,11 @@ import socket
 class About:
     """Class to create a tkinter frame containing the details of PyCam"""
     def __init__(self):
-        info = ['PyCam v{}'.format(pycam_details['version']), 'Built on {}'.format(pycam_details['date'])]
+        info = ['PyCam v{}'.format(pycam_details['version']),
+                'Built on {}'.format(pycam_details['date']),
+                '\nSubmit issues to: \nhttps://github.com/twVolc/PyCamPermanent/',
+                '\nGeneral information: \nhttps://www.volcanotech.org/'
+                ]
 
         messagebox.showinfo('About Pycam', "\n".join(info))
 
@@ -320,5 +324,3 @@ class LoadSaveProcessingSettings:
             kwargs['parent'] = parent
         messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
                                               'These will now be the program start-up settings.', **kwargs)
-
-

@@ -158,6 +158,7 @@ class DOASWorker:
         # Figures
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
+        self.dir_info = None
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
@@ -168,6 +169,7 @@ class DOASWorker:
         """Some resetting of object, before processing occurs"""
         # Reset results objecct
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
+        self.reset_stray_pix()
 
     @property
     def start_stray_wave(self):
@@ -447,6 +449,8 @@ class DOASWorker:
         # Update first_spec flag TODO possibly not used in DOASWorker, check
         self.first_spec = True
 
+        self.reset_stray_pix()
+
         # Get list of all files in directory
         self.spec_dict = self.get_spec_list()
 
@@ -460,11 +464,19 @@ class DOASWorker:
             ss = self.spec_dict['plume'][0].split('_')[self.spec_specs.file_ss_loc].replace(ss_id, '')
             self.dark_spec = self.find_dark_spectrum(self.dark_dir, ss)
 
+        # Only update dir_info widget if it has been initialised
+        if self.dir_info is not None:
+            self.dir_info.update_dir()
+        
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()
             self.fig_spec.update_dark()
             self.fig_spec.update_plume()
+
+    def reset_stray_pix(self):
+        self._start_stray_pix = None
+        self._end_stray_pix = None
 
     def get_spec_list(self):
         """

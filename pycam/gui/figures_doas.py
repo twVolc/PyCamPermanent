@@ -20,12 +20,33 @@ from pycam.cfg import pyplis_worker
 from pycam.setupclasses import SpecSpecs
 from pycam.gui.settings import GUISettings
 from pycam.gui.misc import LoadSaveProcessingSettings
+from pycam.utils import truncate_path
 
 # plt.style.use('dark_background')
 plt.style.use('default')
 
 refresh_rate = 200
 
+class DirIndicator:
+    """
+    Class to create widget displaying the current spec_dir in the DOAS window
+    """
+    def __init__(self, main_gui, frame, doas_worker) -> None:
+        """ Initialise and build widget"""
+        self.doas_worker = doas_worker
+        self.doas_worker.dir_info = self
+
+        self.padx = 5
+        self.pady = 5
+
+        self.label = ttk.LabelFrame(frame, text='DOAS directory:',)
+        self.label.grid(row=0, column=1, sticky='nsew', pady=self.pady)
+        self.img_dir_lab = ttk.Label(self.label, text=self.doas_worker.spec_dir, font=main_gui.main_font)
+        self.img_dir_lab.grid(row=0, column=0, sticky='nw', padx=self.padx, pady=self.pady)
+
+    def update_dir(self):
+        """ Update widget with current spec_dir"""
+        self.img_dir_lab.configure(text=self.doas_worker.spec_dir)
 
 class SpectraPlot:
     """
@@ -698,6 +719,8 @@ class CalibrationWindow:
     """
     def __init__(self, fig_setts=GUISettings(), gui=None):
         self.gui = None
+        self.in_frame = False
+        self.frame = None
 
         # Setup reference spectra objects
         self.ref_frame = dict()
@@ -712,8 +735,14 @@ class CalibrationWindow:
         self.gui = gui
 
     def generate_frame(self):
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
         self.frame = tk.Toplevel()
+        self.in_frame = True
         self.frame.title('DOAS calibration')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
         self.frame.geometry('{}x{}+{}+{}'.format(int(self.frame.winfo_screenwidth() / 1.2),
                                                  int(self.frame.winfo_screenheight() / 1.2),
                                                  int(self.frame.winfo_screenwidth() / 10),
@@ -738,6 +767,12 @@ class CalibrationWindow:
         # ILS frame
         self.ils_frame.generate_frame(self.frame)
         self.ils_frame.frame.pack(side=tk.LEFT, anchor='nw')
+
+    def close_frame(self):
+        """Correctly close frame and set necessary flags"""
+        self.frame.destroy()
+        self.in_frame = False
+        self.ils_frame.in_frame = False
 
 
 class RefPlot:
@@ -830,11 +865,7 @@ class RefPlot:
 
     @property
     def ref_spec_path_short(self):
-        try:
-            return_str = '...' + self.ref_spec_path[-(self.max_str_len-3):]
-        except IndexError:
-            return_str = self.ref_spec_path
-        return return_str
+        return truncate_path(self.ref_spec_path, self.max_str_len)
 
     def choose_ref_spec(self):
         """Load reference spectrum"""
@@ -874,10 +905,7 @@ class RefPlot:
             self.ax_SO2.set_ylim([lim_0, lim_1])
         else:
             self.ax_SO2.set_ylim([0, np.amax(self.doas_worker.ref_spec[self.species][:, 1])])
-        if len(self.ref_spec_path) > 53:
-            ref_spec_abbr = '...' + self.ref_spec_path[-50:]
-        else:
-            ref_spec_abbr = self.ref_spec_path
+        ref_spec_abbr = truncate_path(self.ref_spec_path, 50)
         self.ax_SO2.set_title('Reference Spectrum: %s' % ref_spec_abbr)
         self.refCanvas.draw()
 
@@ -1133,10 +1161,9 @@ class ILSFrame:
         """Updates ILS label"""
         # Update label in widget
         ILS_filename = self.ILS_path.split('/')[-1].split('\\')[-1]
-        if len(ILS_filename) > self.str_len_max:
-            self.ILS_load_label.configure(text='...' + ILS_filename[-(self.str_len_max - 3):])
-        else:
-            self.ILS_load_label.configure(text=ILS_filename)
+
+        ILS_filename_short = truncate_path(ILS_filename, self.str_len_max)
+        self.ILS_load_label.configure(text=ILS_filename_short)
 
     def load_ILS(self):
         """Loads ILS from text file"""

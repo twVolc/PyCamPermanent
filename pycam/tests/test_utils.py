@@ -1,15 +1,27 @@
-# -*- coding: utf-8 -*-
+import pytest
+from pycam.utils import truncate_path
 
-"""
-pycam test module for utils
-"""
+normal_test_data = [
+    (None, 10, ''),
+    ('', 10, ''),
+    ("tiny path", 10, "tiny path"),
+    ("this is a short path", 10, "...short path"),
+    ("this is a short path", 25, "this is a short path"),
+    ("this is a much, much longer path", 25, "... a much, much longer path"),
+    ("this is a much, much longer path", 40, "this is a much, much longer path"),
+]
 
-from pycam.utils import read_file
-from pycam.setupclasses import FileLocator, ConfigInfo
+@pytest.mark.parametrize("path, max_length, expected", normal_test_data)
+def test_truncate_path_normal(path, max_length, expected):
+    result = truncate_path(path, max_length)
+    assert result == expected
 
-class TestUtils:
-    def test_read_config(self):
-        """Tests reading of config file using read_file"""
-        config = read_file('..\\conf\\config.txt')
+error_test_data = [
+    ("normal string", 0, "max_length should be greater than 0"),
+    ("another normal string", -1, "max_length should be greater than 0"),
+]
 
-        print(config[ConfigInfo.host_ip])
+@pytest.mark.parametrize("path, max_length, msg", error_test_data)
+def test_truncate_path_error(path, max_length, msg):
+    with pytest.raises(ValueError, match=msg):
+        truncate_path(path, max_length)

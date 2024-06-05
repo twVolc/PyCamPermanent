@@ -11,8 +11,8 @@ from .utils import check_filename
 
 
 pycam_details = {
-    'version': '1.0.0',
-    'date': '23 February 2022'
+    'version': '2024.06 Erebus',
+    'date': '6 June 2024'
     }
 
 

@@ -8,7 +8,7 @@ from .misc import Indicator, ScrollWindow, MessageWindow
 import pycam.gui.cfg as cfg
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame
-from pycam.gui.figures_doas import SpectraPlot, DOASPlot, CDSeries
+from pycam.gui.figures_doas import SpectraPlot, DOASPlot, CDSeries, DirIndicator
 from pycam.gui.figures_analysis import ImageSO2, SequenceInfo, TimeSeriesFigure
 
 import tkinter as tk
@@ -92,11 +92,12 @@ class SpecWind:
         self.acq_settings = SpectrometerSettingsWidget(self.gui, self.frame)
         self.acq_settings.frame.grid(row=1, column=0, sticky='nw', padx=self.padx, pady=self.pady)
 
+        self.dir_indicator = DirIndicator(self.gui, self.frame, doas_worker)
         # ---------------------------------------
         # Plots
         # ---------------------------------------
         self.scroll_frame = ttk.Frame(self.frame)
-        self.scroll_frame.grid(row=0, column=1, rowspan=3, sticky='nsew')
+        self.scroll_frame.grid(row=1, column=1, rowspan=3, sticky='nsew')
         self.frame.columnconfigure(1, weight=1)
         self.frame.rowconfigure(1, weight=1)
 

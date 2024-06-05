@@ -175,6 +175,7 @@ class IFitWorker:
         self.fig_spec = None            # pycam.doas.SpectraPlot object
         self.fig_doas = None            # pycam.doas.DOASPlot object
         self.fig_series = None          # pycam.doas.CDSeries object
+        self.dir_info = None            
 
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
@@ -262,6 +263,7 @@ class IFitWorker:
 
         # Reset results object
         self.reset_doas_results()
+        self.reset_stray_pix()
 
         # Reset last LDF correction
         self.spec_time_last_ld = None
@@ -650,6 +652,8 @@ class IFitWorker:
         # Update first_spec flag TODO possibly not used in DOASWorker, check
         self.first_spec = True
 
+        self.reset_stray_pix()
+
         # Get list of all files in directory
         self.spec_dict = self.get_spec_list()
 
@@ -673,11 +677,19 @@ class IFitWorker:
             # Try to process first spectrum
             self.process_doas(plot=plot)
 
+        # Only update dir_info widget if it has been initialised
+        if self.dir_info is not None:
+            self.dir_info.update_dir()
+
         # Update plots if requested
         if plot:
             self.fig_spec.update_clear()
             self.fig_spec.update_dark()
             self.fig_spec.update_plume()
+
+    def reset_stray_pix(self):
+        self._start_stray_pix = None
+        self._end_stray_pix = None
 
     def get_spec_list(self):
         """

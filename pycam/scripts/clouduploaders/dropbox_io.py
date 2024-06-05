@@ -256,7 +256,7 @@ class DropboxIO:
                         else:
                             print('Unrecognised file in dropbox folder: {}'.format(entry.name))
                             continue
-                        save_path = self.save_folder + date_dir
+                        save_path = os.path.join(self.save_folder, date_dir)
 
                         if not os.path.exists(save_path):
                             os.mkdir(save_path)
