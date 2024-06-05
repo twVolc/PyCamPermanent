@@ -119,7 +119,7 @@ class PyMenu:
         # Data transfer
         self.submenu_data = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Data Transfer', menu=self.submenu_data)
-        self.submenu_data.add_command(label='Start transfer', command=self.ftp_transfer.start_transfer)
+        # self.submenu_data.add_command(label='Start transfer', command=self.ftp_transfer.start_transfer)
         self.submenu_data.add_command(label='Start transfer (new images only)',
                                       command=lambda: self.ftp_transfer.start_transfer(new_only=True))
         self.submenu_data.add_command(label='Stop transfer', command=self.ftp_transfer.stop_transfer)
@@ -129,9 +129,9 @@ class PyMenu:
         self.submenu_data.add_separator()
         self.submenu_data.add_command(label='Mount SSD', command=lambda: self.mount_ssd(cfg.ftp_client.host_ip))
         self.submenu_data.add_command(label='Unmount SSD', command=lambda: self.unmount_ssd(cfg.ftp_client.host_ip))
-        self.submenu_data.add_command(label='SSD full download', command=cfg.ftp_client.full_ssd_download)
-        self.submenu_data.add_command(label='Clear SSD data', command=lambda: self.clear_ssd(cfg.ftp_client.host_ip))
-        self.submenu_data.add_command(label='Free space on SSD', command=lambda: self.free_ssd(cfg.ftp_client.host_ip))
+        # self.submenu_data.add_command(label='SSD full download', command=cfg.ftp_client.full_ssd_download)
+        # self.submenu_data.add_command(label='Clear SSD data', command=lambda: self.clear_ssd(cfg.ftp_client.host_ip))
+        # self.submenu_data.add_command(label='Free space on SSD', command=lambda: self.free_ssd(cfg.ftp_client.host_ip))
         self.menus[tab].add_separator()
 
         # Manual acquisition
@@ -155,27 +155,45 @@ class PyMenu:
 
         # Geometry setup
         self.menus[tab].add_command(label='Geometry configuration', command=geom_settings.generate_frame)
-        # -------------------------------------------------------------------------------------------------
 
-        # File tab
-        tab = 'Processing'
+        # ---------------------------------------------------------------------------------------------------------
+
+        # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
+        tab = 'View'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
-        # Processing submenu
-        self.submenu_proc = tk.Menu(self.frame, tearoff=0)
-        self.menus[tab].add_cascade(label='Post-Processing', menu=self.submenu_proc)
-        self.submenu_proc.add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
-        self.submenu_proc.add_separator()
-        self.submenu_proc.add_command(label='Load DOAS results', command=doas_worker.load_results)
-        self.submenu_proc.add_command(label='Load DOAS directory', command=doas_worker.load_dir)
-        self.submenu_proc.add_command(label='Process DOAS', command=self.thread_doas_processing)
-        self.submenu_proc.add_separator()
-        self.submenu_proc.add_command(label='Run', command=pyplis_worker.process_sequence)
-        self.submenu_proc.add_command(label='Stop processing', command=self.stop_sequence_processing)
+        self.init_var = tk.IntVar()
+        self.init_var.set(1)
+        self.menus[tab].add_radiobutton(label='Camera window', value=1, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(0))
+        self.menus[tab].add_radiobutton(label='DOAS window', value=0, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(1))
+        self.menus[tab].add_radiobutton(label='Analysis window', value=2, var=self.init_var,
+                                        command=lambda: self.parent.windows.select(2))
 
+        # -------------------------------------------------------------------------------------------------
+
+        # Processing Settings tab
+        tab = 'Processing Settings'
+        keys.append(tab)
+        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+
+        self.menus[tab].add_command(label='Setup paths', command=process_settings.generate_frame)
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
-        self.menus[tab].add_command(label='Settings', command=process_settings.generate_frame)
+        self.menus[tab].add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
+        self.menus[tab].add_command(label='Cross-correlation', command=cross_correlation.generate_frame)
+        self.menus[tab].add_command(label='Light dilution settings', command=light_dilution.generate_frame)
+        self.menus[tab].add_separator()
+
+        # Calibration cascade
+        self.submenu_cal = tk.Menu(self.frame, tearoff=0)
+        self.submenu_cal.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
+        self.submenu_cal.add_command(label='Cell calibration',
+                                     command=lambda: cell_calib.update_plot(generate_frame=True))
+        self.submenu_cal.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
+        self.menus[tab].add_cascade(label="Calibration", menu=self.submenu_cal)
+
         self.menus[tab].add_separator()
         self.menus[tab].add_command(label='Unpack data', command=self.unpack_data)
         self.menus[tab].add_separator()
@@ -185,36 +203,22 @@ class PyMenu:
 
         # ---------------------------------------------------------------------------------------------------------
 
-        # View tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
-        tab = 'View'
+        # Post-processing tab - can be used for toggling between views (e.g., camera frame, DOAS frame, processing frame)
+        tab = 'Post Processing'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
 
-        # More windows cascade
-        self.submenu_windows = tk.Menu(self.frame, tearoff=0)
-        self.submenu_windows.add_command(label="DOAS calibration", command=calibration_wind.generate_frame)
-        self.submenu_windows.add_command(label='Cell calibration',
-                                         command=lambda: cell_calib.update_plot(generate_frame=True))
-        self.submenu_windows.add_command(label="Camera-DOAS calibration", command=doas_fov.generate_frame)
-        self.submenu_windows.add_separator()
-        self.submenu_windows.add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
-        self.submenu_windows.add_command(label='Cross-correlation plot', command=cross_correlation.generate_frame)
-        self.submenu_windows.add_command(label='Light dilution settings', command=light_dilution.generate_frame)
-        self.menus[tab].add_cascade(label="More windows", menu=self.submenu_windows)
-
+        self.menus[tab].add_command(label='Load sequence', command=lambda: pyplis_worker.load_sequence(plot_bg=False))
         self.menus[tab].add_separator()
-        self.init_var = tk.IntVar()
-        self.init_var.set(1)
-        self.menus[tab].add_radiobutton(label='Camera window', value=1, var=self.init_var,
-                                        command=lambda: self.parent.windows.select(0))
-        self.menus[tab].add_radiobutton(label='DOAS window',  value=0, var=self.init_var,
-                                        command=lambda: self.parent.windows.select(1))
-        self.menus[tab].add_radiobutton(label='Analysis window',  value=2, var=self.init_var,
-                                        command=lambda: self.parent.windows.select(2))
+        self.menus[tab].add_command(label='Load DOAS results', command=doas_worker.load_results)
+        self.menus[tab].add_command(label='Load DOAS directory', command=doas_worker.load_dir)
+        self.menus[tab].add_command(label='Process DOAS', command=self.thread_doas_processing)
         self.menus[tab].add_separator()
-
+        self.menus[tab].add_command(label='Run', command=pyplis_worker.process_sequence)
+        self.menus[tab].add_command(label='Stop processing', command=self.stop_sequence_processing)
 
         # -------------------------------------------------------------------------------------------------------
+
         # Help tab
         tab = 'Help'
         keys.append(tab)

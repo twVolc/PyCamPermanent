@@ -19,7 +19,11 @@ import socket
 class About:
     """Class to create a tkinter frame containing the details of PyCam"""
     def __init__(self):
-        info = ['PyCam v{}'.format(pycam_details['version']), 'Built on {}'.format(pycam_details['date'])]
+        info = ['PyCam v{}'.format(pycam_details['version']),
+                'Built on {}'.format(pycam_details['date']),
+                '\nSubmit issues to: \nhttps://github.com/twVolc/PyCamPermanent/',
+                '\nGeneral information: \nhttps://www.volcanotech.org/'
+                ]
 
         messagebox.showinfo('About Pycam', "\n".join(info))
 
