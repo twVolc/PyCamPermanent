@@ -2,6 +2,8 @@ import pytest
 from pycam.utils import truncate_path
 
 normal_test_data = [
+    (None, 10, ''),
+    ('', 10, ''),
     ("tiny path", 10, "tiny path"),
     ("this is a short path", 10, "...short path"),
     ("this is a short path", 25, "this is a short path"),
@@ -15,7 +17,6 @@ def test_truncate_path_normal(path, max_length, expected):
     assert result == expected
 
 error_test_data = [
-    ("", 20, "path length should be greater than 0"),
     ("normal string", 0, "max_length should be greater than 0"),
     ("another normal string", -1, "max_length should be greater than 0"),
 ]
