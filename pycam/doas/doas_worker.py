@@ -72,7 +72,6 @@ class DOASWorker(SpecWorker):
         data = np.loadtxt(ils_path)
         self.ILS_path = ils_path
         self.ILS_wavelengths, self.ILS = data.T
-    # -------------------------------------------
 
     def load_ref_spec(self, pathname, species):
         """Load raw reference spectrum"""

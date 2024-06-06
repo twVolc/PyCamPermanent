@@ -153,27 +153,6 @@ class IFitWorker(SpecWorker):
         self.ldf_best = np.nan      # Best estimate of light dilution factor
         self._LDF = 0               # User-defined LDF to process ifit data with
 
-    def reset_self(self, reset_dark=True):
-        """Some resetting of object, before processing occurs"""
-        # Reset dark dictionary
-        if reset_dark:
-            self.dark_dict = {}
-
-        # Reset results object
-        self.reset_doas_results()
-        self.reset_stray_pix()
-
-        # Reset last LDF correction
-        self.spec_time_last_ld = None
-
-        # Clear stop queue so old requests aren't caught
-        with self.q_stop.mutex:
-            self.q_stop.queue.clear()
-
-        # Clear images queue
-        with self.q_spec.mutex:
-            self.q_spec.queue.clear()
-
     @property
     def plume_spec_shift(self):
         """Shifted plume spectrum (to account for issues with spectrometer calibration"""
@@ -202,7 +181,26 @@ class IFitWorker(SpecWorker):
         if value:
             self.LDF = 0.0
 
-    # -------------------------------------------
+    def reset_self(self, reset_dark=True):
+        """Some resetting of object, before processing occurs"""
+        # Reset dark dictionary
+        if reset_dark:
+            self.dark_dict = {}
+
+        # Reset results object
+        self.reset_doas_results()
+        self.reset_stray_pix()
+
+        # Reset last LDF correction
+        self.spec_time_last_ld = None
+
+        # Clear stop queue so old requests aren't caught
+        with self.q_stop.mutex:
+            self.q_stop.queue.clear()
+
+        # Clear images queue
+        with self.q_spec.mutex:
+            self.q_spec.queue.clear()
 
     def get_spec_time(self, filename, adj_time_zone=True):
         """
@@ -1419,8 +1417,6 @@ class IFitWorker(SpecWorker):
 
         self.ldf_best = ldf
         return fit0, fit1
-    # ==================================================================================================================
-
 
 if __name__ == '__main__':
     # Calibration paths
