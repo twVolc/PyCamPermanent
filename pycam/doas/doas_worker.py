@@ -17,7 +17,7 @@ from tkinter import filedialog
 from pycam.setupclasses import SpecSpecs
 from pycam.io_py import load_spectrum
 from pycam.directory_watcher import create_dir_watcher
-from pycam.doas.spec_worker import SpecWorker
+from pycam.doas.spec_worker import SpecWorker, SpectraError
 from pydoas.analysis import DoasResults
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
@@ -633,13 +633,6 @@ class DOASWorker(SpecWorker):
         """Handles new spectra passed from watcher"""
         # Pass path to queue
         self.q_spec.put(pathname)
-
-
-class SpectraError(Exception):
-    """
-    Error raised if correct spectra aren't present for processing
-    """
-    pass
 
 
 class SpectrometerCal:

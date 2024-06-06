@@ -1,3 +1,5 @@
+# Parent class for IfitWorker and DoasWorker
+
 import queue
 import datetime
 import os
@@ -399,3 +401,9 @@ class SpecWorker:
         self.process_thread = threading.Thread(target=self._process_loop, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
+
+class SpectraError(Exception):
+    """
+    Error raised if correct spectra aren't present for processing
+    """
+    pass

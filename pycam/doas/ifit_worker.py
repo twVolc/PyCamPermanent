@@ -24,7 +24,7 @@ from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs, FileLocator
 from pycam.io_py import load_spectrum
 from pycam.ifit_ld import lookup
-from pycam.doas.spec_worker import SpecWorker
+from pycam.doas.spec_worker import SpecWorker, SpectraError
 from ifit.parameters import Parameters
 from ifit.spectral_analysis import Analyser
 from ifit.light_dilution import generate_ld_curves
@@ -1420,13 +1420,6 @@ class IFitWorker(SpecWorker):
         self.ldf_best = ldf
         return fit0, fit1
     # ==================================================================================================================
-
-
-class SpectraError(Exception):
-    """
-    Error raised if correct spectra aren't present for processing
-    """
-    pass
 
 
 if __name__ == '__main__':
