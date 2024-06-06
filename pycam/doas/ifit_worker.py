@@ -7,43 +7,28 @@ critical for getting the gradient of AA vs ppm.m in camera calibration.
 This work may also allow light dilution correction following Varnam 2021
 """
 
+import os
 import time
 import queue
-import numpy as np
 import datetime
-import threading
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from itertools import compress
 from tkinter import filedialog
-from astropy.convolution import convolve
 from scipy.interpolate import griddata
-import matplotlib.pyplot as plt
 from matplotlib.pyplot import GridSpec
-import sys
-import os
-import pandas as pd
 from shapely.geometry import Point, Polygon     # For Varnam light dilution
 from shapely.strtree  import STRtree
-# Make it possible to import iFit by updating path
-# dir_path = os.path.dirname(os.path.realpath(__file__))
-# dir_path = os.path.split(dir_path)[0]
-# sys.path.append(os.path.join(dir_path, 'ifit'))
-
 from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs, FileLocator
-from pycam.io_py import load_spectrum, spec_txt_2_npy
+from pycam.io_py import load_spectrum
+from pycam.ifit_ld import lookup
+from pycam.doas.spec_worker import SpecWorker
 from ifit.parameters import Parameters
 from ifit.spectral_analysis import Analyser
 from ifit.light_dilution import generate_ld_curves
-from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
-from pycam.doas.spec_worker import SpecWorker
-
-import shapely
-
-try:
-    from scipy.constants import N_A
-except BaseException:
-    N_A = 6.022140857e+23
 
 
 class IFitWorker(SpecWorker):
@@ -226,14 +211,7 @@ class IFitWorker(SpecWorker):
         :param adj_time_zone: bool      If true, the file time is adjusted for the timezone
         :return spec_time:
         """
-        # Make sure filename only contains file and not larger pathname
-        filename = filename.split('\\')[-1].split('/')[-1]
-
-        # Extract time string from filename
-        time_str = filename.split('_')[self.spec_specs.file_date_loc]
-
-        # Turn time string into datetime object
-        spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
+        spec_time = super().get_spec_time(filename)
 
         # Adjust for time zone
         if adj_time_zone:
@@ -254,34 +232,6 @@ class IFitWorker(SpecWorker):
         spec_type = filename.split('_')[self.spec_specs.file_type_loc]
 
         return spec_type
-
-    def dark_corr_spectra(self):
-        """Subtract dark spectrum from spectra"""
-        if not self.dark_corrected_clear and self.clear_spec_raw is not None:
-            self.clear_spec_corr = self.clear_spec_raw - self.dark_spec
-            self.clear_spec_corr[self.clear_spec_corr < 0] = 0
-            self.dark_corrected_clear = True
-
-        if not self.dark_corrected_plume:
-            self.plume_spec_corr = self.plume_spec_raw - self.dark_spec
-            self.plume_spec_corr[self.plume_spec_corr < 0] = 0
-            self.dark_corrected_plume = True
-
-    def stray_corr_spectra(self):
-        """Correct spectra for stray light - spectra are assumed to be dark-corrected prior to running this function"""
-        # Set the range of stray pixels
-        stray_range = np.arange(self._start_stray_pix, self._end_stray_pix + 1)
-
-        if not self.stray_corrected_clear and self.clear_spec_corr is not None:
-            self.clear_spec_corr = self.clear_spec_corr - np.mean(self.clear_spec_corr[stray_range])
-            self.clear_spec_corr[self.clear_spec_corr < 0] = 0
-            self.stray_corrected_clear = True
-
-        # Correct plume spectra (assumed to already be dark subtracted)
-        if not self.stray_corrected_plume:
-            self.plume_spec_corr = self.plume_spec_corr - np.mean(self.plume_spec_corr[stray_range])
-            self.plume_spec_corr[self.plume_spec_corr < 0] = 0
-            self.stray_corrected_plume = True
 
     def load_ref_spec(self, pathname, species, value=None, update=True):
         """
@@ -314,78 +264,6 @@ class IFitWorker(SpecWorker):
 
         # Assume we have loaded a new spectrum, so set this to False - ILS has not been convolved yet
         self.ref_convolved = False
-
-    def get_ref_spectrum(self):
-        """Load in reference spectrum"""
-        self.wavelengths = None  # Placeholder for wavelengths attribute which contains all wavelengths of spectra
-        #
-        # --------------------------------
-
-    def conv_ref_spec(self):
-        """
-        Convolves reference spectrum with instument line shape (ILS)
-        after first interpolating to spectrometer wavelengths
-        """
-        if self.wavelengths is None:
-            print('No wavelength data to perform convolution')
-            return
-
-        # Need an odd sized array for convolution, so if even we omit the last pixel
-        if self.ILS.size % 2 == 0:
-            self.ILS = self.ILS[:-1]
-
-        # Loop through all reference species we have loaded and resample their data to the spectrometers wavelengths
-        for f in self.ref_spec_used:
-            self.ref_spec_interp[f] = np.interp(self.wavelengths, self.ref_spec[f][:, 0], self.ref_spec[f][:, 1])
-            self.ref_spec_conv[f] = convolve(self.ref_spec_interp[f], self.ILS)
-            self.ref_spec_ppmm[f] = self.ref_spec_conv[f] * self.ppmm_conversion
-
-        # Update bool as we have now performed this process
-        self.ref_convolved = True
-
-    def load_calibration_spectrum(self, pathname):
-        """Load Calibation image for spectrometer"""
-        pass
-
-    def stretch_spectrum(self, ref_key):
-        """Stretch/squeeze reference spectrum to improve fit"""
-        if self.stretch == 0:
-            # If no stretch, extract reference spectrum using fit window and return
-            return self.ref_spec_filter[ref_key][self.fit_window_ref]
-        else:
-            stretch_inc = (self.stretch * self.stretch_adjuster) / self.stretch_resample  # Stretch increment for resampled spectrum
-
-            if self.stretch < 0:
-                # Generate the fit window for extraction
-                # Must be larger than fit window as a squeeze requires pulling in data outside of the fit window
-                if self.fit_window_ref[-1] < (len(self.wavelengths) - 50):
-                    extract_window = np.arange(self.fit_window_ref[0], self.fit_window_ref[-1] + 50)
-                else:
-                    extract_window = np.arange(self.fit_window_ref[0], len(self.wavelengths))
-            else:
-                extract_window = self.fit_window_ref
-
-            wavelengths = self.wavelengths[extract_window]
-            values = self.ref_spec_filter[ref_key][extract_window]
-
-            # Generate new arrays with 'stretch_resample' more data points
-            wavelengths_resampled = np.linspace(wavelengths[0], wavelengths[-1], len(wavelengths)*self.stretch_resample)
-            values_resample = np.interp(wavelengths_resampled, wavelengths, values)
-
-            num_pts = len(wavelengths_resampled)
-            wavelengths_stretch = np.zeros(num_pts)
-
-            # Stretch wavelengths
-            for i in range(num_pts):
-                wavelengths_stretch[i] = wavelengths_resampled[i] + (i * stretch_inc)
-
-            values_stretch = np.interp(self.wavelengths[self.fit_window_ref], wavelengths_stretch, values_resample)
-
-            return values_stretch
-
-    def load_spec(self):
-        """Load spectrum"""
-        pass
 
     def load_dark_spec(self, dark_spec_path):
         """Loads dark spectrum"""
@@ -487,33 +365,6 @@ class IFitWorker(SpecWorker):
             self.fig_spec.update_dark()
             self.fig_spec.update_plume()
 
-    def reset_stray_pix(self):
-        self._start_stray_pix = None
-        self._end_stray_pix = None
-
-    def get_spec_list(self):
-        """
-        Gets list of spectra files from current spec_dir
-        Assumes all .npy files in the directory are spectra...
-        :returns: sd    dict    Dictionary containing all filenames
-        """
-        # Setup empty dictionary sd
-        sd = {}
-
-        # Get all files into associated list/dictionary entry
-        sd['all'] = [f for f in os.listdir(self.spec_dir) if self.spec_specs.file_ext in f]
-        sd['all'].sort()
-        sd['plume'] = [f for f in sd['all']
-                       if self.spec_specs.file_type['meas'] + self.spec_specs.file_ext in f]
-        sd['plume'].sort()
-        sd['clear'] = [f for f in sd['all']
-                       if self.spec_specs.file_type['clear'] + self.spec_specs.file_ext in f]
-        sd['clear'].sort()
-        sd['dark'] = [f for f in sd['all']
-                      if self.spec_specs.file_type['dark'] + self.spec_specs.file_ext in f]
-        sd['dark'].sort()
-        return sd
-
     def find_dark_spectrum(self, spec_dir, ss):
         """
         Searches for suitable dark spectrum in designated directory by finding one with the same shutter speed as
@@ -555,37 +406,6 @@ class IFitWorker(SpecWorker):
         self.dark_dict[ss] = dark_spec
 
         return dark_spec
-
-    def save_dark(self, filename):
-        """Save dark spectrum"""
-        if self.wavelengths is None or self.dark_spec is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.dark_spec):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.dark_spec]),
-                   header='Dark spectrum\nWavelength [nm]\tIntensity [DN]')
-
-    def save_clear_raw(self, filename):
-        """Save clear spectrum"""
-        if self.wavelengths is None or self.clear_spec_raw is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.clear_spec_raw):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.clear_spec_raw]),
-                   header='Raw clear (Fraunhofer) spectrum\n'
-                          '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
-
-    def save_plume_raw(self, filename):
-        if self.wavelengths is None or self.plume_spec_raw is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.plume_spec_raw):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.plume_spec_raw]),
-                   header='Raw in-plume spectrum\n'
-                          '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
     def process_doas(self, plot=False):
         """Handles the order of DOAS processing"""
@@ -942,16 +762,6 @@ class IFitWorker(SpecWorker):
 
         # Begin processing
         self._process_loop(continuous_save=False)
-
-    def start_processing_thread(self):
-        """Public access thread starter for _processing"""
-        # Reset self
-        self.reset_self()
-
-        self.processing_in_thread = True
-        self.process_thread = threading.Thread(target=self._process_loop, args=())
-        self.process_thread.daemon = True
-        self.process_thread.start()
 
     def _process_loop(self, continuous_save=True):
         """
