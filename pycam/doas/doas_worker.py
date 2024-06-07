@@ -512,6 +512,8 @@ class DOASWorker(SpecWorker):
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
         self.q_spec.put('exit')
 
+        self.save_doas_params()
+
         # Begin processing
         self._process_loop()
 

@@ -683,14 +683,7 @@ class IFitWorker(SpecWorker):
         # self.results[idx_start:idx_end].to_csv(pathname)
         df.to_csv(pathname)
         print('DOAS results saved: {}'.format(pathname))
-        pathname = pathname.replace('.csv', '.txt')
-        with open(pathname, 'w') as f:
-            f.write('DOAS processing parameters\n')
-            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
-            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
-            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
-            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
-
+ 
     def load_results(self, filename=None, plot=True):
         """
         Loads DOAS results from csv file
@@ -758,6 +751,8 @@ class IFitWorker(SpecWorker):
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
         self.q_spec.put(self.STOP_FLAG)
 
+        self.save_doas_params()
+
         # Begin processing
         self._process_loop(continuous_save=False)
 
@@ -791,6 +786,7 @@ class IFitWorker(SpecWorker):
                 # Update plot at end if we haven't been updating it as we go - this should speed up processing as plotting takes a long time
                 if self.fig_series is not None and not self.plot_iter:
                     self.fig_series.update_plot()
+                
                 if continuous_save:
                     self.save_results(end_time=self.spec_time)
                 else:

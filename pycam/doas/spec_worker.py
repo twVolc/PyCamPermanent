@@ -115,6 +115,9 @@ class SpecWorker:
         self.fig_doas = None            # pycam.doas.DOASPlot object
         self.dir_info = None
 
+        self.corr_light_dilution = None
+        self.recal_ld_mins = None
+
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
         self.save_date_fmt = '%Y-%m-%dT%H%M%S'
@@ -401,6 +404,31 @@ class SpecWorker:
         self.process_thread = threading.Thread(target=self._process_loop, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
+
+    def save_doas_params(self, pathname=None):
+        """Saves current doas processing settings"""
+        # Generate pathname
+        if pathname is None:
+            # Generate output directory
+            subdir = 'Processed_spec_{}'
+            process_time = datetime.datetime.now().strftime(self.save_date_fmt)
+            # Save this as an attribute so we only have to generate it once
+            self.doas_outpath = os.path.join(self.spec_dir, subdir.format(process_time))
+            os.mkdir(self.doas_outpath)
+
+            # Generate full filepath
+            filename = 'doas_processing_params.txt'
+            filepath = os.path.join(self.doas_outpath, filename)
+
+        with open(filepath, 'w') as f:
+            f.write('DOAS processing parameters\n')
+            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
+            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
+            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
+            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
+
+        print('DOAS processing parameters saved: {}'.format(filepath))
+
 
 class SpectraError(Exception):
     """
