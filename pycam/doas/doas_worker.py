@@ -459,29 +459,6 @@ class DOASWorker(SpecWorker):
         doas_results = DoasResults(column_densities, index=times, fit_errs=stds, species_id=species)
         return doas_results
 
-    def save_results(self, pathname=None, start_time=None, end_time=None):
-        """Saves doas results"""
-        # Extract data from specific index if we are given a start time
-        if start_time is not None:
-            idx_start = np.argmin(self.results.index - start_time)
-        else:
-            idx_start = 0
-
-        if end_time is not None:
-            idx_end = np.argmin(self.results.index - end_time)
-        else:
-            idx_end = -1
-
-        # Generate pathname
-        if pathname is None:
-            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
-            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt)
-            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
-            pathname = os.path.join(self.spec_dir, filename)
-
-        self.results[idx_start:idx_end].to_csv(pathname)
-        print('DOAS results saved: {}'.format(pathname))
-
     def start_processing_threadless(self):
         """
         Process spectra already in a directory, without entering a thread - this means that the _process_loop

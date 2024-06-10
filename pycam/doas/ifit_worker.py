@@ -631,58 +631,6 @@ class IFitWorker(SpecWorker):
         else:
             doas_results.ldfs = [np.nan] * len(stds)
         return doas_results
-
-    def save_results(self, pathname=None, start_time=None, end_time=None, save_all=False):
-        """Saves doas results"""
-        if len(self.results) < 1:
-            print('No DOAS results to save')
-            return
-
-        # Extract data from specific index if we are given a start time
-        if start_time is not None:
-            idx_start = np.argmin(np.abs(self.results.index - start_time))
-        else:
-            if save_all:
-                idx_start = 0
-            else:
-                # Go back to the last hour (as data will already be saved up to there)
-                current_time = self.results.index[-1]
-                if current_time.minute == 0 and current_time.second == 0:
-                    new_hour = current_time.hour - 1
-                    start_time == current_time.replace(hour=new_hour)
-                else:
-                    start_time = current_time.replace(minute=0, second=0)
-                idx_start = np.argmin(np.abs(self.results.index - start_time))
-
-        if end_time is not None:
-            idx_end = np.argmin(np.abs(self.results.index - end_time)) + 1
-        else:
-            idx_end = None      # -1 doesn't work as it cuts the last item out - use None to go right to end of list
-
-        # Generate pathname
-        if pathname is None:
-            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
-            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
-            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
-
-            subdir = 'Processed_{}_spec'
-            i = 1
-            while os.path.exists(os.path.join(self.spec_dir, subdir.format(i))):
-                i += 1
-            pathname = os.path.join(self.spec_dir, subdir.format(i))
-            os.mkdir(pathname)
-            pathname = os.path.join(pathname, filename)
-
-        # Create full database to save
-        frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
-                 'Column density': pd.Series(self.results.values[idx_start:idx_end]),
-                 'CD error': pd.Series(self.results.fit_errs[idx_start:idx_end]),
-                 'LDF': pd.Series(self.results.ldfs[idx_start:idx_end])}
-        df = pd.DataFrame(frame)
-
-        # self.results[idx_start:idx_end].to_csv(pathname)
-        df.to_csv(pathname)
-        print('DOAS results saved: {}'.format(pathname))
  
     def load_results(self, filename=None, plot=True):
         """
