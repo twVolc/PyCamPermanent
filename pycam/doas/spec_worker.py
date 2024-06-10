@@ -122,6 +122,7 @@ class SpecWorker:
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
         self.save_date_fmt = '%Y-%m-%dT%H%M%S'
         self.save_freq = [0]
+        self.doas_outdir = None        # Output directory for results
 
     @property
     def start_stray_wave(self):
@@ -413,12 +414,12 @@ class SpecWorker:
             subdir = 'Processed_spec_{}'
             process_time = datetime.datetime.now().strftime(self.save_date_fmt)
             # Save this as an attribute so we only have to generate it once
-            self.doas_outpath = os.path.join(self.spec_dir, subdir.format(process_time))
-            os.mkdir(self.doas_outpath)
+            self.doas_outdir = os.path.join(self.spec_dir, subdir.format(process_time))
+            os.mkdir(self.doas_outdir)
 
             # Generate full filepath
             filename = 'doas_processing_params.txt'
-            filepath = os.path.join(self.doas_outpath, filename)
+            filepath = os.path.join(self.doas_outdir, filename)
 
         with open(filepath, 'w') as f:
             f.write('DOAS processing parameters\n')
