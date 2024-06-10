@@ -544,7 +544,7 @@ class IFitWorker(SpecWorker):
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
         # Save results
-        self.save_results(save_all=True)
+        self.save_results()
 
     def reset_doas_results(self):
         """Makes empty doas results object"""
@@ -716,6 +716,7 @@ class IFitWorker(SpecWorker):
 
         self.save_doas_params()
 
+        header = True
 
         while True:
             # See if we are wanting an early exit
@@ -737,9 +738,10 @@ class IFitWorker(SpecWorker):
                     self.fig_series.update_plot()
                 
                 if continuous_save:
-                    self.save_results(end_time=self.spec_time)
+                    self.save_results(save_last=True, header = header)
                 else:
-                    self.save_results(save_all=True)
+                    self.save_results()
+                
                 break
 
             spec_type = self.get_spec_type(pathname)
@@ -798,8 +800,9 @@ class IFitWorker(SpecWorker):
                     self.fig_series.update_plot()
 
                 # Save all results if we are on the 0 or 30th minute of the hour
-                if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
-                    self.save_results(end_time=self.spec_time)
+                if continuous_save:
+                    self.save_results(save_last = True, header = header)
+                    header = False
 
                 #print('IFit worker: Processed file: {}'.format(filename))
 
