@@ -751,8 +751,6 @@ class IFitWorker(SpecWorker):
         # Add the exit flag at the end, to ensure that the process_loop doesn't get stuck waiting on the queue forever
         self.q_spec.put(self.STOP_FLAG)
 
-        self.save_doas_params()
-
         # Begin processing
         self._process_loop(continuous_save=False)
 
@@ -767,6 +765,9 @@ class IFitWorker(SpecWorker):
         print('IFit worker: Entering new processing loop')
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
         ss_str = self.spec_specs.file_ss.replace('{}', '')
+
+        self.save_doas_params()
+
 
         while True:
             # See if we are wanting an early exit
