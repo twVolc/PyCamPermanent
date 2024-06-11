@@ -790,6 +790,7 @@ class PyplisWorker:
         self.reset_buff()
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
+        self.first_image = True
         self.got_doas_fov = False
         self.had_fix_fov_cal = False
         self.got_cal_cell = False
@@ -3761,14 +3762,19 @@ class PyplisWorker:
             img_time = self.get_img_time(img_path_A)
             img_type = self.get_img_type(img_path_A)
             if img_type == self.cam_specs.file_type['meas']:
+                
+                # If this is not the first image and we've started a new day then we need to reset eveything
                 if not self.first_image and self.img_A.meta['start_acq'].day != img_time.day:
                     print('New image comes from a different day. Finalising previous day of processing.')
-                    self.finalise_processing(save_doas=True)
-                # Every 30 minutes (defined by self.save_freq) we dave emission rate data, but don't save doas results here,
-                # Let doas_worker define when doas_results are saved, since DOAS times may not be exactly in time with
-                # image times but we want to save doas data exactly on the hour and 30 minute marks
-                elif img_time.minute == 0 and img_time.second == 0:
-                    save_emission_rates_as_txt(self.processed_dir, self.results, save_all=False)
+                    self.reset_self()
+
+                # On every first image we need to work out where the image file directory is,
+                # create an output directory there, and then save the config metadata there
+                if self.first_image:
+                    img_dir = os.path.dirname(img_path_A)
+                    self.set_processing_directory(img_dir)
+                    self.save_config_plus(self.processed_dir)
+                    save_last_val_only = False
 
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
@@ -3795,6 +3801,14 @@ class PyplisWorker:
 
             # TODO After a certain amount of time we need to perform doas calibration (maybe once DOAS buff is full?
             # TODO start of day will be uncalibrated until this point
+
+
+            if self.first_image:
+                self.first_image = False
+
+            if self.had_fix_fov_cal:
+                self.save_results(only_last_value=save_last_val_only)
+                save_last_val_only = True
 
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
