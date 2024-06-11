@@ -860,7 +860,7 @@ class IFitWorker(SpecWorker):
     def directory_watch_handler(self, pathname, t):
         """Handles new spectra passed from watcher"""
         _, ext = os.path.splitext(pathname)
-        if ext != self.spec_specs.file_ext:
+        if "Processed" in pathname or ext != self.spec_specs.file_ext:
             return
 
         # Wait until lockfile is removed
