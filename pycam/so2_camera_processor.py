@@ -3794,7 +3794,7 @@ class PyplisWorker:
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
 
-    def start_watching(self, directory, recursive=True):
+    def start_watching(self, directory=None, recursive=True):
         """
         Setup directory watcher for images - note this is not for watching spectra - use DOASWorker for that
         Also starts a processing thread, so that the images which arrive can be processed
@@ -3804,11 +3804,18 @@ class PyplisWorker:
             print('Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
-        self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
-        self.watcher.start()
-        self.watching_dir = directory
-        self.watching = True
-        print('Watching {} for new images'.format(self.watching_dir[-30:]))
+        
+        if directory is not None:
+            self.watching_dir = directory
+
+        if self.watching_dir is not None:
+            self.watcher = create_dir_watcher(self.watching_dir, recursive, self.directory_watch_handler)
+            self.watcher.start()
+            self.watching = True
+            print('Watching {} for new images'.format(self.watching_dir[-30:]))
+        else:
+            print("No Directory to watch provided")
+            return
 
         # Start processing thread from here
         self.start_processing()
