@@ -3947,7 +3947,7 @@ class PyplisWorker:
 
     def generate_DOAS_FOV_info(self):
 
-        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
+        pos_string = 'DOAS_FOV_pos [X Y]={} {}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
         rad_string = 'DOAS_FOV_radius={}\n'.format(self.config["fov_rad"])
         
         if self.doas_recal:
