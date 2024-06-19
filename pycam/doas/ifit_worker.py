@@ -544,7 +544,7 @@ class IFitWorker(SpecWorker):
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
         # Save results
-        self.save_results(save_all=True)
+        self.save_results()
 
     def reset_doas_results(self):
         """Makes empty doas results object"""
@@ -631,66 +631,7 @@ class IFitWorker(SpecWorker):
         else:
             doas_results.ldfs = [np.nan] * len(stds)
         return doas_results
-
-    def save_results(self, pathname=None, start_time=None, end_time=None, save_all=False):
-        """Saves doas results"""
-        if len(self.results) < 1:
-            print('No DOAS results to save')
-            return
-
-        # Extract data from specific index if we are given a start time
-        if start_time is not None:
-            idx_start = np.argmin(np.abs(self.results.index - start_time))
-        else:
-            if save_all:
-                idx_start = 0
-            else:
-                # Go back to the last hour (as data will already be saved up to there)
-                current_time = self.results.index[-1]
-                if current_time.minute == 0 and current_time.second == 0:
-                    new_hour = current_time.hour - 1
-                    start_time == current_time.replace(hour=new_hour)
-                else:
-                    start_time = current_time.replace(minute=0, second=0)
-                idx_start = np.argmin(np.abs(self.results.index - start_time))
-
-        if end_time is not None:
-            idx_end = np.argmin(np.abs(self.results.index - end_time)) + 1
-        else:
-            idx_end = None      # -1 doesn't work as it cuts the last item out - use None to go right to end of list
-
-        # Generate pathname
-        if pathname is None:
-            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
-            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
-            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
-
-            subdir = 'Processed_{}_spec'
-            i = 1
-            while os.path.exists(os.path.join(self.spec_dir, subdir.format(i))):
-                i += 1
-            pathname = os.path.join(self.spec_dir, subdir.format(i))
-            os.mkdir(pathname)
-            pathname = os.path.join(pathname, filename)
-
-        # Create full database to save
-        frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
-                 'Column density': pd.Series(self.results.values[idx_start:idx_end]),
-                 'CD error': pd.Series(self.results.fit_errs[idx_start:idx_end]),
-                 'LDF': pd.Series(self.results.ldfs[idx_start:idx_end])}
-        df = pd.DataFrame(frame)
-
-        # self.results[idx_start:idx_end].to_csv(pathname)
-        df.to_csv(pathname)
-        print('DOAS results saved: {}'.format(pathname))
-        pathname = pathname.replace('.csv', '.txt')
-        with open(pathname, 'w') as f:
-            f.write('DOAS processing parameters\n')
-            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
-            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
-            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
-            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
-
+ 
     def load_results(self, filename=None, plot=True):
         """
         Loads DOAS results from csv file
@@ -773,6 +714,10 @@ class IFitWorker(SpecWorker):
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
         ss_str = self.spec_specs.file_ss.replace('{}', '')
 
+        self.save_doas_params()
+
+        header = True
+
         while True:
             # See if we are wanting an early exit
             try:
@@ -791,10 +736,12 @@ class IFitWorker(SpecWorker):
                 # Update plot at end if we haven't been updating it as we go - this should speed up processing as plotting takes a long time
                 if self.fig_series is not None and not self.plot_iter:
                     self.fig_series.update_plot()
+                
                 if continuous_save:
-                    self.save_results(end_time=self.spec_time)
+                    self.save_results(save_last=True, header = header)
                 else:
-                    self.save_results(save_all=True)
+                    self.save_results()
+                
                 break
 
             spec_type = self.get_spec_type(pathname)
@@ -853,8 +800,9 @@ class IFitWorker(SpecWorker):
                     self.fig_series.update_plot()
 
                 # Save all results if we are on the 0 or 30th minute of the hour
-                if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
-                    self.save_results(end_time=self.spec_time)
+                if continuous_save:
+                    self.save_results(save_last = True, header = header)
+                    header = False
 
                 #print('IFit worker: Processed file: {}'.format(filename))
 
