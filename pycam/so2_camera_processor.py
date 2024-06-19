@@ -3865,12 +3865,12 @@ class PyplisWorker:
         if ext != self.cam_specs.file_ext:
             return
 
-        print('Directory Watcher cam: New file found {}'.format(pathname))
-
         # Check that there isn't a lock file blocking it
         pathname_lock = pathname.replace(ext, '.lock')
         while os.path.exists(pathname_lock):
-            pass
+            time.sleep(0.5)
+
+        print('Directory Watcher cam: New file found {}'.format(pathname))
 
         # Separate the filename and pathname
         directory, filename = os.path.split(pathname)
