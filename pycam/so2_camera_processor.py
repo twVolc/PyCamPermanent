@@ -307,6 +307,7 @@ class PyplisWorker:
                              self.cam_specs.file_filterids['off']: None}
         self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
+        self.save_date_fmt = '%Y-%m-%dT%H%M%S'
 
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
@@ -845,7 +846,7 @@ class PyplisWorker:
                 self.results[line_id][mode]._flow_orient_upper = []
                 self.results[line_id][mode]._flow_orient_lower = []
 
-    def set_processing_directory(self, img_dir=None):
+    def set_processing_directory(self, img_dir=None, make_dir=False):
         """
         Sets processing directory
         :param img_dir:     str     If not None then this path is used, otherwise self.img_dir is used as root
@@ -857,23 +858,12 @@ class PyplisWorker:
         else:
             img_dir = self.img_dir
 
-        # Update processing directory and create it
-        i = 1
-        self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
-        # TODO Edit to check if the folder is empty - if empty do processing in this folder
-        while True:
-            # If the path doesn't exist we use it and create it
-            if not os.path.exists(self.processed_dir):
-                os.mkdir(self.processed_dir)
-                break
-
-             # If the path exists, check if it is empty - if so, we can use this folder anyway
-            if len(os.listdir(self.processed_dir)) == 0:
-                break
-
-            i += 1
-            self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
-
+        # Make output dir with time (when processed as opposed to when captured) suffix to minimise risk of overwriting
+        process_time = datetime.datetime.now().strftime(self.save_date_fmt)
+        # Save this as an attribute so we only have to generate it once
+        self.processed_dir = os.path.join(img_dir, self.proc_name.format(process_time))
+        if make_dir:
+            os.mkdir(self.processed_dir)
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -3606,7 +3596,7 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
-        self.set_processing_directory()
+        self.set_processing_directory(make_dir=True)
         self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
@@ -3780,7 +3770,7 @@ class PyplisWorker:
                 # create an output directory there, and then save the config metadata there
                 if self.first_image:
                     img_dir = os.path.dirname(img_path_A)
-                    self.set_processing_directory(img_dir)
+                    self.set_processing_directory(img_dir, make_dir=True)
                     self.save_config_plus(self.processed_dir)
                     save_last_val_only = False
 
