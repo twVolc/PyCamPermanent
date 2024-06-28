@@ -194,6 +194,9 @@ class IFitWorker(SpecWorker):
         # Reset last LDF correction
         self.spec_time_last_ld = None
 
+        self.first_spec = True
+        self.doas_filepath = None
+
         # Clear stop queue so old requests aren't caught
         with self.q_stop.mutex:
             self.q_stop.queue.clear()
@@ -714,10 +717,6 @@ class IFitWorker(SpecWorker):
         # Setup which we don't need to repeat once in the loop (optimising the code a little)
         ss_str = self.spec_specs.file_ss.replace('{}', '')
 
-        self.save_doas_params()
-
-        header = True
-
         while True:
             # See if we are wanting an early exit
             try:
@@ -752,6 +751,20 @@ class IFitWorker(SpecWorker):
                 # Extract filename and create datetime object of spectrum time
                 working_dir, filename = os.path.split(pathname)
                 self.spec_dir = working_dir     # Update working directory to where most recent file has come from
+
+                spec_time = self.get_spec_time(filename)
+
+                if not self.first_spec and spec_time.day != self.spec_time.day:
+                    print("new day found")
+                    self.reset_self()
+
+                if self.first_spec:
+                    # Set output dir
+                    self.set_output_dir(working_dir)
+                    # Save processing params
+                    self.save_doas_params()
+                    header = True
+
                 self.spec_time = self.get_spec_time(filename)
 
                 # Extract shutter speed
@@ -803,6 +816,9 @@ class IFitWorker(SpecWorker):
                 if continuous_save:
                     self.save_results(save_last = True, header = header)
                     header = False
+
+                if self.first_spec:
+                    self.first_spec = False
 
                 #print('IFit worker: Processed file: {}'.format(filename))
 
