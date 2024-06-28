@@ -408,17 +408,19 @@ class SpecWorker:
         self.process_thread.daemon = True
         self.process_thread.start()
 
-    def save_doas_params(self, pathname=None):
-        """Saves current doas processing settings"""
-        # Generate pathname
-        if pathname is None:
-            # Generate output directory
-            subdir = 'Processed_spec_{}'
-            process_time = datetime.datetime.now().strftime(self.save_date_fmt)
-            # Save this as an attribute so we only have to generate it once
-            self.doas_outdir = os.path.join(self.spec_dir, subdir.format(process_time))
+    def set_output_dir(self, path, make_dir = True):
+        # Generate output directory name
+        subdir = 'Processed_spec_{}'
+        process_time = datetime.datetime.now().strftime(self.save_date_fmt)
+        # Save this as an attribute so we only have to generate it once
+        self.doas_outdir = os.path.join(path, subdir.format(process_time))
+        if make_dir:
             os.mkdir(self.doas_outdir)
 
+    def save_doas_params(self, filepath=None):
+        """Saves current doas processing settings"""
+        # Generate pathname
+        if filepath is None:
             # Generate full filepath
             filename = 'doas_processing_params.txt'
             filepath = os.path.join(self.doas_outdir, filename)
