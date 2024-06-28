@@ -809,6 +809,9 @@ class PyplisWorker:
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
 
+        if self.fix_fov:
+            self.generate_doas_fov()
+
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
 
