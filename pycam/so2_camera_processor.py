@@ -3745,12 +3745,12 @@ class PyplisWorker:
         while True:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
-            print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
-
+            
             if img_path_A == self.STOP_FLAG:
-                self.finalise_processing()      # Save data to this point
                 print('Stopping processing')
                 return
+
+            print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
 
             # If we are in display only mode we don't perform processing, just load images and display them
             if self.display_only:
@@ -3758,8 +3758,6 @@ class PyplisWorker:
                     self.load_img(img_name, plot=True)
                 continue
 
-            # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
-            # So we finalise processing and then continue (TODO check this is ok)
             img_time = self.get_img_time(img_path_A)
             img_type = self.get_img_type(img_path_A)
             if img_type == self.cam_specs.file_type['meas']:
