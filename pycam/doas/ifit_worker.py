@@ -736,11 +736,10 @@ class IFitWorker(SpecWorker):
                 if self.fig_series is not None and not self.plot_iter:
                     self.fig_series.update_plot()
                 
-                if continuous_save:
-                    self.save_results(save_last=True, header = header)
-                else:
+                # I think I only need to do this if not continuous_save
+                if not continuous_save:
                     self.save_results()
-                
+
                 break
 
             spec_type = self.get_spec_type(pathname)
