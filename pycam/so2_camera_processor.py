@@ -3696,7 +3696,7 @@ class PyplisWorker:
             if i == 0:
                 self.first_image = False
 
-            if self.had_fix_fov_cal:
+            if self.results_ready():
                 self.save_results(only_last_value=save_last_val_only)
                 save_last_val_only = True
 
@@ -3706,14 +3706,18 @@ class PyplisWorker:
             # Wait for defined amount of time to allow plotting of data without freezing up
             # time.sleep(self.wait_time)
 
-        # Run final processing work - but don't save DOAS as this will have already been saved when it was processed
-        self.finalise_processing(save_doas=False, reset=False)
-
         proc_time = time.time() - time_proc
         print('Processing time: {:.1f}'.format(proc_time))
         print('Time per image: {:.2f}'.format(proc_time / len(self.img_list)))
 
         self.in_processing = False
+
+    def results_ready(self):
+        """Check if the different flow modes all have data available"""
+        curr_results = self.results['0']
+        res_ready = all([len(res.start_acq) > 0 for res in curr_results.values()])
+
+        return res_ready
 
     def stop_sequence_processing(self):
         """Stops processing if in sequence"""
@@ -3805,7 +3809,7 @@ class PyplisWorker:
             if self.first_image:
                 self.first_image = False
 
-            if self.had_fix_fov_cal:
+            if self.results_ready():
                 self.save_results(only_last_value=save_last_val_only)
                 save_last_val_only = True
 
