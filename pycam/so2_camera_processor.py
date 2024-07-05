@@ -808,6 +808,7 @@ class PyplisWorker:
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
+        self.tau_vals = []
 
         if self.fix_fov:
             self.generate_doas_fov()
