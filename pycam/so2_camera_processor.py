@@ -3966,26 +3966,32 @@ class PyplisWorker:
 
         return pos_string + rad_string + remove_string + recal_string
 
+    def write_calib_headerlines(self):
+
+        # Generate file path
+        self.calibration_file_path = os.path.join(self.processed_dir, "full_calibration.csv")
+
+        with open(self.calibration_file_path, "w") as file:
+            fov_string = self.generate_DOAS_FOV_info()
+
+            # Adding 1 to account for the header line itself
+            file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))
+            file.write(fov_string)
+        
+        # Included to ensure file is closed properly before results are written
+        time.sleep(0.2)
 
     def save_calibration(self, only_last_value):
 
         # Do this on first run
         if not only_last_value:
-            # Generate file path
-            self.calibration_file_path = os.path.join(self.processed_dir, "full_calibration.csv")
-            
+
+            self.write_calib_headerlines()
+
             # Generate column heading for tau and fit dfs
             coeff_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
             self.tau_header = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"]
             self.fit_header = ["timepoint"] + coeff_headers + ["MSE", "r-squared"]
-
-
-            with open(self.calibration_file_path, "w") as file:
-                fov_string = self.generate_DOAS_FOV_info()
-
-                # Adding 1 to account for the header line itself
-                file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))
-                file.write(fov_string)
 
             tau_df = pd.DataFrame(self.tau_vals, columns = self.tau_header)
             fit_df = pd.DataFrame(self.fit_data, columns = self.fit_header)
