@@ -3716,7 +3716,7 @@ class PyplisWorker:
     def results_ready(self):
         """Check if the different flow modes all have data available"""
         curr_results = self.results['0']
-        res_ready = all([len(res.start_acq) > 0 for res in curr_results.values()])
+        res_ready = all([len(curr_results[key].start_acq) > 0 for key in curr_results if self.velo_modes[key]])
 
         return res_ready
 
