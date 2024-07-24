@@ -758,6 +758,12 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         self.doas_worker.load_dir(self.pyplis_worker.spec_dir, prompt=False, plot=True)
 
+        # This will work but doesn't cover all edge cases
+        if self.pyplis_worker.config.get("FTP_output_dir") is not None:
+            ftp_output_dir = getattr(self.pyplis_worker, "FTP_output_dir")
+            cfg.current_dir_img.root_dir = ftp_output_dir
+            cfg.current_dir_spec.root_dir = ftp_output_dir
+
     def reset_pcs_lines(self):
         """Reset current PCS lines"""
 
