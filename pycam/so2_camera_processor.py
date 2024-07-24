@@ -580,7 +580,7 @@ class PyplisWorker:
 
     @property
     def png_compression(self):
-        return self.save_dict['img_SO2']['save']
+        return self.save_dict['img_SO2']['compression']
 
     @png_compression.setter
     def png_compression(self, value):

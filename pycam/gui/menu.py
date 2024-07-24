@@ -847,6 +847,7 @@ class SaveFrame(LoadSaveProcessingSettings):
 
         self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
+        self.pyplis_worker.apply_config(subset=self.vars.keys())
         if hasattr(self, 'frame'):
             tk.messagebox.showinfo('Save settings updated',
                                    'Save settings have been updated and will apply to next processing run',
