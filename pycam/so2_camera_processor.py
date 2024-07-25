@@ -234,14 +234,14 @@ class PyplisWorker:
         self._location = None           # String for location e.g. lascar
         self.source = None              # Pyplis object of location
 
-        self.img_A = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_B = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_A_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_B_prev = np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x])
-        self.img_tau = pyplis.image.Img()       # Apparent absorbance image (tau_A - tau_B)
-        self.img_tau.img = self.img_A           # Set image to zeors as it may be used to generate empty figure
-        self.img_tau_prev = pyplis.image.Img()
-        self.img_tau_prev.img = self.img_A
+        self.img_A = pyplis.image.Img(np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
+        self.img_B = pyplis.image.Img(np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
+        self.img_A.meta['start_acq'] = datetime.datetime.now()
+        self.img_B.meta['start_acq'] = datetime.datetime.now()
+        self.img_A_prev = copy.deepcopy(self.img_A)
+        self.img_B_prev = copy.deepcopy(self.img_A)
+        self.img_tau = copy.deepcopy(self.img_A)   # Apparent absorbance image (tau_A - tau_B), initiate as zeros
+        self.img_tau_prev = copy.deepcopy(self.img_A)
         self.img_cal = None         # Calibrated image
         self.img_cal_prev = None
 
