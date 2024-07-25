@@ -294,7 +294,7 @@ def save_so2_img(path, img, filename=None, compression=0, max_val=None):
         # Put time into a string
         time_str = img.meta['start_acq'].strftime(CameraSpecs().file_datestr)
 
-        filename = '{}_img.png'.format(time_str)
+        filename = '{}_SO2_img.png'.format(time_str)
     full_path = os.path.join(path, filename)
     if os.path.exists(full_path):
         print('Overwriting file to save image: {}'.format(full_path))

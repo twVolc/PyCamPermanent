@@ -692,6 +692,14 @@ class CDSeries:
         if len(times) > 0:
             self.ax.set_xlim([times[0] - datetime.timedelta(seconds=5), times[-1] + datetime.timedelta(seconds=5)])
 
+            # Set y-limits
+            max_fit_err = np.max(np.ma.masked_invalid(fit_errs))
+            ymin = np.min(np.ma.masked_invalid(cds)) - max_fit_err
+            if ymin > 0:
+                ymin = 0
+            ymax = np.max(np.ma.masked_invalid(cds)) + max_fit_err
+            self.ax.set_ylim([ymin, ymax])
+
         # Update plot
         self.q.put(1)
 
