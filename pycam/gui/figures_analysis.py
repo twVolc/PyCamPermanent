@@ -5482,9 +5482,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
             setattr(self, key, self.pyplis_worker.velo_modes[key])
         self.use_multi_gauss = self.pyplis_worker.use_multi_gauss
 
-        # Close drawing function (it is started again on opening the frame
-        self.q.put(2)
-
         # Close frame
         self.frame.destroy()
 
@@ -5497,7 +5494,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                     self.img_canvas.draw()
                     self.vel_canvas.draw()
             else:
-                return
+                pass
         except queue.Empty:
             pass
         self.frame.after(refresh_rate, self.__draw_canv__)
