@@ -872,6 +872,8 @@ class PyplisWorker:
             i += 1
             self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
 
+        # Create directory for saved images
+        self.saved_img_dir = os.path.join(self.processed_dir, 'saved_images')
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -1005,31 +1007,30 @@ class PyplisWorker:
         Saves current set of images depending on if they are requested to be saved from save_dict
         :return:
         """
-        # Setup save dir
-        save_dir = os.path.join(self.processed_dir, 'saved_images')
-        if not os.path.exists(save_dir):
-            os.mkdir(save_dir)
+        # Make saved directory folder if it doesn't already exist
+        if not os.path.exists(self.saved_img_dir):
+            os.mkdir(self.saved_img_dir)
 
         # Save AA image
         if self.save_dict['img_aa']['save']:
             if isinstance(self.img_tau, pyplis.Img):
-                save_so2_img_raw(save_dir, self.img_tau, img_end='SO2_aa', ext=self.save_dict['img_aa']['ext'])
+                save_so2_img_raw(self.saved_img_dir, self.img_tau, img_end='SO2_aa', ext=self.save_dict['img_aa']['ext'])
 
         # Save calibrated image
         if self.save_dict['img_cal']['save']:
-            if isinstance(self.img_tau, pyplis.Img):
-                save_so2_img_raw(save_dir, self.img_cal, img_end='SO2_cal', ext=self.save_dict['img_cal']['ext'])
+            if isinstance(self.img_cal, pyplis.Img):
+                save_so2_img_raw(self.saved_img_dir, self.img_cal, img_end='SO2_cal', ext=self.save_dict['img_cal']['ext'])
 
         # Save arbitrary SO2 image (for visual representation only, since it is not calibrated)
         if self.save_dict['img_SO2']['save']:
             max_val = self.fig_tau.img_disp.get_clim()[-1]
             if self.fig_tau.disp_cal:
                 if isinstance(self.img_cal, pyplis.Img):
-                    save_so2_img(save_dir, self.img_cal, compression=self.save_dict['img_SO2']['compression'],
+                    save_so2_img(self.saved_img_dir, self.img_cal, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
             else:
                 if isinstance(self.img_tau, pyplis.Img):
-                    save_so2_img(save_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
+                    save_so2_img(self.saved_img_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
 
     def load_img(self, img_path, band=None, plot=True, temporary=False):
@@ -3541,6 +3542,13 @@ class PyplisWorker:
             # Calibrate image if it hasn't already been
             if not img_tau.is_calibrated:
                 img_cal = self.calibrate_image(img_tau, doas_update=False)
+
+                # If the image hasn't already been calibrated we may want to save it if requested
+                if self.save_dict['img_cal']['save']:
+                    # Make saved directory folder if it doesn't already exist
+                    if not os.path.exists(self.saved_img_dir):
+                        os.mkdir(self.saved_img_dir)
+                    save_so2_img_raw(self.saved_img_dir, img_cal, img_end='SO2_cal', ext=self.save_dict['img_cal']['ext'])
             else:
                 img_cal = img_tau
 
