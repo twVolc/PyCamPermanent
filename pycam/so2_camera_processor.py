@@ -306,6 +306,7 @@ class PyplisWorker:
                              self.cam_specs.file_filterids['off']: None}
         self.force_pair_processing = False  # If True, 2 filter images are processed whether or not their time is the same
         self.STOP_FLAG = 'end'      # Flag for stopping processing queue
+        self.save_date_fmt = '%Y-%m-%dT%H%M%S'
 
         self.fit_data = np.empty(shape = (0, 3 + self.polyorder_cal + 1))
         self.tau_vals = []
@@ -789,6 +790,7 @@ class PyplisWorker:
         self.reset_buff()
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
+        self.first_image = True
         self.got_doas_fov = False
         self.had_fix_fov_cal = False
         self.got_cal_cell = False
@@ -805,6 +807,10 @@ class PyplisWorker:
         self.doas_file_num = 1
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
+        self.tau_vals = []
+
+        if self.fix_fov:
+            self.generate_doas_fov()
 
         # Some pyplis tracking parameters
         self.ts, self.bg_mean, self.bg_std = [], [], []
@@ -843,7 +849,7 @@ class PyplisWorker:
                 self.results[line_id][mode]._flow_orient_upper = []
                 self.results[line_id][mode]._flow_orient_lower = []
 
-    def set_processing_directory(self, img_dir=None):
+    def set_processing_directory(self, img_dir=None, make_dir=False):
         """
         Sets processing directory
         :param img_dir:     str     If not None then this path is used, otherwise self.img_dir is used as root
@@ -855,25 +861,13 @@ class PyplisWorker:
         else:
             img_dir = self.img_dir
 
-        # Update processing directory and create it
-        i = 1
-        self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
-        # TODO Edit to check if the folder is empty - if empty do processing in this folder
-        while True:
-            # If the path doesn't exist we use it and create it
-            if not os.path.exists(self.processed_dir):
-                os.mkdir(self.processed_dir)
-                break
-
-             # If the path exists, check if it is empty - if so, we can use this folder anyway
-            if len(os.listdir(self.processed_dir)) == 0:
-                break
-
-            i += 1
-            self.processed_dir = os.path.join(img_dir, self.proc_name.format(i))
-
-        # Create directory for saved images
+        # Make output dir with time (when processed as opposed to when captured) suffix to minimise risk of overwriting
+        process_time = datetime.datetime.now().strftime(self.save_date_fmt)
+        # Save this as an attribute so we only have to generate it once
+        self.processed_dir = os.path.join(img_dir, self.proc_name.format(process_time))
         self.saved_img_dir = os.path.join(self.processed_dir, 'saved_images')
+        if make_dir:
+            os.makedirs(self.saved_img_dir, exist_ok = True)
 
     def load_sequence(self, img_dir=None, plot=True, plot_bg=True):
         """
@@ -2447,8 +2441,16 @@ class PyplisWorker:
             tau = tau_fov.mean()
 
             try:
-                # Get CD for current time
-                cd = self.doas_worker.results[img_time]
+                timeout = datetime.datetime.now() + datetime.timedelta(seconds = 30)
+                # Keep retrying to get the cd for current time until timeout
+                while (datetime.datetime.now() < timeout):
+                    # Get CD for current time
+                    cd = self.doas_worker.results.get(img_time)
+                    if cd is not None: break
+                    time.sleep(0.5)
+                else:
+                    raise KeyError(f"spectra for {img_time} not found")
+
                 # Get index for cd_err
                 cd_err = self.doas_worker.results.fit_errs[
                     np.where(self.doas_worker.results.index.array == img_time)[0][0]]
@@ -3609,7 +3611,7 @@ class PyplisWorker:
 
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
-        self.set_processing_directory()
+        self.set_processing_directory(make_dir=True)
         self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
@@ -3671,6 +3673,7 @@ class PyplisWorker:
 
         # Loop through img_list and process data
         self.first_image = True
+        save_last_val_only = False
         for i in range(len(self.img_list)):
 
             try:
@@ -3705,20 +3708,28 @@ class PyplisWorker:
             if i == 0:
                 self.first_image = False
 
+            if self.results_ready():
+                self.save_results(only_last_value=save_last_val_only)
+                save_last_val_only = True
+
             # Increment current index, so that buffer is in the right place
             self.idx_current += 1
 
             # Wait for defined amount of time to allow plotting of data without freezing up
             # time.sleep(self.wait_time)
 
-        # Run final processing work - but don't save DOAS as this will have already been saved when it was processed
-        self.finalise_processing(save_doas=False, reset=False)
-
         proc_time = time.time() - time_proc
         print('Processing time: {:.1f}'.format(proc_time))
         print('Time per image: {:.2f}'.format(proc_time / len(self.img_list)))
 
         self.in_processing = False
+
+    def results_ready(self):
+        """Check if the different flow modes all have data available"""
+        curr_results = self.results['0']
+        res_ready = all([len(curr_results[key].start_acq) > 0 for key in curr_results if self.velo_modes[key]])
+
+        return res_ready
 
     def stop_sequence_processing(self):
         """Stops processing if in sequence"""
@@ -3750,12 +3761,12 @@ class PyplisWorker:
         while True:
             # Get the next images in the list
             img_path_A, img_path_B = self.q.get(block=True)
-            print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
-
+            
             if img_path_A == self.STOP_FLAG:
-                self.finalise_processing()      # Save data to this point
                 print('Stopping processing')
                 return
+
+            print('Processing pair: {}, {}'.format(img_path_A, img_path_B))
 
             # If we are in display only mode we don't perform processing, just load images and display them
             if self.display_only:
@@ -3763,19 +3774,22 @@ class PyplisWorker:
                     self.load_img(img_name, plot=True)
                 continue
 
-            # If the day of this image doesn't match the day of the most recent image we must have moved to a new day
-            # So we finalise processing and then continue (TODO check this is ok)
             img_time = self.get_img_time(img_path_A)
             img_type = self.get_img_type(img_path_A)
             if img_type == self.cam_specs.file_type['meas']:
+                
+                # If this is not the first image and we've started a new day then we need to reset eveything
                 if not self.first_image and self.img_A.meta['start_acq'].day != img_time.day:
                     print('New image comes from a different day. Finalising previous day of processing.')
-                    self.finalise_processing(save_doas=True)
-                # Every 30 minutes (defined by self.save_freq) we dave emission rate data, but don't save doas results here,
-                # Let doas_worker define when doas_results are saved, since DOAS times may not be exactly in time with
-                # image times but we want to save doas data exactly on the hour and 30 minute marks
-                elif img_time.minute == 0 and img_time.second == 0:
-                    save_emission_rates_as_txt(self.processed_dir, self.results, save_all=False)
+                    self.reset_self()
+
+                # On every first image we need to work out where the image file directory is,
+                # create an output directory there, and then save the config metadata there
+                if self.first_image:
+                    img_dir = os.path.dirname(img_path_A)
+                    self.set_processing_directory(img_dir, make_dir=True)
+                    self.save_config_plus(self.processed_dir)
+                    save_last_val_only = False
 
             # Process the pair
             self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
@@ -3802,6 +3816,14 @@ class PyplisWorker:
 
             # TODO After a certain amount of time we need to perform doas calibration (maybe once DOAS buff is full?
             # TODO start of day will be uncalibrated until this point
+
+
+            if self.first_image:
+                self.first_image = False
+
+            if self.results_ready():
+                self.save_results(only_last_value=save_last_val_only)
+                save_last_val_only = True
 
             # Incremement current index so that buffer is in the right place
             self.idx_current += 1
@@ -3850,12 +3872,12 @@ class PyplisWorker:
         if ext != self.cam_specs.file_ext:
             return
 
-        print('Directory Watcher cam: New file found {}'.format(pathname))
-
         # Check that there isn't a lock file blocking it
         pathname_lock = pathname.replace(ext, '.lock')
         while os.path.exists(pathname_lock):
-            pass
+            time.sleep(0.5)
+
+        print('Directory Watcher cam: New file found {}'.format(pathname))
 
         # Separate the filename and pathname
         directory, filename = os.path.split(pathname)
@@ -3940,7 +3962,7 @@ class PyplisWorker:
 
     def generate_DOAS_FOV_info(self):
 
-        pos_string = 'DOAS_FOV_pos={},{}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
+        pos_string = 'DOAS_FOV_pos [X Y]={} {}\n'.format(self.config["centre_pix_x"], self.config["centre_pix_y"])
         rad_string = 'DOAS_FOV_radius={}\n'.format(self.config["fov_rad"])
         
         if self.doas_recal:
@@ -3955,26 +3977,43 @@ class PyplisWorker:
 
         return pos_string + rad_string + remove_string + recal_string
 
+    def write_calib_headerlines(self):
 
-    def save_calibration(self):
-        path = os.path.join(self.processed_dir, "full_calibration.csv")
+        # Generate file path
+        self.calibration_file_path = os.path.join(self.processed_dir, "full_calibration.csv")
 
-        with open(path, "w") as file:
+        with open(self.calibration_file_path, "w") as file:
             fov_string = self.generate_DOAS_FOV_info()
-            file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))  # Adding 1 to account for the header line itself
-            file.write(self.generate_DOAS_FOV_info())
 
-        if hasattr(self, 'calibration_series') and (self.cal_type_int == 3):
-            full_df = self.calibration_series
+            # Adding 1 to account for the header line itself
+            file.write('headerlines={}\n'.format(fov_string.count("\n") + 1))
+            file.write(fov_string)
+        
+        # Included to ensure file is closed properly before results are written
+        time.sleep(0.2)
+
+    def save_calibration(self, only_last_value):
+
+        # Do this on first run
+        if not only_last_value:
+
+            self.write_calib_headerlines()
+
+            # Generate column heading for tau and fit dfs
+            coeff_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+            self.tau_header = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"]
+            self.fit_header = ["timepoint"] + coeff_headers + ["MSE", "r-squared"]
+
+            tau_df = pd.DataFrame(self.tau_vals, columns = self.tau_header)
+            fit_df = pd.DataFrame(self.fit_data, columns = self.fit_header)
+            header = True
         else:
-            coef_headers = [f"coeff {i}" for i in range(self.polyorder_cal+1)]
+            tau_df = pd.DataFrame(self.tau_vals[None, -1], columns = self.tau_header)
+            fit_df = pd.DataFrame(self.fit_data[None, -1], columns = self.fit_header)
+            header = False
 
-            tau_df = pd.DataFrame(self.tau_vals, columns = ["timepoint", "optical depth (tau)", "col density (doas)", "col density (error)"])
-            fit_df = pd.DataFrame(self.fit_data, columns = ["timepoint"] + coef_headers + ["MSE", "r-squared"])
-
-            full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
-
-        full_df.to_csv(path, mode = "a")
+        full_df = pd.merge_asof(tau_df, fit_df, "timepoint")
+        full_df.to_csv(self.calibration_file_path, mode = "a", header=header)
 
     def record_fit_data(self):
         # Save fit statistics
@@ -3994,6 +4033,12 @@ class PyplisWorker:
         self.doas_worker.stop_watching()
         self.stop_watching()
 
+    def save_results(self, only_last_value=False):
+        save_emission_rates_as_txt(self.processed_dir, self.results, only_last_value=only_last_value)
+        
+        # Calibration only produced when DOAS in calibration type and not needed for pre-loaded
+        if self.cal_type_int in [1,2]:
+            self.save_calibration(only_last_value=only_last_value)
 
 class ImageRegistration:
     """

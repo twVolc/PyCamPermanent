@@ -126,6 +126,12 @@ class PyCam(ttk.Frame):
         doas_worker.load_dir(prompt=False, plot=True)
         doas_worker.process_doas(plot=True)
 
+        # Sets FTP_output_dir if it exists 
+        if pyplis_worker.config.get("FTP_output_dir") is not None:
+            ftp_output_dir = pyplis_worker.config.get("FTP_output_dir")
+            cfg.current_dir_img.root_dir = ftp_output_dir
+            cfg.current_dir_spec.root_dir = ftp_output_dir
+
     def exit_app(self):
         """Closes application"""
         if messagebox.askokcancel("Quit", "Are you sure you want to quit?"):

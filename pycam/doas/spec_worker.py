@@ -5,6 +5,7 @@ import datetime
 import os
 import threading
 import numpy as np
+import pandas as pd
 from astropy.convolution import convolve
 from pycam.setupclasses import SpecSpecs
 from pydoas.analysis import DoasResults
@@ -115,10 +116,15 @@ class SpecWorker:
         self.fig_doas = None            # pycam.doas.DOASPlot object
         self.dir_info = None
 
+        self.corr_light_dilution = None
+        self.recal_ld_mins = None
+
         # Results object
         self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
         self.save_date_fmt = '%Y-%m-%dT%H%M%S'
         self.save_freq = [0]
+        self.doas_outdir = None        # Output directory for results
+        self.doas_filepath = None      # Full path to results file
 
     @property
     def start_stray_wave(self):
@@ -401,6 +407,83 @@ class SpecWorker:
         self.process_thread = threading.Thread(target=self._process_loop, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
+
+    def set_output_dir(self, path, make_dir = True):
+        # Generate output directory name
+        subdir = 'Processed_spec_{}'
+        process_time = datetime.datetime.now().strftime(self.save_date_fmt)
+        # Save this as an attribute so we only have to generate it once
+        self.doas_outdir = os.path.join(path, subdir.format(process_time))
+        if make_dir:
+            os.mkdir(self.doas_outdir)
+
+    def save_doas_params(self, filepath=None):
+        """Saves current doas processing settings"""
+        # Generate pathname
+        if filepath is None:
+            # Generate full filepath
+            filename = 'doas_processing_params.txt'
+            filepath = os.path.join(self.doas_outdir, filename)
+
+        with open(filepath, 'w') as f:
+            f.write('DOAS processing parameters\n')
+            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
+            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
+            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
+            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
+
+        print('DOAS processing parameters saved: {}'.format(filepath))
+
+    def save_results(self, pathname=None, start_time=None, end_time=None, save_last=False, header=True):
+        """Saves doas results"""
+
+        # Only continue if there are results to save
+        if len(self.results) < 1:
+            print('No DOAS results to save')
+            return
+
+        # Need to generate a filename if one doesn't already exist/isn't provided
+        if pathname is None:
+            if self.doas_filepath is None:
+                start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
+                filename = 'doas_results_{}.csv'.format(start_time_str)
+                self.doas_filepath = os.path.join(self.doas_outdir, filename)
+            pathname = self.doas_filepath
+
+        # Define range of data to be saved
+        # save_all overrides everything
+        if save_last:
+            idx_start = -1
+            idx_end = None
+        # But if it's not set check to see if a start and/or end time are defined
+        else:
+            # When end time is None then save to end
+            # When start time is none the save from beginning
+            # When neither are None then save everything between them
+            # When both are None save everything
+            if start_time is not None:
+                idx_start = np.argmin(np.abs(self.results.index - start_time))
+            else:
+                idx_start = None
+
+            if end_time is not None:
+                idx_end = np.argmin(np.abs(self.results.index - end_time)) + 1
+            else:
+                idx_end = None
+            
+        # Extract data to be saved
+        frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
+                 'Column density': pd.Series(self.results.values[idx_start:idx_end]),
+                 'CD error': pd.Series(self.results.fit_errs[idx_start:idx_end]),
+                 'LDF': pd.Series(self.results.ldfs[idx_start:idx_end])}
+        df = pd.DataFrame(frame)
+
+        # Write data and inform user
+        df.to_csv(pathname, mode = 'a', header = header, index = False)
+
+        # Not sure we want to print every time
+        print('DOAS results saved: {}'.format(pathname))
+
 
 class SpectraError(Exception):
     """

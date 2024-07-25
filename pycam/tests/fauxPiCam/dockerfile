@@ -1,0 +1,16 @@
+FROM docker.io/debian:stable
+
+ENV FTP_USER=pi
+ENV FTP_PASS=raspberry
+ENV UID=1000
+
+RUN apt-get update && apt-get install -y proftpd
+
+RUN useradd -m -u "${UID}" "${FTP_USER}"
+
+COPY proftpd.conf /etc/proftpd
+COPY entrypoint.sh /
+
+EXPOSE 20/tcp 21/tcp 40000-40009/tcp
+
+ENTRYPOINT ["/entrypoint.sh"]
