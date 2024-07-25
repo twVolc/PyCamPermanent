@@ -235,9 +235,8 @@ class PyplisWorker:
         self.source = None              # Pyplis object of location
 
         self.img_A = pyplis.image.Img(np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
-        self.img_B = pyplis.image.Img(np.zeros([self.cam_specs.pix_num_y, self.cam_specs.pix_num_x]))
         self.img_A.meta['start_acq'] = datetime.datetime.now()
-        self.img_B.meta['start_acq'] = datetime.datetime.now()
+        self.img_B = copy.deepcopy(self.img_A)
         self.img_A_prev = copy.deepcopy(self.img_A)
         self.img_B_prev = copy.deepcopy(self.img_A)
         self.img_tau = copy.deepcopy(self.img_A)   # Apparent absorbance image (tau_A - tau_B), initiate as zeros
