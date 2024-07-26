@@ -216,6 +216,7 @@ class PyplisWorker:
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
         self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
+        self.calibration_series = None          # Series for preloaded calibration
 
         self.img_dir = None
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -625,8 +626,8 @@ class PyplisWorker:
     def cal_type_int(self, value):
         self._cal_type_int = value
         self.use_sensitivity_mask = value in self.sens_mask_opts
-        if (value != 3) and hasattr(self, 'calibration_series'):
-            delattr(self, 'calibration_series')
+        if value != 3:
+            self.calibration_series = None
 
     @property
     def nadeau_line_orientation(self):
@@ -2316,6 +2317,10 @@ class PyplisWorker:
 
         elif self.cal_type_int == 3:        # Preloaded calibration coefficients from CSV file
             if self.calibration_series is None:
+                messagebox.showwarning('Must load calibration',
+                                       'Warning! Preloaded calibration is selected but no '
+                                       'calibration file has been loaded. Please select a file to '
+                                       'load to enable calibration.')
                 return cal_img
 
             # Find closest available calibration data point for current image time
@@ -3879,8 +3884,13 @@ class PyplisWorker:
             return
 
         if self.cal_type_int == 3:
-            # TODO raise a warning window and exit this function - can't perform RTP with a preloaded calibration
-        
+            messagebox.showerror('Invalid calibration type', 'Error! Preloaded calibration is invalid for '
+                                                             'real-time processing. \n'
+                                                             'Please select a different calibration type in\n'
+                                                             'Processing Settings > Setup paths\n'
+                                                             'and try again.')
+            return
+
         if directory is not None:
             self.watching_dir = directory
 
