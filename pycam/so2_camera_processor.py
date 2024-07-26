@@ -1026,7 +1026,7 @@ class PyplisWorker:
                 if isinstance(self.img_tau, pyplis.Img):
                     save_so2_img(self.saved_img_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
-
+                    
     def load_img(self, img_path, band=None, plot=True, temporary=False):
         """
         Loads in new image and dark corrects if a dark file is provided
@@ -1039,6 +1039,35 @@ class PyplisWorker:
                                     image as we aren't doing a full processing of the new data and don't want to mess
                                     up the current state
         """
+        # Get new image
+        img = self.get_img(img_path)
+
+        self.prep_img(img, img_path, band, plot, temporary)
+
+
+    def get_img(self, img_path, attempts = 1):
+        
+        while attempts > 0:
+            # Try and load the image
+            img = pyplis.image.Img(img_path, self.load_img_func)
+
+            # If successful then leave the loop
+            if img.img is not None:
+                break
+            
+            # Otherwise wait half a second and decrease the number of attempts left
+            time.sleep(0.1)
+            attempts -= 1
+        else:
+            # This will run once the number of repeats is 0
+            raise FileNotFoundError(f"Image from {img_path} could not be loaded. Skipping pair.")
+
+        img.filename = img_path.split('\\')[-1].split('/')[-1]
+        img.pathname = img_path
+        
+        return img
+    
+    def prep_img(self, img, img_path, band=None, plot=True, temporary=False):
         # Extract band if it isn't already provided
         if band is None:
             band = [f for f in img_path.split('_') if 'fltr' in f][0].replace('fltr', '')
@@ -1047,12 +1076,7 @@ class PyplisWorker:
         if not temporary:
             setattr(self, 'img_{}_prev'.format(band), getattr(self, 'img_{}'.format(band)))
 
-        # Get new image
-        img = pyplis.image.Img(img_path, self.load_img_func)
-        img.filename = img_path.split('\\')[-1].split('/')[-1]
-        img.pathname = img_path
-
-        # Dark subtraction - first extract ss then hunt for dark image
+         # Dark subtraction - first extract ss then hunt for dark image
         try:
             ss = str(int(img.texp * 10 ** 6))
             dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
