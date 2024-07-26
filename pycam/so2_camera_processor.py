@@ -3416,12 +3416,17 @@ class PyplisWorker:
         :return:
         """
 
+        # Check to see if the images can be loaded 
+        if img_path_A is not None:
+            img_A = self.get_img(img_path_A, attempts=3)
+        if img_path_B is not None:
+            img_B = self.get_img(img_path_B, attempts=3)
+
         # Can pass None to this function for img paths, and then the current images will be processed
         if img_path_A is not None:
-            # Load in images
-            self.load_img(img_path_A, band='A', plot=plot)
+            self.prep_img(img_A, img_path_A, band='A', plot=plot)
         if img_path_B is not None:
-            self.load_img(img_path_B, band='B', plot=plot)
+            self.prep_img(img_B, img_path_B, band='B', plot=plot)
 
         # Update some initial times which we keep track of throughout
         # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
