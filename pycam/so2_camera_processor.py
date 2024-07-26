@@ -41,6 +41,7 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
+import traceback
 from ruamel.yaml import YAML
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
@@ -3727,8 +3728,13 @@ class PyplisWorker:
 
             # Process image pair
             print('SO2 cam processor: Processing pair: {}'.format(self.img_list[i][0]))
-            self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
-                              plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
+            try:
+                self.process_pair(self.img_dir + '\\' + self.img_list[i][0],
+                                  self.img_dir + '\\' + self.img_list[i][1],
+                                  plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
+            except FileNotFoundError:
+                traceback.print_exc()
+                continue
 
             # Save all images that have been requested
             self.save_imgs()
@@ -3821,7 +3827,11 @@ class PyplisWorker:
                     save_last_val_only = False
 
             # Process the pair
-            self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
+            try:
+                self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
+            except FileNotFoundError:
+                traceback.print_exc()
+                continue
 
             # Save all images that have been requested
             self.save_imgs()
