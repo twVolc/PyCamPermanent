@@ -3868,8 +3868,16 @@ class PyplisWorker:
 
     def directory_watch_handler(self, pathname, t):
         """Controls the watching of a directory"""
+        # Separate the filename and pathname
+        directory, filename = os.path.split(pathname)
+        file_info = filename.split('_')
+
         _, ext = os.path.splitext(pathname)
         if ext != self.cam_specs.file_ext:
+            return
+
+        # if SO2 is in image name we ignore it
+        if 'SO2' in file_info:
             return
 
         # Check that there isn't a lock file blocking it
@@ -3879,12 +3887,7 @@ class PyplisWorker:
 
         print('Directory Watcher cam: New file found {}'.format(pathname))
 
-        # Separate the filename and pathname
-        directory, filename = os.path.split(pathname)
-        # print('Directory contents: {}'.format(os.listdir(directory)))
-
         # Extract file information
-        file_info = filename.split('_')
         time_key = file_info[self.cam_specs.file_date_loc]
         fltr = file_info[self.cam_specs.file_fltr_loc]
         file_type = file_info[self.cam_specs.file_type_loc]
