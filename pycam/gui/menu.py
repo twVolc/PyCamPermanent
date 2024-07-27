@@ -853,7 +853,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
         self.pyplis_worker.png_compression = self.png_compression
 
-        self.pyplis_worker.config['save_fig_so2'] = self.save_img_so2
+        self.pyplis_worker.config['save_fig_so2'] = self.save_fig_so2
 
         self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
