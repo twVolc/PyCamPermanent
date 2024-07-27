@@ -287,7 +287,7 @@ class PyplisWorker:
         self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},         # Apparent absorption image
                           'img_cal': {'save': False, 'ext': '.npy'},        # Calibrated SO2 image
                           'img_SO2': {'save': False, 'compression': 0},     # Arbitrary SO2 png image
-                          'fig_SO2': {'save': False}                        # matplotlib SO2 image
+                          'fig_SO2': {'save': False, 'units': 'ppmm'}       # matplotlib SO2 image [units are ppmm or tau]
                           }
         self.save_freq = [0, 30]     # Frequency of saving data
 
@@ -801,6 +801,8 @@ class PyplisWorker:
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.first_image = True
+        self.img_cal = None         # Reset calibration image as we no longer have one
+        self.img_cal_prev = None
         self.got_doas_fov = False
         self.had_fix_fov_cal = False
         self.got_cal_cell = False
@@ -1038,7 +1040,18 @@ class PyplisWorker:
                                  max_val=max_val)
 
         # Save matplotlib SO2 image
-        if self.save_dict['fig_SO2']:
+        if self.save_dict['fig_SO2']['save']:
+            # If ppmm is requested we need to check if we have a calibration then set plot if needed
+            if self.save_dict['fig_SO2']['units'] == 'ppmm':
+                if isinstance(self.img_cal, pyplis.Img):
+                    if not self.fig_tau.disp_cal:
+                        self.fig_tau.disp_cal = 1
+                        self.fig_tau.update_plot(self.img_tau, self.img_cal)
+            # If tau is selected we need to set plot if it's in the wrong units
+            elif self.save_dict['fig_SO2']['units'] == 'tau':
+                if self.fig_tau.disp_cal:
+                    self.fig_tau.disp_cal = 0
+                    self.fig_tau.update_plot(self.img_tau, self.img_cal)
             self.fig_tau.save_figure(img_time=self.img_tau.meta['start_acq'],
                                      savedir=self.saved_img_dir)
 
