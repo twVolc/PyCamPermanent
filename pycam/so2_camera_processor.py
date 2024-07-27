@@ -1047,11 +1047,15 @@ class PyplisWorker:
                     if not self.fig_tau.disp_cal:
                         self.fig_tau.disp_cal = 1
                         self.fig_tau.update_plot(self.img_tau, self.img_cal)
+                else:
+                    return
             # If tau is selected we need to set plot if it's in the wrong units
             elif self.save_dict['fig_SO2']['units'] == 'tau':
                 if self.fig_tau.disp_cal:
                     self.fig_tau.disp_cal = 0
                     self.fig_tau.update_plot(self.img_tau, self.img_cal)
+            else:
+                print('Warning! Unrecognised units, SO2 figure not saved!')
             self.fig_tau.save_figure(img_time=self.img_tau.meta['start_acq'],
                                      savedir=self.saved_img_dir)
 
@@ -2469,7 +2473,7 @@ class PyplisWorker:
             tau = tau_fov.mean()
 
             try:
-                timeout = datetime.datetime.now() + datetime.timedelta(seconds = 30)
+                timeout = datetime.datetime.now() + datetime.timedelta(seconds = 1)
                 # Keep retrying to get the cd for current time until timeout
                 while (datetime.datetime.now() < timeout):
                     # Get CD for current time
