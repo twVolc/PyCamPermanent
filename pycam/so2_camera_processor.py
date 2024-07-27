@@ -284,9 +284,11 @@ class PyplisWorker:
         self.bg_B_path = None
         self.bg_A_path_old = None
 
-        self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
-                          'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
-                          'img_SO2': {'save': False, 'compression': 0}}    # Arbitrary SO2 png image
+        self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},         # Apparent absorption image
+                          'img_cal': {'save': False, 'ext': '.npy'},        # Calibrated SO2 image
+                          'img_SO2': {'save': False, 'compression': 0},     # Arbitrary SO2 png image
+                          'fig_SO2': {'save': False}                        # matplotlib SO2 image
+                          }
         self.save_freq = [0, 30]     # Frequency of saving data
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -1026,6 +1028,10 @@ class PyplisWorker:
                 if isinstance(self.img_tau, pyplis.Img):
                     save_so2_img(self.saved_img_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
+
+        # Save matplotlib SO2 image
+        if self.save_dict['fig_SO2']:
+            self.fig_tau.save_figure()
 
     def load_img(self, img_path, band=None, plot=True, temporary=False):
         """

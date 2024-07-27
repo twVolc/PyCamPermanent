@@ -1054,6 +1054,24 @@ class ImageSO2(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
+    def save_figure(self, savedir=None):
+        """
+        Save matplotlib figure to file
+        param: savedir str      directory to save file in.
+                                If None, directory is taken from PyplisWorker.save_img_dir
+        """
+        # Get save directory
+        if savedir is None:
+            savedir = self.pyplis_worker.saved_img_dir
+
+        # Generate filename based on image time
+        time_str = self.image_tau.meta['start_acq'].strftime(self.pyplis_worker.cam_specs.file_datestr)
+        filename = '{}_SO2_fig'.format(time_str)
+        savepath = os.path.join(savedir, filename)
+
+        # Save matplotlib figure to filepath
+        self.fig.savefig(savepath, bbox_inches='tight')
+
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
