@@ -744,6 +744,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.fig_tau.load_defaults()
         self.pyplis_worker.fig_tau.reload_roi()
         self.reload_all()
+        self.main_gui.menu.save_frame.load_defaults()
         geom_settings.load_instrument_setup(self.pyplis_worker.config["default_cam_geom"], show_info=False)
         process_settings.load_defaults()
         plume_bg.load_defaults()
