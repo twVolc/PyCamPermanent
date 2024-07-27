@@ -1054,7 +1054,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def save_figure(self, savedir=None):
+    def save_figure(self, img_time=None, savedir=None):
         """
         Save matplotlib figure to file
         param: savedir str      directory to save file in.
@@ -1065,7 +1065,9 @@ class ImageSO2(LoadSaveProcessingSettings):
             savedir = self.pyplis_worker.saved_img_dir
 
         # Generate filename based on image time
-        time_str = self.image_tau.meta['start_acq'].strftime(self.pyplis_worker.cam_specs.file_datestr)
+        if img_time is None:
+            img_time = self.pyplis_worker.img_tau.meta['start_acq']
+        time_str = img_time.strftime(self.pyplis_worker.cam_specs.file_datestr)
         filename = '{}_SO2_fig'.format(time_str)
         savepath = os.path.join(savedir, filename)
 

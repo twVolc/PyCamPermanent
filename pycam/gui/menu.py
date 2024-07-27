@@ -826,6 +826,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         self.vars = {'save_img_aa': int,
                      'save_img_cal': int,
                      'save_img_so2': int,
+                     'save_fig_so2': int,
                      'save_doas_cal': int}
 
         self.img_types = ['.npy', '.mat']
@@ -836,6 +837,7 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._type_img_cal = tk.StringVar()
         self.type_img_cal = self.img_types[0]
         self._save_img_so2 = tk.BooleanVar()
+        self._save_fig_so2 = tk.BooleanVar()
         self._png_compression = tk.IntVar()
         self.png_compression = 0
 
@@ -850,6 +852,8 @@ class SaveFrame(LoadSaveProcessingSettings):
 
         self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
         self.pyplis_worker.png_compression = self.png_compression
+
+        self.pyplis_worker.config['save_fig_so2'] = self.save_img_so2
 
         self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
@@ -902,6 +906,14 @@ class SaveFrame(LoadSaveProcessingSettings):
     @save_img_so2.setter
     def save_img_so2(self, value):
         self._save_img_so2.set(value)
+
+    @property
+    def save_fig_so2(self):
+        return self._save_fig_so2.get()
+
+    @save_fig_so2.setter
+    def save_fig_so2(self, value):
+        self._save_fig_so2.set(value)
 
     @property
     def png_compression(self):
@@ -1007,6 +1019,14 @@ class SaveFrame(LoadSaveProcessingSettings):
         img_types = ttk.Spinbox(type_frame, textvariable=self._png_compression, width=3, from_=0, to=9, increment=1,
                                 font=self.main_gui.main_font)
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
+        # SO2 matplotlib figure save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save SO2 figure', variable=self._save_fig_so2)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        # TODO add DPI option in here??
         row += 1
 
         # DOAS fit save

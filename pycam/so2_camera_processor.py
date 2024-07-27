@@ -581,6 +581,14 @@ class PyplisWorker:
         self.save_dict['img_SO2']['save'] = value
 
     @property
+    def save_fig_so2(self):
+        return self.save_dict['fig_SO2']['save']
+
+    @save_fig_so2.setter
+    def save_fig_so2(self, value):
+        self.save_dict['fig_SO2']['save'] = value
+
+    @property
     def png_compression(self):
         return self.save_dict['img_SO2']['compression']
 
@@ -1031,7 +1039,8 @@ class PyplisWorker:
 
         # Save matplotlib SO2 image
         if self.save_dict['fig_SO2']:
-            self.fig_tau.save_figure()
+            self.fig_tau.save_figure(img_time=self.img_tau.meta['start_acq'],
+                                     savedir=self.saved_img_dir)
 
     def load_img(self, img_path, band=None, plot=True, temporary=False):
         """
