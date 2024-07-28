@@ -284,9 +284,11 @@ class PyplisWorker:
         self.bg_B_path = None
         self.bg_A_path_old = None
 
-        self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},        # Apparent absorption image
-                          'img_cal': {'save': False, 'ext': '.npy'},       # Calibrated SO2 image
-                          'img_SO2': {'save': False, 'compression': 0}}    # Arbitrary SO2 png image
+        self.save_dict = {'img_aa': {'save': False, 'ext': '.npy'},         # Apparent absorption image
+                          'img_cal': {'save': False, 'ext': '.npy'},        # Calibrated SO2 image
+                          'img_SO2': {'save': False, 'compression': 0},     # Arbitrary SO2 png image
+                          'fig_SO2': {'save': False, 'units': 'ppmm'}       # matplotlib SO2 image [units are ppmm or tau]
+                          }
         self.save_freq = [0, 30]     # Frequency of saving data
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -579,6 +581,22 @@ class PyplisWorker:
         self.save_dict['img_SO2']['save'] = value
 
     @property
+    def save_fig_so2(self):
+        return self.save_dict['fig_SO2']['save']
+
+    @save_fig_so2.setter
+    def save_fig_so2(self, value):
+        self.save_dict['fig_SO2']['save'] = value
+
+    @property
+    def type_fig_so2(self):
+        return self.save_dict['fig_SO2']['units']
+
+    @type_fig_so2.setter
+    def type_fig_so2(self, value):
+        self.save_dict['fig_SO2']['units'] = value
+
+    @property
     def png_compression(self):
         return self.save_dict['img_SO2']['compression']
 
@@ -791,6 +809,8 @@ class PyplisWorker:
         self.idx_current = -1       # Used to track what the current index is for saving to image buffer (buffer is only added to after first processing so we start at -1)
         self.idx_current_doas = 0   # Used for tracking current index of doas points
         self.first_image = True
+        self.img_cal = None         # Reset calibration image as we no longer have one
+        self.img_cal_prev = None
         self.got_doas_fov = False
         self.had_fix_fov_cal = False
         self.got_cal_cell = False
@@ -1026,6 +1046,26 @@ class PyplisWorker:
                 if isinstance(self.img_tau, pyplis.Img):
                     save_so2_img(self.saved_img_dir, self.img_tau, compression=self.save_dict['img_SO2']['compression'],
                                  max_val=max_val)
+
+        # Save matplotlib SO2 image
+        if self.save_dict['fig_SO2']['save']:
+            # If ppmm is requested we need to check if we have a calibration then set plot if needed
+            if self.save_dict['fig_SO2']['units'] == 'ppmm':
+                if isinstance(self.img_cal, pyplis.Img):
+                    if not self.fig_tau.disp_cal:
+                        self.fig_tau.disp_cal = 1
+                        self.fig_tau.update_plot(self.img_tau, self.img_cal)
+                else:
+                    return
+            # If tau is selected we need to set plot if it's in the wrong units
+            elif self.save_dict['fig_SO2']['units'] == 'tau':
+                if self.fig_tau.disp_cal:
+                    self.fig_tau.disp_cal = 0
+                    self.fig_tau.update_plot(self.img_tau, self.img_cal)
+            else:
+                print('Warning! Unrecognised units, SO2 figure not saved!')
+            self.fig_tau.save_figure(img_time=self.img_tau.meta['start_acq'],
+                                     savedir=self.saved_img_dir)
 
     def load_img(self, img_path, band=None, plot=True, temporary=False):
         """

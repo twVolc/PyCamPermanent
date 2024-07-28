@@ -744,6 +744,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.fig_tau.load_defaults()
         self.pyplis_worker.fig_tau.reload_roi()
         self.reload_all()
+        self.main_gui.menu.save_frame.load_defaults()
         geom_settings.load_instrument_setup(self.pyplis_worker.config["default_cam_geom"], show_info=False)
         process_settings.load_defaults()
         plume_bg.load_defaults()
@@ -824,11 +825,17 @@ class SaveFrame(LoadSaveProcessingSettings):
 
         # Objects to save in processing
         self.vars = {'save_img_aa': int,
+                     'type_img_aa': str,
                      'save_img_cal': int,
+                     'type_img_cal': str,
                      'save_img_so2': int,
+                     'png_compression': int,
+                     'save_fig_so2': int,
+                     'type_fig_so2': str,
                      'save_doas_cal': int}
 
         self.img_types = ['.npy', '.mat']
+        self.fig_so2_units = ['ppmm', 'tau']
         self._save_img_aa = tk.BooleanVar()
         self._type_img_aa = tk.StringVar()
         self.type_img_aa = self.img_types[0]
@@ -836,6 +843,8 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._type_img_cal = tk.StringVar()
         self.type_img_cal = self.img_types[0]
         self._save_img_so2 = tk.BooleanVar()
+        self._save_fig_so2 = tk.BooleanVar()
+        self._type_fig_so2 = tk.StringVar()
         self._png_compression = tk.IntVar()
         self.png_compression = 0
 
@@ -843,13 +852,16 @@ class SaveFrame(LoadSaveProcessingSettings):
 
     def gather_vars(self):
         self.pyplis_worker.config['save_img_aa'] = self.save_img_aa
-        self.pyplis_worker.type_img_aa = self.type_img_aa
+        self.pyplis_worker.config['type_img_aa'] = self.type_img_aa
 
         self.pyplis_worker.config['save_img_cal'] = self.save_img_cal
-        self.pyplis_worker.type_img_cal = self.type_img_cal
+        self.pyplis_worker.config['type_img_cal'] = self.type_img_cal
 
         self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
-        self.pyplis_worker.png_compression = self.png_compression
+        self.pyplis_worker.config['png_compression'] = self.png_compression
+
+        self.pyplis_worker.config['save_fig_so2'] = self.save_fig_so2
+        self.pyplis_worker.config['type_fig_so2'] = self.type_fig_so2
 
         self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
@@ -902,6 +914,22 @@ class SaveFrame(LoadSaveProcessingSettings):
     @save_img_so2.setter
     def save_img_so2(self, value):
         self._save_img_so2.set(value)
+
+    @property
+    def save_fig_so2(self):
+        return self._save_fig_so2.get()
+
+    @save_fig_so2.setter
+    def save_fig_so2(self, value):
+        self._save_fig_so2.set(value)
+
+    @property
+    def type_fig_so2(self):
+        return self._type_fig_so2.get()
+
+    @type_fig_so2.setter
+    def type_fig_so2(self, value):
+        self._type_fig_so2.set(value)
 
     @property
     def png_compression(self):
@@ -1007,6 +1035,18 @@ class SaveFrame(LoadSaveProcessingSettings):
         img_types = ttk.Spinbox(type_frame, textvariable=self._png_compression, width=3, from_=0, to=9, increment=1,
                                 font=self.main_gui.main_font)
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
+        # SO2 matplotlib figure save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save SO2 figure', variable=self._save_fig_so2)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(type_frame, text='Units:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, sticky='w')
+        fig_units = ttk.OptionMenu(type_frame, self._type_fig_so2, self.type_fig_so2, *self.fig_so2_units)
+        fig_units.config(width=5)
+        fig_units.grid(row=0, column=1, sticky='nsew', padx=2)
         row += 1
 
         # DOAS fit save
