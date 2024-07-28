@@ -429,7 +429,7 @@ class SpecWorker:
             f.write('DOAS processing parameters\n')
             f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
             f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
-            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
+            f.write('Light dilution correction used (on/off)={}\n'.format(self.corr_light_dilution))
             f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
 
         print('DOAS processing parameters saved: {}'.format(filepath))
