@@ -2481,7 +2481,7 @@ class PyplisWorker:
             tau = tau_fov.mean()
 
             try:
-                timeout = datetime.datetime.now() + datetime.timedelta(seconds = 1)
+                timeout = datetime.datetime.now() + datetime.timedelta(seconds = 30)
                 # Keep retrying to get the cd for current time until timeout
                 while (datetime.datetime.now() < timeout):
                     # Get CD for current time
