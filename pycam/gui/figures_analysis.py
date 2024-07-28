@@ -39,6 +39,8 @@ import time
 import queue
 import threading
 from pandas import Series
+import io
+import pickle
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
@@ -1071,8 +1073,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         filename = '{}_SO2_fig'.format(time_str)
         savepath = os.path.join(savedir, filename)
 
-        # Save matplotlib figure to filepath
-        self.fig.savefig(savepath, bbox_inches='tight')
+        # Save matplotlib figure to filepath. Make copy first to maybe stop white flashing
+        buf = io.BytesIO()
+        pickle.dump(self.fig, buf)
+        buf.seek(0)
+        fig = pickle.load(buf)
+        fig.savefig(savepath, bbox_inches='tight')
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
