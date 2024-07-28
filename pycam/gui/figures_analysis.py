@@ -4267,6 +4267,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Cross-correlation'
+
         self.main_gui = None
         self.parent = None
         self.pyplis_worker = pyplis_work
@@ -4300,22 +4302,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         self.main_gui = main_gui
    
-        self.vars = {'cross_corr_recal': int,
-                     'auto_nadeau_line': int,
-                     'source_coords': list,
-                     'nadeau_line_orientation': int,
-                     'nadeau_line_length': int,
-                     'max_nad_shift': int,
-                     'auto_nadeau_pcs': int
-                     }
+        self.vars = {'cross_corr_recal': int}
         self._cross_corr_recal = tk.IntVar()
-        self._auto_nadeau_line = tk.BooleanVar()
-        self._source_x = tk.IntVar()
-        self._source_y = tk.IntVar()
-        self._nadeau_line_orientation = tk.IntVar()
-        self._nadeau_line_length = tk.IntVar()
-        self._max_nad_shift = tk.IntVar()
-        self._auto_nadeau_pcs = tk.IntVar()
         self.update_variables()
 
     def update_variables(self):
@@ -4332,39 +4320,20 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if update_pyplis:
             self.pyplis_worker.apply_config(subset=self.vars.keys())
 
-    def generate_frame(self):
+    def generate_frame(self, frame):
         """
         Generates widget settings frame
         :return:
         """
-        if self.in_frame:
-            self.frame.attributes('-topmost', 1)
-            self.frame.attributes('-topmost', 0)
-            return
-
         self.update_variables() # Update to current settings
+        self.frame = ttk.Frame(frame)
 
         self.in_frame = True
-
-        self.frame = tk.Toplevel()
-        self.frame.title('Cross-correlation settings')
-        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
-
-        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
-        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
-
-        self.frame_ica = ttk.Frame(self.windows)
-        self.frame_ica.pack()
-        self.frame_nadeau = ttk.Frame(self.windows)
-        self.frame_nadeau.pack()
-
-        self.windows.add(self.frame_ica, text='ICA cross-correlation')
-        self.windows.add(self.frame_nadeau, text='Nadeau cross-correlation')
 
         # -------------------------------------
         # Information frame
         row = 0
-        self.frame_info = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
+        self.frame_info = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_info.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         label_1 = ttk.Label(self.frame_info, text='ICA gap [m]:')
@@ -4392,7 +4361,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Figure frame
         row += 1
-        self.frame_fig = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -------------------------------------------
@@ -4411,16 +4380,158 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
+    @property
+    def cross_corr_recal(self):
+        """Time in minutes to rerun cross-correlation analysis"""
+        return self._cross_corr_recal.get()
 
+    @cross_corr_recal.setter
+    def cross_corr_recal(self, value):
+        self._cross_corr_recal.set(value)
+
+    def update_plot(self, ax, info=None):
+        """Updates cross-correlation plot"""
+        self.ax = ax
+        self.fig = ax[0].figure
+        # Adjust figure size
+        self.fig.set_size_inches(self.fig_size[0], self.fig_size[1], forward=True)
+        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1)
+        ax[0].set_ylabel(r'ICA SO$_2$ loading [arbitrary]')
+        ax[0].set_xlabel('Time')
+
+        # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
+        # the updated plot will be built
+        if self.in_frame:
+            self.fig_canvas.get_tk_widget().destroy()
+
+            self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+            self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
+            self.fig_canvas.draw()
+
+            # Add toolbar so figures can be saved
+            toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
+            toolbar.update()
+            self.fig_canvas._tkcanvas.pack(side=tk.TOP)
+
+            self.update_info(info)
+
+            self.q.put(1)
+
+    def update_info(self, info):
+        """Updates cross-correlation info"""
+        try:
+            # Update info
+            self.label_ica_gap.configure(text='{:.1f}'.format(info['ica_gap']))
+            self.label_lag_frames.configure(text='{:.1f}'.format(info['lag_frames']))
+            self.label_lag_secs.configure(text='{:.1f}'.format(info['lag']))
+            self.label_speed.configure(text='{:.1f}'.format(info['velocity']))
+        except KeyError:
+            print('No cross-correlation info to update')
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.fig_canvas.draw()
+            else:
+                pass
+        except queue.Empty:
+            pass
+        self.parent.after(refresh_rate, self.__draw_canv__)
+
+
+class NadeauFlowSettings(LoadSaveProcessingSettings):
+    """
+    Flow Nadeau (parallel cross-correlation) plume speed settings class
+
+        To add a new variable:
+        1. Add it as a tk variable in initiate variables
+        2. Add it to the vars dictionary, along with its type
+        3. Add its associated widgets
+        4. Add its associated property with get and set options
+        5. Add its default value to processing_setting_defaults.txt
+    """
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Nadeau flow'
+
+        self.main_gui = None
+        self.parent = None
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_nadeau = self
+        self.q = queue.Queue()
+        self.cam_specs = cam_specs
+        self.fig_setts = fig_setts
+        self.dpi = self.fig_setts.dpi
+        self.fig_size_nad = (6, 6)  # TODO build in options to change size of this figure
+        self.h_ratio = 3
+        self.w_ratio = 25
+
+        self.pdx = 5
+        self.pdy = 5
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def start_draw(self, parent):
+        self.parent = parent
+        self.__draw_canv__()
+
+    def initiate_variables(self, main_gui):
+        """
+        Initiates all tkinter variables
+        :return:
+        """
+        self.main_gui = main_gui
+
+        self.vars = {'auto_nadeau_line': int,
+                     'source_coords': list,
+                     'nadeau_line_orientation': int,
+                     'nadeau_line_length': int,
+                     'max_nad_shift': int,
+                     'auto_nadeau_pcs': int
+                     }
+        self._auto_nadeau_line = tk.BooleanVar()
+        self._source_x = tk.IntVar()
+        self._source_y = tk.IntVar()
+        self._nadeau_line_orientation = tk.IntVar()
+        self._nadeau_line_length = tk.IntVar()
+        self._max_nad_shift = tk.IntVar()
+        self._auto_nadeau_pcs = tk.IntVar()
+        self.update_variables()
+
+    def update_variables(self):
+        """Updates variables with current pyplis settings"""
+        for key in self.vars.keys():
+            setattr(self, key, self.pyplis_worker.config[key])
+
+    def gather_vars(self, update_pyplis=False):
+        # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
+        for key in self.vars:
+            self.pyplis_worker.config[key] = getattr(self, key)
+
+        # Apply the config if requested
+        if update_pyplis:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
+
+    def generate_frame(self, frame):
+        self.frame = ttk.Frame(frame)
+        self.in_frame = True
+
+        self.update_variables()  # Update to current settings
         # ----------------------------------------------
         # Building Nadeau frame
-        self.frame_opts_nad = ttk.LabelFrame(self.frame_nadeau, text='Options', relief=tk.RAISED, borderwidth=3)
+        self.frame_opts_nad = ttk.LabelFrame(self.frame, text='Options', relief=tk.RAISED, borderwidth=3)
         self.frame_opts_nad.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        self.frame_fig_nad = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig_nad = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig_nad.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        self.frame_nad_xcorr = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_xcorr = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_nad_xcorr.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         self.frame_nad_res = ttk.Frame(self.frame_nad_xcorr, relief=tk.RAISED, borderwidth=3)
@@ -4482,7 +4593,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                                from_=1, to=len(self.pyplis_worker.PCS_lines_all), command=self.run_nadeau_line)
         pcs_spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
 
-
         # -------------------------------------------
         # Build figure displaying cross-correlation
         # Make empty figure if we don't have a figure to use
@@ -4490,7 +4600,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             # Create figure
             self.fig_nad, self.axes = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi,
                                                    gridspec_kw={'height_ratios': [self.h_ratio, 1]})
-        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
+        self.fig_nad.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
 
         self.ax_nad = self.axes[0]
         self.ax_nad.set_aspect(1)
@@ -4573,15 +4683,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Draw/update all plots on opening of frame
         self.run_nadeau_line()
-
-    @property
-    def cross_corr_recal(self):
-        """Time in minutes to rerun cross-correlation analysis"""
-        return self._cross_corr_recal.get()
-
-    @cross_corr_recal.setter
-    def cross_corr_recal(self, value):
-        self._cross_corr_recal.set(value)
 
     @property
     def auto_nadeau_line(self):
@@ -4672,45 +4773,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         except (IndexError, TypeError):
             print('Error when attempting to set gas source coordinates. Aborting setting.\n'
                   'Expected list with length 2, got type: {}'.format(type(value)))
-
-    def update_plot(self, ax, info=None):
-        """Updates cross-correlation plot"""
-        self.ax = ax
-        self.fig = ax[0].figure
-        # Adjust figure size
-        self.fig.set_size_inches(self.fig_size[0], self.fig_size[1], forward=True)
-        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1)
-        ax[0].set_ylabel(r'ICA SO$_2$ loading [arbitrary]')
-        ax[0].set_xlabel('Time')
-
-        # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
-        # the updated plot will be built
-        if self.in_frame:
-            self.fig_canvas.get_tk_widget().destroy()
-
-            self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
-            self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
-            self.fig_canvas.draw()
-
-            # Add toolbar so figures can be saved
-            toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
-            toolbar.update()
-            self.fig_canvas._tkcanvas.pack(side=tk.TOP)
-
-            self.update_info(info)
-
-            self.q.put(1)
-
-    def update_info(self, info):
-        """Updates cross-correlation info"""
-        try:
-            # Update info
-            self.label_ica_gap.configure(text='{:.1f}'.format(info['ica_gap']))
-            self.label_lag_frames.configure(text='{:.1f}'.format(info['lag_frames']))
-            self.label_lag_secs.configure(text='{:.1f}'.format(info['lag']))
-            self.label_speed.configure(text='{:.1f}'.format(info['velocity']))
-        except KeyError:
-            print('No cross-correlation info to update')
 
     def update_source_plot(self):
         """Draws source coordinate marker on plot"""
@@ -4889,25 +4951,12 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def close_frame(self):
-        """
-        Closes frame and makes sure current values are correct
-        :return:
-        """
-        # UPDATE CURRENT SETTINGS FROM CONFIG FILE
-        self.update_variables()
-
-        self.in_frame = False
-        # Close frame
-        self.frame.destroy()
-
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
             update = self.q.get(block=False)
             if update == 1:
                 if self.in_frame:
-                    self.fig_canvas.draw()
                     self.fig_canvas_nad.draw()
                     self.fig_canvas_lag.draw()
             else:
@@ -4929,6 +4978,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Optical flow'
 
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_opt = self
@@ -5005,21 +5055,13 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # Load default values
         self.load_defaults()
 
-    def generate_frame(self):
+    def generate_frame(self, frame):
         """
         Generates widget settings frame
         :return:
         """
-        if self.in_frame:
-            self.frame.attributes('-topmost', 1)
-            self.frame.attributes('-topmost', 0)
-            return
-
         self.in_frame = True
-
-        self.frame = tk.Toplevel()
-        self.frame.title('Plume velocity settings')
-        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+        self.frame = ttk.Frame(frame)
 
         # -------------------------
         # Build optical flow figure
@@ -5524,6 +5566,53 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         except queue.Empty:
             pass
         self.frame.after(refresh_rate, self.__draw_canv__)
+
+
+class PlumeVelocityFrame:
+    """
+    Class to hold all plume velocity settings within a single frame
+    """
+    def __init__(self, opti_flow=OptiFlowSettings(), cross_corr=CrossCorrelationSettings(),
+                 nadeau_flow=NadeauFlowSettings()):
+        self.opti_flow = opti_flow
+        self.cross_corr = cross_corr
+        self.nadeau_flow = nadeau_flow
+        self.in_frame = False
+
+    def generate_frame(self):
+        # Initial frame setup
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+        self.in_frame = True
+        self.frame = tk.Toplevel()
+        self.frame.title('Plume velocity settings')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        # Setup Notebook
+        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
+        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
+
+        # Generate frames in Notebook
+        self.opti_flow.generate_frame(self.windows)
+        self.cross_corr.generate_frame(self.windows)
+        self.nadeau_flow.generate_frame(self.windows)
+
+        self.windows.add(self.opti_flow.frame, text=self.opti_flow.name)
+        self.windows.add(self.cross_corr.frame, text=self.cross_corr.name)
+        self.windows.add(self.nadeau_flow.frame, text=self.nadeau_flow.name)
+
+    def close_frame(self):
+        """Close frame handle"""
+        self.in_frame = False
+        self.opti_flow.in_frame = False
+        self.cross_corr.in_frame = False
+
+        self.cross_corr.update_variables()
+        self.nadeau_flow.update_variables()
+        self.frame.destroy()
+
 
 
 class LightDilutionSettings(LoadSaveProcessingSettings):

@@ -189,6 +189,7 @@ class PyplisWorker:
         self.fig_doas = None            # Figure displaying DOAS fit
         self.fig_doas_fov = None        # Figure for displaying DOAS FOV on correlation image
         self.fig_cross_corr = None      # Figure for displaying cross-correlation results
+        self.fig_nadeau = None          # Figure for displaying Nadeau flow data
         self.fig_opt = None             # Figure for displaying optical flow
         self.fig_dilution = None        # Figure for displaying light dilution
         self.fig_cell_cal = None        # Figure for displaying cell calibration - CellCalibFrame obj
@@ -3480,11 +3481,11 @@ class PyplisWorker:
                 nadeau_plumespeed, info_dict = self.generate_nadeau_plumespeed(self.img_tau_prev, self.img_tau,
                                                                                self.nadeau_line)
                 if plot:
-                    self.fig_cross_corr.nadeau_line = self.nadeau_line
-                    self.fig_cross_corr.update_pcs_line(draw=False)
-                    self.fig_cross_corr.update_nad_line_plot(draw=False)
-                    self.fig_cross_corr.update_nadeau_lag(info_dict, draw=True)
-                    self.fig_cross_corr.update_results(nadeau_plumespeed, info_dict)
+                    self.fig_nadeau.nadeau_line = self.nadeau_line
+                    self.fig_nadeau.update_pcs_line(draw=False)
+                    self.fig_nadeau.update_nad_line_plot(draw=False)
+                    self.fig_nadeau.update_nadeau_lag(info_dict, draw=True)
+                    self.fig_nadeau.update_results(nadeau_plumespeed, info_dict)
             else:
                 nadeau_plumespeed = None
 
