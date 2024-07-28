@@ -589,6 +589,14 @@ class PyplisWorker:
         self.save_dict['fig_SO2']['save'] = value
 
     @property
+    def type_fig_so2(self):
+        return self.save_dict['fig_SO2']['units']
+
+    @type_fig_so2.setter
+    def type_fig_so2(self, value):
+        self.save_dict['fig_SO2']['units'] = value
+
+    @property
     def png_compression(self):
         return self.save_dict['img_SO2']['compression']
 
