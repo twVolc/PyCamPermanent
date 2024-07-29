@@ -100,6 +100,7 @@ class SpecWorker:
         # Processing loop attributes
         self.process_thread = None      # Thread for running processing loop
         self.processing_in_thread = False   # Flags whether the object is processing in a thread or in the main thread - therefore deciding whether plots should be updated herein or through pyplisworker
+        self.lock = threading.Lock()        # Lock for updating self.results in a thread-safe manner
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
         self.watcher = None
