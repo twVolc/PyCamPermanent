@@ -2086,11 +2086,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='OK', command=self.save_and_close)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
-        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
         butt = ttk.Button(butt_frame, text='Preview', command=self.run_process)
-        butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -----------------------------
         # Reference areas
@@ -3079,9 +3076,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt = ttk.Button(self.butt_frame, text='Apply', command=self.gather_vars)
         butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.butt_frame, text='Set As Defaults', command=self.set_defaults)
-        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
-
     @property
     def plot_iter(self):
         return self._plot_iter.get()
@@ -3571,10 +3565,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.frame_opts)
         butt_frame.grid(row=row, column=0, columnspan=3, sticky='nsew')
         butt_frame.grid_columnconfigure(0, weight=1)
-        def_butt = ttk.Button(butt_frame, text='Set as defaults', command=lambda: self.set_defaults(parent=self.frame))
-        def_butt.grid(row=0, column=0, sticky='e', padx=2, pady=2)
         app_butt = ttk.Button(butt_frame, text='Update settings', command=lambda: self.gather_vars(message=True))
-        app_butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
+        app_butt.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
         # --------------------------------------------------------------
 
         # --------------------------------------------------------------
@@ -5132,10 +5124,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='Apply', command=lambda: self.gather_vars(run=True))
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        # Set default button
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
         # Setup thread-safe drawing
         self.__draw_canv__()
 
@@ -5827,9 +5815,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         # Run button
         butt = ttk.Button(butt_frame, text='Run', command=self.run_dil_corr)
         butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
-
-        butt = ttk.Button(butt_frame, text='Save defaults', command=self.set_defaults)
-        butt.grid(row=0, column=2, sticky='ew', padx=2, pady=2)
 
         # -------------------------
         # Build light dilution figure

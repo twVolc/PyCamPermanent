@@ -1057,8 +1057,6 @@ class SaveFrame(LoadSaveProcessingSettings):
         butt_frame.grid_columnconfigure(0, weight=1)
         butt = ttk.Button(butt_frame, text='Apply settings', command=self.gather_vars)
         butt.grid(row=0, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
 
     def save_pcs(self):
         """Saves PCS line"""
