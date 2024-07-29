@@ -605,10 +605,11 @@ class IFitWorker(SpecWorker):
         fit_errs = np.array(list(compress(self.results.fit_errs, fit_err_idxs)))
         ldfs = np.array(list(compress(self.results.ldfs, fit_err_idxs)))
         if inplace:
-            with self.lock:
-                self.results.drop(indices, inplace=True)
-                self.results.fit_errs = fit_errs
-                self.results.ldfs = ldfs
+            # Note this function is used in PyplisWorker and self.lock is acquired there, so I don't
+            # need to acquire it directly in this function (if we do it would freeze the program.
+            self.results.drop(indices, inplace=True)
+            self.results.fit_errs = fit_errs
+            self.results.ldfs = ldfs
             results = None
         else:
             results = DoasResults(self.results.drop(indices, inplace=False))
