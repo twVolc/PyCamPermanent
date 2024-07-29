@@ -5,7 +5,7 @@ Contains all classes associated with building figures for the analysis functions
 """
 
 from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
-from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings
+from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings, ScrollWindow
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -5063,10 +5063,18 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         self.in_frame = True
         self.frame = ttk.Frame(frame)
 
+        # ========================================================
+        # Scroll window
+        self.plt_canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.plt_canvas_scroll = ScrollWindow(self.frame, self.plt_canvas)
+        self.scroll_frame = ttk.Frame(self.plt_canvas_scroll.frame, borderwidth=2)
+        self.scroll_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
+        # ==========================================================
+
         # -------------------------
         # Build optical flow figure
         # -------------------------
-        self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = tk.Frame(self.scroll_frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
         # self.frame.rowconfigure(0, weight=1)
         self._build_fig_img()
@@ -5075,7 +5083,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # -----------------
         # Parameter options
         # -----------------
-        self.param_frame = ttk.LabelFrame(self.frame, text='Optical flow parameters', borderwidth=5)
+        self.param_frame = ttk.LabelFrame(self.scroll_frame, text='Optical flow parameters', borderwidth=5)
         self.param_frame.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
@@ -5110,7 +5118,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # ------------------------------
         # Pyplis Analysis options frame
         # ------------------------------
-        self.analysis_frame = ttk.LabelFrame(self.frame, text='Analysis parameters', borderwidth=5)
+        self.analysis_frame = ttk.LabelFrame(self.scroll_frame, text='Analysis parameters', borderwidth=5)
         self.analysis_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
         row = 0
 
@@ -5169,7 +5177,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # ----------------------------------
 
         # Set buttons
-        butt_frame = ttk.Frame(self.frame)
+        butt_frame = ttk.Frame(self.scroll_frame)
         butt_frame.grid(row=2, column=0, sticky='nsew')
 
         # Apply button
