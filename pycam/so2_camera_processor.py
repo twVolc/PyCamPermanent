@@ -244,6 +244,7 @@ class PyplisWorker:
         self.img_tau_prev = copy.deepcopy(self.img_A)
         self.img_cal = None         # Calibrated image
         self.img_cal_prev = None
+        self.test_img = copy.deepcopy(self.img_A)
 
         # Calibration attributes
         self.got_doas_fov = False
@@ -3422,6 +3423,12 @@ class PyplisWorker:
             img_A = self.get_img(img_path_A, attempts=3)
         if img_path_B is not None:
             img_B = self.get_img(img_path_B, attempts=3)
+
+        try:
+            img = img_A - self.test_img
+            img = img_B - self.test_img
+        except (TypeError, AttributeError) as e:
+            raise FileNotFoundError('{}'.format(e))
 
         # Can pass None to this function for img paths, and then the current images will be processed
         if img_path_A is not None:
