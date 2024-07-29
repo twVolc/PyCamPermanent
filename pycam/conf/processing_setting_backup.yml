@@ -32,8 +32,13 @@ ld_lookup_2:
 
 # Processing save settings
 save_img_aa: 0
+type_img_aa: .npy
 save_img_cal: 0
+type_img_cal: .npy
 save_img_so2: 0
+png_compression: 0
+save_fig_so2: 0
+type_fig_so2: ppmm
 save_doas_cal: 0
 
 # Plume background model

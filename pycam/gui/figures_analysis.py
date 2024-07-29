@@ -39,6 +39,8 @@ import time
 import queue
 import threading
 from pandas import Series
+import io
+import pickle
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
@@ -1053,6 +1055,30 @@ class ImageSO2(LoadSaveProcessingSettings):
 
         if draw:
             self.q.put(1)
+
+    def save_figure(self, img_time=None, savedir=None):
+        """
+        Save matplotlib figure to file
+        param: savedir str      directory to save file in.
+                                If None, directory is taken from PyplisWorker.save_img_dir
+        """
+        # Get save directory
+        if savedir is None:
+            savedir = self.pyplis_worker.saved_img_dir
+
+        # Generate filename based on image time
+        if img_time is None:
+            img_time = self.pyplis_worker.img_tau.meta['start_acq']
+        time_str = img_time.strftime(self.pyplis_worker.cam_specs.file_datestr)
+        filename = '{}_SO2_fig'.format(time_str)
+        savepath = os.path.join(savedir, filename)
+
+        # Save matplotlib figure to filepath. Make copy first to maybe stop white flashing
+        buf = io.BytesIO()
+        pickle.dump(self.fig, buf)
+        buf.seek(0)
+        fig = pickle.load(buf)
+        fig.savefig(savepath, bbox_inches='tight')
 
     def __draw_canv__(self):
         """Draws canvas periodically"""
