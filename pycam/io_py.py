@@ -84,13 +84,14 @@ def load_spectrum(filename, attempts = 3):
     while attempts > 0:
         try:
             spec_array = np.load(filename)
-            break
         except PermissionError as e:
             time.sleep(0.2)
             attempts -= 1
-            continue
+            err = e
+        else:
+            break
     else:
-        raise e
+        raise err
 
     wavelengths = spec_array[0, :]
     spectrum = spec_array[1, :]
