@@ -6,8 +6,9 @@ E.g. the data held within these objects links to the processing work, and needs 
 object's frame has been build in the menu
 """
 
-from pycam.gui.figures_analysis import GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame, \
-    CellCalibFrame, CrossCorrelationSettings, OptiFlowSettings, LightDilutionSettings
+from pycam.gui.figures_analysis import (GeomSettings, ProcessSettings, PlumeBackground, DOASFOVSearchFrame,
+                                        CellCalibFrame, CrossCorrelationSettings, NadeauFlowSettings, OptiFlowSettings,
+                                        PlumeVelocityFrame, LightDilutionSettings)
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_doas import CalibrationWindow
@@ -37,8 +38,14 @@ cell_calib = CellCalibFrame(fig_setts=gui_setts, process_setts=process_settings)
 # Cross-correlation frame
 cross_correlation = CrossCorrelationSettings(fig_setts=gui_setts)
 
+# Nadeau flow frame
+nadeau_flow = NadeauFlowSettings(fig_setts=gui_setts)
+
 # Optical flow frame
 opti_flow = OptiFlowSettings(fig_setts=gui_setts)
+
+# Plume velocity settings
+plume_velocity = PlumeVelocityFrame(cross_corr=cross_correlation, opti_flow=opti_flow, nadeau_flow=nadeau_flow)
 
 # Light dilution frame
 light_dilution = LightDilutionSettings(fig_setts=gui_setts)

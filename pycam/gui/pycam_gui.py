@@ -18,7 +18,7 @@ from pycam.setupclasses import ConfigInfo, FileLocator
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
     light_dilution, cross_correlation, basic_acq_handler, automated_acq_handler, instrument_cfg, calibration_wind,\
-    comm_recv_handler, cell_calib
+    comm_recv_handler, cell_calib, nadeau_flow
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -113,6 +113,8 @@ class PyCam(ttk.Frame):
         cell_calib.initiate_variables(self)
         cross_correlation.start_draw(self.root)
         cross_correlation.initiate_variables(self)
+        nadeau_flow.start_draw(self.root)
+        nadeau_flow.initiate_variables(self)
         opti_flow.initiate_variables(self)
         light_dilution.add_gui(self)
         light_dilution.initiate_variables()
