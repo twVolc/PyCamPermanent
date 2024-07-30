@@ -41,6 +41,7 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
+import traceback
 from ruamel.yaml import YAML
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
@@ -243,6 +244,7 @@ class PyplisWorker:
         self.img_tau_prev = copy.deepcopy(self.img_A)
         self.img_cal = None         # Calibrated image
         self.img_cal_prev = None
+        self.test_img = copy.deepcopy(self.img_A)
 
         # Calibration attributes
         self.got_doas_fov = False
@@ -1079,6 +1081,35 @@ class PyplisWorker:
                                     image as we aren't doing a full processing of the new data and don't want to mess
                                     up the current state
         """
+        # Get new image
+        img = self.get_img(img_path)
+
+        self.prep_img(img, img_path, band, plot, temporary)
+
+
+    def get_img(self, img_path, attempts = 1):
+        
+        while attempts > 0:
+            # Try and load the image
+            img = pyplis.image.Img(img_path, self.load_img_func)
+
+            # If successful then leave the loop
+            if img.img is not None:
+                break
+            
+            # Otherwise wait half a second and decrease the number of attempts left
+            time.sleep(0.1)
+            attempts -= 1
+        else:
+            # This will run once the number of repeats is 0
+            raise FileNotFoundError(f"Image from {img_path} could not be loaded. Skipping pair.")
+
+        img.filename = img_path.split('\\')[-1].split('/')[-1]
+        img.pathname = img_path
+        
+        return img
+    
+    def prep_img(self, img, img_path, band=None, plot=True, temporary=False):
         # Extract band if it isn't already provided
         if band is None:
             band = [f for f in img_path.split('_') if 'fltr' in f][0].replace('fltr', '')
@@ -1087,12 +1118,7 @@ class PyplisWorker:
         if not temporary:
             setattr(self, 'img_{}_prev'.format(band), getattr(self, 'img_{}'.format(band)))
 
-        # Get new image
-        img = pyplis.image.Img(img_path, self.load_img_func)
-        img.filename = img_path.split('\\')[-1].split('/')[-1]
-        img.pathname = img_path
-
-        # Dark subtraction - first extract ss then hunt for dark image
+         # Dark subtraction - first extract ss then hunt for dark image
         try:
             ss = str(int(img.texp * 10 ** 6))
             dark_img = self.find_dark_img(self.dark_img_dir, ss, band=band)[0]
@@ -3433,12 +3459,23 @@ class PyplisWorker:
         :return:
         """
 
+        # Check to see if the images can be loaded 
+        if img_path_A is not None:
+            img_A = self.get_img(img_path_A, attempts=3)
+        if img_path_B is not None:
+            img_B = self.get_img(img_path_B, attempts=3)
+
+        try:
+            img = img_A - self.test_img
+            img = img_B - self.test_img
+        except (TypeError, AttributeError) as e:
+            raise FileNotFoundError('{}'.format(e))
+
         # Can pass None to this function for img paths, and then the current images will be processed
         if img_path_A is not None:
-            # Load in images
-            self.load_img(img_path_A, band='A', plot=plot)
+            self.prep_img(img_A, img_path_A, band='A', plot=plot)
         if img_path_B is not None:
-            self.load_img(img_path_B, band='B', plot=plot)
+            self.prep_img(img_B, img_path_B, band='B', plot=plot)
 
         # Update some initial times which we keep track of throughout
         # Set the cross-correlation time to the first image time, from here we can calculate how long has passed since
@@ -3739,8 +3776,13 @@ class PyplisWorker:
 
             # Process image pair
             print('SO2 cam processor: Processing pair: {}'.format(self.img_list[i][0]))
-            self.process_pair(self.img_dir + '\\' + self.img_list[i][0], self.img_dir + '\\' + self.img_list[i][1],
-                              plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
+            try:
+                self.process_pair(self.img_dir + '\\' + self.img_list[i][0],
+                                  self.img_dir + '\\' + self.img_list[i][1],
+                                  plot=plot_iter, force_cal=force_cal, cross_corr=cross_corr)
+            except FileNotFoundError:
+                traceback.print_exc()
+                continue
 
             # Save all images that have been requested
             self.save_imgs()
@@ -3833,7 +3875,11 @@ class PyplisWorker:
                     save_last_val_only = False
 
             # Process the pair
-            self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
+            try:
+                self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
+            except FileNotFoundError:
+                traceback.print_exc()
+                continue
 
             # Save all images that have been requested
             self.save_imgs()
