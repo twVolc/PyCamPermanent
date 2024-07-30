@@ -566,29 +566,30 @@ class IFitWorker(SpecWorker):
         except KeyError:
             cd_err = np.nan
 
-        # Faster append method - seems to work
-        self.results.loc[doas_dict['time']] = cd
-        if isinstance(self.results.fit_errs, list):
-            self.results.fit_errs.append(cd_err)
-        elif isinstance(self.results.fit_errs, np.ndarray):
-            self.results.fit_errs = np.append(self.results.fit_errs, cd_err)
-        else:
-            print('ERROR! Unrecognised datatype for ifit fit errors')
+        with self.lock:
+            # Faster append method - seems to work
+            self.results.loc[doas_dict['time']] = cd
+            if isinstance(self.results.fit_errs, list):
+                self.results.fit_errs.append(cd_err)
+            elif isinstance(self.results.fit_errs, np.ndarray):
+                self.results.fit_errs = np.append(self.results.fit_errs, cd_err)
+            else:
+                print('ERROR! Unrecognised datatype for ifit fit errors')
 
-        # Light dilution
-        try:
-            ldf = doas_dict['LDF']
-        except KeyError:
-            ldf = np.nan
+            # Light dilution
+            try:
+                ldf = doas_dict['LDF']
+            except KeyError:
+                ldf = np.nan
 
-        # If there is no ldf attribute, fill it with nans and then set the most recent value to LDF
-        if not hasattr(self.results, 'ldfs'):
-            self.results.ldfs = [np.nan] * len(self.results.fit_errs)
-            self.results.ldfs[-1] = ldf
-        elif isinstance(self.results.ldfs, list):
-            self.results.ldfs.append(ldf)
-        elif isinstance(self.results.ldfs, np.ndarray):
-            self.results.ldfs = np.append(self.results.ldfs, ldf)
+            # If there is no ldf attribute, fill it with nans and then set the most recent value to LDF
+            if not hasattr(self.results, 'ldfs'):
+                self.results.ldfs = [np.nan] * len(self.results.fit_errs)
+                self.results.ldfs[-1] = ldf
+            elif isinstance(self.results.ldfs, list):
+                self.results.ldfs.append(ldf)
+            elif isinstance(self.results.ldfs, np.ndarray):
+                self.results.ldfs = np.append(self.results.ldfs, ldf)
 
     def rem_doas_results(self, time_obj, inplace=False):
         """
@@ -604,6 +605,8 @@ class IFitWorker(SpecWorker):
         fit_errs = np.array(list(compress(self.results.fit_errs, fit_err_idxs)))
         ldfs = np.array(list(compress(self.results.ldfs, fit_err_idxs)))
         if inplace:
+            # Note this function is used in PyplisWorker and self.lock is acquired there, so I don't
+            # need to acquire it directly in this function (if we do it would freeze the program.
             self.results.drop(indices, inplace=True)
             self.results.fit_errs = fit_errs
             self.results.ldfs = ldfs

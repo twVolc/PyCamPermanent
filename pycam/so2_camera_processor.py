@@ -2269,7 +2269,8 @@ class PyplisWorker:
         if self.cal_type_int in [1, 2]:
             # Perform any necessary DOAS calibration updates
             if doas_update:
-                self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
+                with self.doas_worker.lock:
+                    self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
 
         # TODO test function - I have not confirmed that all types of calibration work yet.
         cal_img = None
