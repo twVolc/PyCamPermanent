@@ -2510,7 +2510,8 @@ class PyplisWorker:
             try:
                 timeout = datetime.datetime.now() + datetime.timedelta(seconds = 30)
                 # Keep retrying to get the cd for current time until timeout
-                while (datetime.datetime.now() < timeout):
+                # Will also exit if a new value with a greater datetime is added
+                while (datetime.datetime.now() < timeout) and not np.any(img_time < self.doas_worker.results.index):
                     # Get CD for current time
                     cd = self.doas_worker.results.get(img_time)
                     if cd is not None: break
