@@ -1057,8 +1057,6 @@ class PyplisWorker:
                     if not self.fig_tau.disp_cal:
                         self.fig_tau.disp_cal = 1
                         self.fig_tau.update_plot(self.img_tau, self.img_cal)
-                else:
-                    return
             # If tau is selected we need to set plot if it's in the wrong units
             elif self.save_dict['fig_SO2']['units'] == 'tau':
                 if self.fig_tau.disp_cal:
