@@ -903,18 +903,19 @@ class ImageSO2(LoadSaveProcessingSettings):
         :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
         :return:
         """
-        print('In scale image')
         if self.disp_cal:
-            print('In disp cal')
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
                 self.vmax_cal = np.nanpercentile(self.image_cal, 99)
             else:
                 self.vmax_cal = self.ppmm_max
-            if self.cmap.name == 'seismic':
-                vmin = -self.vmax_cal
+            if self.vmax_cal > 0:
+                if self.cmap.name == 'seismic':
+                    vmin = -self.vmax_cal
+                else:
+                    vmin = 0
             else:
-                vmin = 0
+                vmin = np.nanpercentile(self.image_cal, 1)
             self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_cal)
             self.cbar.ax.set_title('ppm.m')
         else:
