@@ -903,9 +903,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
         :return:
         """
-        print('In scale image')
         if self.disp_cal:
-            print('In disp cal')
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
                 self.vmax_cal = np.nanpercentile(self.image_cal, 99)
