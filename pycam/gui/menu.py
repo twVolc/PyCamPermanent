@@ -2,7 +2,6 @@
 
 """Holds classes for building a menu bar in tkinter"""
 
-from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
@@ -25,10 +24,8 @@ import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
 from shutil import copyfile
-import time
 import os
 import threading
-import multiprocessing
 
 
 class PyMenu:

@@ -7,7 +7,6 @@ from pycam.io_py import read_temp_log
 from pycam.gui.cfg import fig_face_colour, axes_colour
 
 import tkinter as tk
-import tkinter.ttk as ttk
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk

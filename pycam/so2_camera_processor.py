@@ -6,7 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
-from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
+from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
@@ -21,13 +21,11 @@ from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 from pyplis.doascalib import DoasCalibData, DoasFOV
 from pyplis.exceptions import ImgMetaError
-import pydoas
 
 import pandas as pd
 from math import log10, floor
 import datetime
 import time
-from itertools import compress
 import queue
 import threading
 import pickle
@@ -36,7 +34,6 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import os
 import cv2
 from skimage import transform as tf

@@ -9,8 +9,6 @@ import subprocess
 import datetime
 import threading
 import shutil
-import time
-
 
 def check_filename(filename, ext):
     """Checks filename to ensure it is as expected

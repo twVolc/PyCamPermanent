@@ -8,7 +8,6 @@ from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
 from pycam.networking.FTP import FTPClient, CurrentDirectories
 from .settings import GUISettings
-import os
 import copy
 
 # ======================================================================================================================

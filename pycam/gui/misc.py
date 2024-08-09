@@ -6,12 +6,9 @@ from pycam.setupclasses import pycam_details, FileLocator
 
 import tkinter as tk
 from tkinter import messagebox
-from tkinter import font
 import tkinter.ttk as ttk
 
 from PIL import ImageTk, Image
-import time
-import threading
 import os
 import socket
 

@@ -5,15 +5,12 @@ Module containing widgets for camera and spectrometer control, by connecting to 
 messages other comms
 """
 
-from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
+from pycam.setupclasses import CameraSpecs, SpecSpecs
 import pycam.gui.cfg as cfg
 
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter.messagebox import askyesno, showerror, showinfo
-import numpy as np
-import os
-import datetime
 import time
 
 
@@ -1110,9 +1107,3 @@ class BasicAcqHandler:
 
         self.in_frame = False
         self.frame.destroy()
-
-
-
-
-
-
