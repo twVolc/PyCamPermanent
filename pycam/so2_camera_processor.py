@@ -3169,7 +3169,7 @@ class PyplisWorker:
                 cds = cds[cond]
                 distarr = dists[cond]
                 disterr = dist_errs
-                props = pyplis.plumespeed.LocalPlumeProperties(line.line_id)    # Plume properties local to line
+                props = LocalPlumeProperties(line.line_id)    # Plume properties local to line
                 verr = None                 # Used and redefined later in flow_histo/flow_hybrid
                 dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
 
