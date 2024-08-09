@@ -166,7 +166,6 @@ class PyplisWorker:
         self.got_light_dil = False                      # Flags whether we have light dilution for this sequence
         self.lightcorr_A = None                         # Light dilution corrected image
         self.lightcorr_B = None                         # Light dilution corrected image
-        self.save_emission_rates = 60                   # Save emission rate time series every x minutes
         self.results = {}
         self.init_results()
 
@@ -288,7 +287,6 @@ class PyplisWorker:
                           'img_SO2': {'save': False, 'compression': 0},     # Arbitrary SO2 png image
                           'fig_SO2': {'save': False, 'units': 'ppmm'}       # matplotlib SO2 image [units are ppmm or tau]
                           }
-        self.save_freq = [0, 30]     # Frequency of saving data
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
