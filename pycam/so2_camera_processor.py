@@ -906,9 +906,6 @@ class PyplisWorker:
         else:
             return
 
-        # Update first_image flag
-        self.first_image = True
-
         # Reset buffers as we have a new sequence
         self.reset_self()
 
@@ -3728,7 +3725,6 @@ class PyplisWorker:
         time_proc = time.time()
 
         # Loop through img_list and process data
-        self.first_image = True
         save_last_val_only = False
         for i in range(len(self.img_list)):
 
