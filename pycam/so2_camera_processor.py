@@ -2373,23 +2373,6 @@ class PyplisWorker:
         self.got_doas_fov = True
         self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
-        # Save as FITS file if requested
-        # TODO This saving may need to be moved to the updating DOAS function, rather the FOV search
-        if self.save_doas_cal:
-            time_gap = self.img_A.meta['start_acq'] - self.doas_last_save
-            time_gap = time_gap.total_seconds() / 60
-            if force_save or time_gap >= self.remove_doas_mins:
-                # Get filename which doesn't exist yet by incrementing number
-                full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-                while os.path.exists(full_path):
-                    self.doas_file_num += 1
-                    full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-                # TODO I don't think this line actually saves data...
-                #self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-
-                # Set new time of most recent save
-                self.doas_last_save = self.img_A.meta['start_acq']
-
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
             print('Updating DOAS FOV plot')
