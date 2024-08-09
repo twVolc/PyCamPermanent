@@ -3665,27 +3665,6 @@ class PyplisWorker:
 
         self.fig_series.update_plot()
 
-    def finalise_processing(self, save_doas=True, reset=True):
-        """Finishes all processing requirements (mainly saving info)"""
-        # TODO need an option to save every 30 minutes or something - this is already setup in self._processing, but
-        # TODO we need to clip self.results so that it isn't all saved every 30 minutes and only the last 30 minutes
-        # TODO of data are saved each time
-        print('Finalising processing...')
-        # Save the final emission rates
-        save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
-        self.save_processing_params()
-        self.save_calibration()
-        if save_doas:
-            self.doas_worker.save_results()
-
-        # After processing a loaded sequence we don't want to lose data and reset everything
-        if reset:
-            self.doas_worker.reset_self()
-            self.reset_self(reset_plot=False)       # Reset self but don't reset plot as may want to keep it visible
-
-        # TODO perhaps do things like calculate average emission rate (this will be a daily average when used in
-        # TODO the continuous monitoring mode) save to a file, etc
-
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.set_processing_directory(make_dir=True)
