@@ -485,6 +485,8 @@ class LoadFrame(LoadSaveProcessingSettings):
         change_conf_butt.grid(row=row, column=0, sticky='we', padx=self.pdx, pady=self.pdy)
         revert_conf_butt = ttk.Button(default_conf_frame, text='Revert to original default config', command=self.revert_default_conf)
         revert_conf_butt.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        load_def_conf_butt = ttk.Button(default_conf_frame, text='Load default config', command=lambda: self.load_config_file(filename = self.default_conf_path))
+        load_def_conf_butt.grid(row=row, column=2, sticky='we', padx=self.pdx, pady=self.pdy)
 
     @property
     def pcs_lines(self):
@@ -724,11 +726,13 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.in_frame = False
         self.frame.destroy()
 
-    def load_config_file(self):
+    def load_config_file(self, filename = None):
         """Load in a config file selected by the user"""
-        filename = filedialog.askopenfilename(
-            title='Select config file',
-            initialdir=self.init_dir)
+
+        if filename is None: 
+            filename = filedialog.askopenfilename(
+                title='Select config file',
+                initialdir=self.init_dir)
         
         if len(filename) > 0:
             self.pyplis_worker.load_config(filename, "user")
