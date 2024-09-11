@@ -783,11 +783,8 @@ class LoadFrame(LoadSaveProcessingSettings):
             self.default_conf_path = filename
 
     def revert_default_conf(self):
-        """Revert the default config back to the original setting and reset the location"""
+        """reset the location of the defult config back to the original"""
 
-        # Reset contents of original file to contents of backup file
-        copyfile(FileLocator.PROCESS_DEFAULTS_BACKUP, FileLocator.PROCESS_DEFAULTS)
-        
         # Reset recorded location of default config
         self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
