@@ -2285,8 +2285,7 @@ class PyplisWorker:
         if self.cal_type_int in [1, 2]:
             # Perform any necessary DOAS calibration updates
             if doas_update:
-                with self.doas_worker.lock:
-                    self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
+                self.update_doas_calibration(img, force_fov_cal=run_cal_doas)
 
         # TODO test function - I have not confirmed that all types of calibration work yet.
         cal_img = None
@@ -2433,38 +2432,39 @@ class PyplisWorker:
         if (force_fov_cal or self.doas_fov_recal or not self.got_doas_fov) and not self.fix_fov:
             dt = datetime.timedelta(minutes=self.doas_fov_recal_mins)
             oldest_time = img_time - dt
-            if oldest_time >= self.doas_last_fov_cal or force_fov_cal:
-                # Check we have some DOAS points
-                if len(self.doas_worker.results) < self.min_doas_points:
-                    print('Require at least {} DOAS points to perform FOV CD-tau calibration. '
-                          'Got only {}'.format(self.min_doas_points, len(self.doas_worker.results)))
-                    return
-
-                try:
-                    last_cal = copy.deepcopy(self.doas_last_fov_cal)    # For knowing when to update buffer from
-                    stack = self.make_img_stack(time_start=oldest_time)
-                    if stack.num_of_imgs < self.min_num_imgs:
-                        print('Require at least {} images to perform FOV CD-tau calibration. '
-                              'Got only {}'.format(self.min_num_imgs, stack.num_of_imgs))
+            with self.doas_worker.lock:
+                if oldest_time >= self.doas_last_fov_cal or force_fov_cal:
+                    # Check we have some DOAS points
+                    if len(self.doas_worker.results) < self.min_doas_points:
+                        print('Require at least {} DOAS points to perform FOV CD-tau calibration. '
+                              'Got only {}'.format(self.min_doas_points, len(self.doas_worker.results)))
                         return
-                    # TODO =========================================
-                    # TODO For testing!!!
-                    # self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
-                    #                                                               stds=self.test_doas_stds)
-                    # TODO ==========================================
 
-                    self.doas_fov_search(stack, self.doas_worker.results, polyorder=self.polyorder_cal)
+                    try:
+                        last_cal = copy.deepcopy(self.doas_last_fov_cal)    # For knowing when to update buffer from
+                        stack = self.make_img_stack(time_start=oldest_time)
+                        if stack.num_of_imgs < self.min_num_imgs:
+                            print('Require at least {} images to perform FOV CD-tau calibration. '
+                                  'Got only {}'.format(self.min_num_imgs, stack.num_of_imgs))
+                            return
+                        # TODO =========================================
+                        # TODO For testing!!!
+                        # self.doas_worker.results = self.doas_worker.make_doas_results(self.test_doas_times, self.test_doas_cds,
+                        #                                                               stds=self.test_doas_stds)
+                        # TODO ==========================================
 
-                    # Once we have a calibration we need to go back through buffer and get emission rates
-                    # Overwrite any emission rates since last calibration, as they require new FOV calibration
-                    self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
-                    self.tau_vals = np.column_stack(
-                        (self.calib_pears.time_stamps, 
-                        self.calib_pears.tau_vec,
-                        self.calib_pears.cd_vec,
-                        self.calib_pears.cd_vec_err))
-                except Exception as e:
-                    print('Error when attempting to update DOAS calibration: {}'.format(e))
+                        self.doas_fov_search(stack, self.doas_worker.results, polyorder=self.polyorder_cal)
+
+                        # Once we have a calibration we need to go back through buffer and get emission rates
+                        # Overwrite any emission rates since last calibration, as they require new FOV calibration
+                        self.get_emission_rate_from_buffer(after=last_cal, overwrite=True)
+                        self.tau_vals = np.column_stack(
+                            (self.calib_pears.time_stamps,
+                            self.calib_pears.tau_vec,
+                            self.calib_pears.cd_vec,
+                            self.calib_pears.cd_vec_err))
+                    except Exception as e:
+                        print('Error when attempting to update DOAS calibration: {}'.format(e))
 
         # If we don't update fov search then we just update current cal object with new image (as long as we have
         # a doas calibration)
@@ -2485,60 +2485,63 @@ class PyplisWorker:
                 # Keep retrying to get the cd for current time until timeout
                 # Will also exit if a new value with a greater datetime is added
                 while (datetime.datetime.now() < timeout) and not np.any(img_time < self.doas_worker.results.index):
-                    # Get CD for current time
-                    cd = self.doas_worker.results.get(img_time)
-                    if cd is not None: break
+                    with self.doas_worker.lock:
+                        # Get CD for current time
+                        cd = self.doas_worker.results.get(img_time)
+                        if cd is not None:
+                            # Get index for cd_err
+                            cd_err = self.doas_worker.results.fit_errs[
+                                np.where(self.doas_worker.results.index.array == img_time)[0][0]]
+                            break
                     time.sleep(0.5)
                 else:
                     raise KeyError(f"spectra for {img_time} not found")
 
-                # Get index for cd_err
-                cd_err = self.doas_worker.results.fit_errs[
-                    np.where(self.doas_worker.results.index.array == img_time)[0][0]]
             except BaseException as e:
-                # If there is no data for the specific time of the image we will have to interpolate
-                dts = self.doas_worker.results.index - img_time
-                # If the nearest DOAS data point isn't within the limit set by user (max_doas_cam_dif) then we do not
-                # use this image in the calibration - this should prevent having large uncertainties
-                closest = np.min(np.abs(dts.array))
-                dt = datetime.timedelta(seconds=closest / np.timedelta64(1, 's'))
-                if dt > datetime.timedelta(seconds=self.max_doas_cam_dif):
-                    print('No DOAS data point within {}s of image time: {}. '
-                          'Image is not added to DOAS calibration'.format(self.max_doas_cam_dif,
-                                                                          img_time.strftime('%H:%M:%S')))
-                    return
+                with self.doas_worker.lock:
+                    # If there is no data for the specific time of the image we will have to interpolate
+                    dts = self.doas_worker.results.index - img_time
+                    # If the nearest DOAS data point isn't within the limit set by user (max_doas_cam_dif) then we do not
+                    # use this image in the calibration - this should prevent having large uncertainties
+                    closest = np.min(np.abs(dts.array))
+                    dt = datetime.timedelta(seconds=closest / np.timedelta64(1, 's'))
+                    if dt > datetime.timedelta(seconds=self.max_doas_cam_dif):
+                        print('No DOAS data point within {}s of image time: {}. '
+                              'Image is not added to DOAS calibration'.format(self.max_doas_cam_dif,
+                                                                              img_time.strftime('%H:%M:%S')))
+                        return
 
-                zero = datetime.timedelta(0)
-                seconds_plus = np.array([x for x in dts if x > zero])
-                seconds_minus = np.array([x for x in dts if x < zero])
+                    zero = datetime.timedelta(0)
+                    seconds_plus = np.array([x for x in dts if x > zero])
+                    seconds_minus = np.array([x for x in dts if x < zero])
 
-                if len(seconds_plus) == 0:
-                    idx = np.argmin(np.abs(seconds_minus))
-                    time_val = img_time + seconds_minus[idx]
-                    cd = self.doas_worker.results[time_val]
-                    # Get index for cd_err
-                    cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
-                    print('Warning, no DOAS data beyond image time for interpolation, using single closest point')
-                    print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
-                                                                 time_val.strftime('%H:%M:%S')))
+                    if len(seconds_plus) == 0:
+                        idx = np.argmin(np.abs(seconds_minus))
+                        time_val = img_time + seconds_minus[idx]
+                        cd = self.doas_worker.results[time_val]
+                        # Get index for cd_err
+                        cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
+                        print('Warning, no DOAS data beyond image time for interpolation, using single closest point')
+                        print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
+                                                                     time_val.strftime('%H:%M:%S')))
 
-                elif len(seconds_minus) == 0:
-                    idx = np.argmin(seconds_plus)
-                    time_val = img_time + seconds_plus[idx]
-                    cd = self.doas_worker.results[time_val]
-                    # Get index for cd_err
-                    cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
-                    print('Warning, no DOAS data before image time for interpolation, using single closest point')
-                    print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
-                                                                 time_val.strftime('%H:%M:%S')))
-                else:
-                    # This may work for interpolating
-                    cd = np.interp(pd.to_numeric(pd.Series(img_time)).values,
-                              pd.to_numeric(self.doas_worker.results.index).values, self.doas_worker.results)
-                    cd_err = np.interp(pd.to_numeric(pd.Series(img_time)).values,
-                                       pd.to_numeric(self.doas_worker.results.index).values,
-                                       self.doas_worker.results.fit_errs)
-                    print('Interpolated DOAS data for image time {}'.format(img_time.strftime('%H:%M:%S')))
+                    elif len(seconds_minus) == 0:
+                        idx = np.argmin(seconds_plus)
+                        time_val = img_time + seconds_plus[idx]
+                        cd = self.doas_worker.results[time_val]
+                        # Get index for cd_err
+                        cd_err = self.doas_worker.results.fit_errs[self.doas_worker.results.index == time_val]
+                        print('Warning, no DOAS data before image time for interpolation, using single closest point')
+                        print('Image time: {}\nDOAS time: {}'.format(img_time.strftime('%H:%M:%S'),
+                                                                     time_val.strftime('%H:%M:%S')))
+                    else:
+                        # This may work for interpolating
+                        cd = np.interp(pd.to_numeric(pd.Series(img_time)).values,
+                                  pd.to_numeric(self.doas_worker.results.index).values, self.doas_worker.results)
+                        cd_err = np.interp(pd.to_numeric(pd.Series(img_time)).values,
+                                           pd.to_numeric(self.doas_worker.results.index).values,
+                                           self.doas_worker.results.fit_errs)
+                        print('Interpolated DOAS data for image time {}'.format(img_time.strftime('%H:%M:%S')))
 
             # Update calibration object
             cal_dict = {'tau': tau, 'cd': cd, 'cd_err': cd_err, 'time': img_time}
