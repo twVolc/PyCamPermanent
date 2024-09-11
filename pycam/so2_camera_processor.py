@@ -6,7 +6,7 @@ Scripts are an edited version of the pyplis example scripts, adapted for use wit
 from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs
-from pycam.utils import make_circular_mask_line, calc_dt, get_horizontal_plume_speed
+from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
@@ -21,13 +21,11 @@ from pyplis.dilutioncorr import DilutionCorr, correct_img
 from pyplis.fluxcalc import det_emission_rate, MOL_MASS_SO2, N_A, EmissionRates
 from pyplis.doascalib import DoasCalibData, DoasFOV
 from pyplis.exceptions import ImgMetaError
-import pydoas
 
 import pandas as pd
 from math import log10, floor
 import datetime
 import time
-from itertools import compress
 import queue
 import threading
 import pickle
@@ -36,7 +34,6 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import os
 import cv2
 from skimage import transform as tf
@@ -169,7 +166,6 @@ class PyplisWorker:
         self.got_light_dil = False                      # Flags whether we have light dilution for this sequence
         self.lightcorr_A = None                         # Light dilution corrected image
         self.lightcorr_B = None                         # Light dilution corrected image
-        self.save_emission_rates = 60                   # Save emission rate time series every x minutes
         self.results = {}
         self.init_results()
 
@@ -291,7 +287,6 @@ class PyplisWorker:
                           'img_SO2': {'save': False, 'compression': 0},     # Arbitrary SO2 png image
                           'fig_SO2': {'save': False, 'units': 'ppmm'}       # matplotlib SO2 image [units are ppmm or tau]
                           }
-        self.save_freq = [0, 30]     # Frequency of saving data
 
         self.img_A_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
         self.img_B_q = queue.Queue()      # Queue for placing images once loaded, so they can be accessed by the GUI
@@ -905,9 +900,6 @@ class PyplisWorker:
             self.apply_config(subset="img_dir")
         else:
             return
-
-        # Update first_image flag
-        self.first_image = True
 
         # Reset buffers as we have a new sequence
         self.reset_self()
@@ -2376,23 +2368,6 @@ class PyplisWorker:
         self.got_doas_fov = True
         self.doas_last_fov_cal = self.img_A.meta['start_acq']
 
-        # Save as FITS file if requested
-        # TODO This saving may need to be moved to the updating DOAS function, rather the FOV search
-        if self.save_doas_cal:
-            time_gap = self.img_A.meta['start_acq'] - self.doas_last_save
-            time_gap = time_gap.total_seconds() / 60
-            if force_save or time_gap >= self.remove_doas_mins:
-                # Get filename which doesn't exist yet by incrementing number
-                full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-                while os.path.exists(full_path):
-                    self.doas_file_num += 1
-                    full_path = os.path.join(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-                # TODO I don't think this line actually saves data...
-                #self.calib_pears.save_as_fits(self.processed_dir, self.doas_filename.format(self.doas_file_num))
-
-                # Set new time of most recent save
-                self.doas_last_save = self.img_A.meta['start_acq']
-
         # Plot results if requested, first checking that we have the tkinter frame generated
         if plot:
             print('Updating DOAS FOV plot')
@@ -3192,7 +3167,7 @@ class PyplisWorker:
                 cds = cds[cond]
                 distarr = dists[cond]
                 disterr = dist_errs
-                props = pyplis.plumespeed.LocalPlumeProperties(line.line_id)    # Plume properties local to line
+                props = LocalPlumeProperties(line.line_id)    # Plume properties local to line
                 verr = None                 # Used and redefined later in flow_histo/flow_hybrid
                 dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
 
@@ -3665,27 +3640,6 @@ class PyplisWorker:
 
         self.fig_series.update_plot()
 
-    def finalise_processing(self, save_doas=True, reset=True):
-        """Finishes all processing requirements (mainly saving info)"""
-        # TODO need an option to save every 30 minutes or something - this is already setup in self._processing, but
-        # TODO we need to clip self.results so that it isn't all saved every 30 minutes and only the last 30 minutes
-        # TODO of data are saved each time
-        print('Finalising processing...')
-        # Save the final emission rates
-        save_emission_rates_as_txt(self.processed_dir, self.results, save_all=True)
-        self.save_processing_params()
-        self.save_calibration()
-        if save_doas:
-            self.doas_worker.save_results()
-
-        # After processing a loaded sequence we don't want to lose data and reset everything
-        if reset:
-            self.doas_worker.reset_self()
-            self.reset_self(reset_plot=False)       # Reset self but don't reset plot as may want to keep it visible
-
-        # TODO perhaps do things like calculate average emission rate (this will be a daily average when used in
-        # TODO the continuous monitoring mode) save to a file, etc
-
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.set_processing_directory(make_dir=True)
@@ -3749,7 +3703,6 @@ class PyplisWorker:
         time_proc = time.time()
 
         # Loop through img_list and process data
-        self.first_image = True
         save_last_val_only = False
         for i in range(len(self.img_list)):
 
@@ -4025,29 +3978,6 @@ class PyplisWorker:
                 for key in self.cross_corr_info:
                     f.write('{}={}\n'.format(key, self.cross_corr_info[key]))
                 f.write('{}'.format(self.cross_corr_lines['young']))
-
-        # Processing settings save
-        # settings = os.path.join(self.processed_dir, 'processing_settings.txt')
-        # with open(settings, 'a') as f:
-        #     if self.bg_pycam:
-        #         f.write('BG_mode={}\n'.format(7))
-        #     else:
-        #         f.write('BG_mode={}\n'.format(self.plume_bg_A.mode))
-        #     if self.cal_type_int in [1, 2]:
-        #         f.write('Calibration offset={}\n'.format(self.doas_cal_adjust_offset))
-        #     f.write('ambient_roi={}\n'.format(self.ambient_roi))
-        #     f.write('Light_dil_cam={}\n'.format(self.got_light_dil))
-
-        #     f.write(self.generate_DOAS_FOV_info())
-
-        # # Save PCS lines info
-        # lines = [line for line in self.PCS_lines_all if isinstance(line, LineOnImage)]
-        # with open(settings, 'a') as f:
-        #     for i, line in enumerate(lines):
-        #         f.write('Line_{}\n'.format(i))
-        #         f.write('x={},{}\n'.format(int(np.round(line.x0)), int(np.round(line.x1))))
-        #         f.write('y={},{}\n'.format(int(np.round(line.y0)), int(np.round(line.y1))))
-        #         f.write('orientation={}\n'.format(line.normal_orientation))
 
     def generate_DOAS_FOV_info(self):
 
