@@ -303,21 +303,3 @@ class LoadSaveProcessingSettings:
 
         # Update all objects finally
         self.gather_vars()
-
-    def set_defaults(self, parent=None):
-        """Sets current values as defaults"""
-        # First ensure that values from GUI are in config
-        self.gather_vars()
-
-        full_path = FileLocator.PROCESS_DEFAULTS
-
-        file_path = os.path.dirname(full_path)
-        file_name = os.path.basename(full_path)
-
-        self.pyplis_worker.save_config(file_path, file_name, subset=self.vars.keys())
-
-        kwargs = {}
-        if parent is not None:
-            kwargs['parent'] = parent
-        messagebox.showinfo('Defaults saved', 'New default settings have been saved.\n '
-                                              'These will now be the program start-up settings.', **kwargs)

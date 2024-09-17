@@ -485,6 +485,8 @@ class LoadFrame(LoadSaveProcessingSettings):
         change_conf_butt.grid(row=row, column=0, sticky='we', padx=self.pdx, pady=self.pdy)
         revert_conf_butt = ttk.Button(default_conf_frame, text='Revert to original default config', command=self.revert_default_conf)
         revert_conf_butt.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        load_def_conf_butt = ttk.Button(default_conf_frame, text='Load default config', command=lambda: self.load_config_file(filename = self.default_conf_path))
+        load_def_conf_butt.grid(row=row, column=2, sticky='we', padx=self.pdx, pady=self.pdy)
 
     @property
     def pcs_lines(self):
@@ -724,11 +726,13 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.in_frame = False
         self.frame.destroy()
 
-    def load_config_file(self):
+    def load_config_file(self, filename = None):
         """Load in a config file selected by the user"""
-        filename = filedialog.askopenfilename(
-            title='Select config file',
-            initialdir=self.init_dir)
+
+        if filename is None: 
+            filename = filedialog.askopenfilename(
+                title='Select config file',
+                initialdir=self.init_dir)
         
         if len(filename) > 0:
             self.pyplis_worker.load_config(filename, "user")
@@ -783,11 +787,8 @@ class LoadFrame(LoadSaveProcessingSettings):
             self.default_conf_path = filename
 
     def revert_default_conf(self):
-        """Revert the default config back to the original setting and reset the location"""
+        """reset the location of the defult config back to the original"""
 
-        # Reset contents of original file to contents of backup file
-        copyfile(FileLocator.PROCESS_DEFAULTS_BACKUP, FileLocator.PROCESS_DEFAULTS)
-        
         # Reset recorded location of default config
         self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
@@ -1057,8 +1058,6 @@ class SaveFrame(LoadSaveProcessingSettings):
         butt_frame.grid_columnconfigure(0, weight=1)
         butt = ttk.Button(butt_frame, text='Apply settings', command=self.gather_vars)
         butt.grid(row=0, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
 
     def save_pcs(self):
         """Saves PCS line"""
