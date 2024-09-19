@@ -919,7 +919,8 @@ class PyplisWorker:
         self.set_processing_directory()
 
         # Update frame containing details of image directory
-        self.seq_info.update_variables()
+        if self.seq_info is not None:
+            self.seq_info.update_variables()
 
         # Display first images of sequence
         if len(self.img_list) > 0:
