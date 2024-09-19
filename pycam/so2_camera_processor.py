@@ -4123,9 +4123,13 @@ class PyplisWorker:
         if watching_dir:
             self.config["watching_dir"] = watching_dir
             self.apply_config(subset="watching_dir")
+            if self.seq_info is not None:
+                self.seq_info.update_watch_dir(watching_dir)
 
     def start_watching_dir(self):
-        
+
+        if self.seq_info is not None:
+            self.seq_info.update_watch_dir(self.watching_dir)
         self.doas_worker.start_watching(self.watching_dir)
         self.start_watching()
 
