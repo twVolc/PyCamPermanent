@@ -2317,12 +2317,6 @@ class PyplisWorker:
             cal_img.edit_log["gascalib"] = True
 
         elif self.cal_type_int == 3:        # Preloaded calibration coefficients from CSV file
-            if self.calibration_series is None:
-                messagebox.showwarning('Must load calibration',
-                                       'Warning! Preloaded calibration is selected but no '
-                                       'calibration file has been loaded. Please select a file to '
-                                       'load to enable calibration.')
-                return cal_img
 
             # Find closest available calibration data point for current image time
             closest_index = self.calibration_series.index.get_indexer([self.img_A.meta['start_acq']], method='nearest')
