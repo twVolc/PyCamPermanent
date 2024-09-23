@@ -16,6 +16,7 @@ from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 from pycam.utils import truncate_path
+from pycam.exceptions import InvalidCalibration
 
 from pyplis import LineOnImage
 
@@ -222,7 +223,7 @@ class PyMenu:
         tab = 'Real-time Processing'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
-        self.menus[tab].add_command(label="Start Watching Directory", command=pyplis_worker.start_watching_dir)
+        self.menus[tab].add_command(label="Start Watching Directory", command=self.start_watching_dir)
         self.menus[tab].add_command(label="Stop Watching Directory", command=pyplis_worker.stop_watching_dir)
 
         # -------------------------------------------------------------------------------------------------------
@@ -380,6 +381,18 @@ class PyMenu:
         """Stops sequence processing of SO2 camera and DOAS"""
         pyplis_worker.stop_sequence_processing()
         doas_worker.stop_sequence_processing()
+
+    def start_watching_dir(self):
+        try:
+            pyplis_worker.start_watching_dir()
+        except InvalidCalibration:
+            pyplis_worker.stop_watching_dir()
+            messagebox.showerror(
+                'Invalid calibration type',
+                'Error! Preloaded calibration is invalid for real-time processing. \n'
+                'Please select a different calibration type in\n'
+                'Processing Settings > Setup paths\n'
+                'and try again.')
 
 
 class Settings:

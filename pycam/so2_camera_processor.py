@@ -10,6 +10,7 @@ from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
+from pycam.exceptions import InvalidCalibration
 
 import pyplis
 from pyplis import LineOnImage
@@ -3884,12 +3885,7 @@ class PyplisWorker:
             return
 
         if self.cal_type_int == 3:
-            messagebox.showerror('Invalid calibration type', 'Error! Preloaded calibration is invalid for '
-                                                             'real-time processing. \n'
-                                                             'Please select a different calibration type in\n'
-                                                             'Processing Settings > Setup paths\n'
-                                                             'and try again.')
-            return
+            raise InvalidCalibration("Preloaded calibration is invalid for real-time processing")
 
         if directory is not None:
             self.watching_dir = directory
