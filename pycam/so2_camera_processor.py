@@ -3647,11 +3647,28 @@ class PyplisWorker:
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.set_processing_directory(make_dir=True)
+
+        # If a calibration has been preloaded then resave it
+        if self.cal_type_int == 3:
+            self.save_preloaded_cal()
+
         self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
+
+    def save_preloaded_cal(self):
+        """ Save the preloaded calibration series to a file """
+
+        # DB 23-09-2024
+        # I don't think is possible to have a situation where cal_type_int = 3 and
+        # calibration_series is None, but just in case...
+        if self.calibration_series is not None:
+            self.write_calib_headerlines()
+            self.calibration_series.to_csv(self.calibration_file_path, mode = "a")
+        else:
+            raise InvalidCalibration("Preloaded calibration is selected but no calibration has been loaded.")
 
     def _process_sequence(self):
         """

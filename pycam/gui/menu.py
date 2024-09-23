@@ -393,7 +393,15 @@ class PyMenu:
                 'Please select a different calibration type in\n'
                 'Processing Settings > Setup paths\n'
                 'and try again.')
-
+            
+    def process_sequence(self):
+        try:
+            pyplis_worker.process_sequence()
+        except InvalidCalibration:
+            messagebox.showwarning('Must load calibration',
+                                    'Warning! Preloaded calibration is selected but no '
+                                    'calibration file has been loaded. Please select a file to '
+                                    'load to enable calibration.')
 
 class Settings:
     """Class to control the settings from the GUI toolbar"""
