@@ -12,6 +12,7 @@ from pycam.doas.cfg import doas_worker
 from pycam.doas.ifit_worker import IFitWorker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line, truncate_path
+from pycam.exceptions import InvalidCalibration
 
 from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask, shifted_color_map
@@ -3339,8 +3340,15 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
+        try:
+            pyplis_worker.apply_config(subset=self.vars.keys())
+        except InvalidCalibration:
+            messagebox.showwarning("Missing Calibration file",
+                                   "The Calibration file specified doesn't exist.\n"
+                                   "Please double check the path or choose a different calibration option.")
+            return
+        
         self.close_window()
-        pyplis_worker.apply_config(subset=self.vars.keys())
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
         doas_worker.load_dir(prompt=False)

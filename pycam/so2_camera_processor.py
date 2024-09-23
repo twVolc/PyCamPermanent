@@ -2619,6 +2619,10 @@ class PyplisWorker:
         be erroneous.
         :param filename str Path to calibration file
         """
+
+        if not os.path.exists(filename):
+            raise InvalidCalibration("Calibration file does not exist")
+
         _, ext = os.path.splitext(filename)
         if ext != '.csv':
             print('PyplisWorker.load_cal_series: Cannot read file {} as it is not in the correct format (.csv)'.format(filename))
