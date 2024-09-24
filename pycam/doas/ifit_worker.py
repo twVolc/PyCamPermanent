@@ -607,9 +607,10 @@ class IFitWorker(SpecWorker):
         if inplace:
             # Note this function is used in PyplisWorker and self.lock is acquired there, so I don't
             # need to acquire it directly in this function (if we do it would freeze the program.
-            self.results.drop(indices, inplace=True)
-            self.results.fit_errs = fit_errs
-            self.results.ldfs = ldfs
+            with self.lock:
+                self.results.drop(indices, inplace=True)
+                self.results.fit_errs = fit_errs
+                self.results.ldfs = ldfs
             results = None
         else:
             results = DoasResults(self.results.drop(indices, inplace=False))
