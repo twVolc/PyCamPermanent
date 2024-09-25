@@ -119,8 +119,6 @@ class PyMenu:
         # Data transfer
         self.submenu_data = tk.Menu(self.frame, tearoff=0)
         self.menus[tab].add_cascade(label='Data Transfer', menu=self.submenu_data)
-        self.submenu_data.add_command(label='Set Transfer Output Directory', command=self.set_ftp_out_dir_menu)
-        self.submenu_data.add_separator()
         # self.submenu_data.add_command(label='Start transfer', command=self.ftp_transfer.start_transfer)
         self.submenu_data.add_command(label='Start transfer (new images only)',
                                       command=lambda: self.ftp_transfer.start_transfer(new_only=True))
@@ -227,8 +225,6 @@ class PyMenu:
         tab = 'Real-time Processing'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
-        self.menus[tab].add_command(label="Set Watching Directory", command=pyplis_worker.set_watching_dir)
-        self.menus[tab].add_separator()
         self.menus[tab].add_command(label="Start Watching Directory", command=pyplis_worker.start_watching_dir)
         self.menus[tab].add_command(label="Stop Watching Directory", command=pyplis_worker.stop_watching_dir)
 
@@ -387,17 +383,6 @@ class PyMenu:
         """Stops sequence processing of SO2 camera and DOAS"""
         pyplis_worker.stop_sequence_processing()
         doas_worker.stop_sequence_processing()
-
-    def set_ftp_out_dir_menu(self):
-        """Menu option for setting the FTP output directory"""
-        dlg_title = "Select the Directory to save FTP output data to"
-        curr_dir = cfg.current_dir_img.root_dir
-        ftp_out_dir = filedialog.askdirectory(initialdir=curr_dir, title=dlg_title, mustexist=True)
-        if ftp_out_dir:
-            pyplis_worker.config["FTP_output_dir"] = ftp_out_dir
-            pyplis_worker.apply_config(subset="FTP_output_dir")
-
-            self.parent.set_ftp_out_dir()
 
 class Settings:
     """Class to control the settings from the GUI toolbar"""
