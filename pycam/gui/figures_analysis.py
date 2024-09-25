@@ -3003,7 +3003,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_img_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("dark_img_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3013,7 +3013,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length,
                                          font=self.main_gui.main_font, anchor='e')
         self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_spec_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("dark_spec_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3023,7 +3023,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_label = ttk.Label(path_frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_cell_cal_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("cell_cal_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3033,7 +3033,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_series_label = ttk.Label(path_frame, text=self.cal_series_path_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose File', command=self.get_cal_series_path)
+        butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_dir("cal_series_path"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Processing
@@ -3314,49 +3314,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         if set_config:
             pyplis_worker.config[val_name] = new_dir
 
-    def get_dark_img_dir(self):
-        """Gives user options for retrieving dark image directory"""
-        dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        self.frame.lift()
-
-        if len(dark_img_dir) > 0:
-            self.dark_img_dir = dark_img_dir
-
-    def get_dark_spec_dir(self):
-        """Gives user options for retrieving dark spectrum directory"""
-        dark_spec_dir = filedialog.askdirectory(initialdir=self.dark_spec_dir)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(dark_spec_dir) > 0:
-            self.dark_spec_dir = dark_spec_dir
-
-    def get_cell_cal_dir(self, set_var=False):
-        """
-        Gives user options for retrieving cell calibration directory
-        :param set_var: bool
-            If true, this will set the pyplis_worker value automatically. This means that this function can be used
-            from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is used by the
-            menu widget 'Load cell directory' submenu
-        """
-        cell_cal_dir = filedialog.askdirectory(initialdir=self.cell_cal_dir)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(cell_cal_dir) > 0:
-            self.cell_cal_dir = cell_cal_dir
-
-        # Update pyplis worker value if requested (done when using submenu selection
-        if set_var:
-            pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
-
     def set_cell_cal_dir(self, cal_dir):
         """Directly sets cell calibration directory without filedialog"""
         if not os.path.exists(cal_dir):
@@ -3364,28 +3321,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
             return
         self.cell_cal_dir = cal_dir
         pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
-
-    def get_cal_series_path(self, set_var=False):
-        """
-        Gives user options for retrieving calibration coefficients from file
-        :param set_var: bool
-            If true, this will set the pyplis_worker value automatically. This means that this function can be used
-            from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is probably not
-            used anywhere currently
-        """
-        cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(cal_series_path) > 0:
-            self.cal_series_path = cal_series_path
-
-        # Update pyplis worker value if requested (done when using submenu selection
-        if set_var:
-            pyplis_worker.config['cal_series_path'] = cal_series_path
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
@@ -4169,7 +4104,7 @@ class CellCalibFrame:
 
     def change_cal_dir(self):
         """Changes the cell directory and loads calibration"""
-        self.process_setts.get_cell_cal_dir(set_var=True)
+        self.process_setts.change_dir("cell_cal_dir", set_config=True)
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
 
