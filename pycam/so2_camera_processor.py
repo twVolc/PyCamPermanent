@@ -334,27 +334,27 @@ class PyplisWorker:
             [setattr(self, key, value) for key, value in self.config.items() if key in subset]
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
-            
-    def save_all_pcs(self, path):
+
+    def save_all_pcs(self, save_dir):
         """Save all the currently loaded/drawn pcs lines to files and update config"""
         pcs_lines = []
         for line_n, line in enumerate(self.PCS_lines_all):
             if line is not None:
-                filename = "pcs_line_{}.txt".format(line_n+1)
-                filepath = os.path.join(path, filename)
-                save_pcs_line(line, filepath)
-                pcs_lines.append(filepath)
+                file_name = "pcs_line_{}.txt".format(line_n+1)
+                file_path = os.path.join(save_dir, file_name)
+                save_pcs_line(line, file_path)
+                pcs_lines.append(file_name)
         
         self.config["pcs_lines"] = pcs_lines
 
-    def save_all_dil(self, path):
+    def save_all_dil(self, save_dir):
         dil_lines = []
         for line_n, line in enumerate(self.fig_dilution.lines_pyplis):
             if line is not None:
-                filename = "dil_line_{}.txt".format(line_n+1)
-                filepath = os.path.join(path, filename)
-                save_light_dil_line(line, filepath)
-                dil_lines.append(filepath)
+                file_name = "dil_line_{}.txt".format(line_n+1)
+                file_path = os.path.join(save_dir, file_name)
+                save_light_dil_line(line, file_path)
+                dil_lines.append(file_name)
 
         self.config["dil_lines"] = dil_lines
 
@@ -362,6 +362,7 @@ class PyplisWorker:
         """Save a copy of the currently used image registratioon"""
         file_path = os.path.join(save_dir, "image_reg")
         file_path = self.img_reg.save_registration(file_path)
+        file_path = os.path.relpath(file_path, save_dir)
         self.config["img_registration"] = file_path
 
     def load_cam_geom(self, filepath):
@@ -387,7 +388,10 @@ class PyplisWorker:
 
         # If the file isn't specified then use a default name
         if filepath.find(".txt") == -1:
-            filepath = os.path.join(filepath, "cam_geom.txt")
+            save_path = "cam_geom.txt"
+            filepath = os.path.join(filepath, save_path)
+        else:
+            save_path = filepath
         
         # Open file object and write all attributes to it
         with open(filepath, 'w') as f:
@@ -396,7 +400,7 @@ class PyplisWorker:
             for key, value in self.geom_dict.items():
                 f.write('{}={}\n'.format(key, value))
 
-        self.config["default_cam_geom"] = filepath
+        self.config["default_cam_geom"] = save_path
 
     def save_doas_params(self):
 
