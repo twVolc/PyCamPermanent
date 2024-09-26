@@ -335,6 +335,25 @@ class PyplisWorker:
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
 
+    def check_config_paths(self, config_path):
+        config_dir = os.path.dirname(config_path)
+        for path_param in path_params:
+            # Skip if cal_type_int is not pre-loaded
+            if path_param == "cal_series_path" and self.config["cal_type_int"] != 3:
+                continue
+
+            config_value = self.config.get(path_param)
+            # Value could be a string or list of strings, we want to do the same thing to both but iterate over
+            # the list of strings.
+            # Not the most elegent way to do this, but it'll do for now.
+            if type(config_value) is str:
+                new_value = self.expand_config_path(config_value, config_dir)
+                self.config[path_param] = new_value
+            else:
+                for idx, val in enumerate(config_value):
+                    new_value = self.expand_config_path(val, config_dir)
+                    self.config[path_param][idx] = new_value
+
     def expand_config_path(self, path, config_dir):
         """ Converts paths string absolute path if needed"""
 
