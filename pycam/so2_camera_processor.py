@@ -335,6 +335,23 @@ class PyplisWorker:
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
 
+    def expand_config_path(self, path, config_dir):
+        """ Converts paths string absolute path if needed"""
+
+        # Leave paths as they are, if using the supplied config
+        # (specified by a path relative to pycam location)
+        if not os.path.isabs(config_dir):
+            return path
+        # If it's an absolute path then just use as is
+        elif os.path.isabs(path):
+            return path
+        # If it's relative and in the cwd then expand it to an absolute path
+        elif os.path.exists(path):
+            return os.path.abspath(path)
+        # Otherwise prepend the path with the location of the config file
+        else:
+            return os.path.join(config_dir, path)
+
     def save_all_pcs(self, save_dir):
         """Save all the currently loaded/drawn pcs lines to files and update config"""
         pcs_lines = []
