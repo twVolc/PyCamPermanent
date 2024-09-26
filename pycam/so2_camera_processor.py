@@ -323,10 +323,13 @@ class PyplisWorker:
 
     def load_config(self, file_path, conf_name):
         """load in a yml config file and place the contents in config attribute"""
+
+        file_path = os.path.normpath(file_path)
         with open(file_path, "r") as file:
             self.raw_configs[conf_name] = yaml.load(file)
 
         self.config.update(self.raw_configs[conf_name])
+        self.check_config_paths(file_path)
 
     def apply_config(self, subset = None):
         """take items in config dict and set them as attributes in pyplis_worker"""
