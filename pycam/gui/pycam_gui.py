@@ -134,6 +134,11 @@ class PyCam(ttk.Frame):
             cfg.current_dir_img.root_dir = ftp_output_dir
             cfg.current_dir_spec.root_dir = ftp_output_dir
 
+        if pyplis_worker.load_default_conf_errors is not None:
+            messagebox.showwarning("Default Config Error",
+                                   pyplis_worker.load_default_conf_errors)
+            pyplis_worker.load_default_conf_errors = None
+
     def exit_app(self):
         """Closes application"""
         if messagebox.askokcancel("Quit", "Are you sure you want to quit?"):
