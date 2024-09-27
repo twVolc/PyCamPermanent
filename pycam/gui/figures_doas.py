@@ -90,12 +90,14 @@ class SpectraPlot:
                                            textvariable=self.stray_start, command=self.update_stray_start,
                                            font=self.main_gui.main_font)
         self.stray_box_start.set('{:.1f}'.format(self.doas_worker.start_stray_wave))
+        self.stray_box_start.bind('<FocusOut>', self.update_stray_start)
         self.stray_end = tk.DoubleVar()
         self.stray_end.set(self.doas_worker.end_stray_wave)
         self.stray_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
                                          textvariable=self.stray_end, command=self.update_stray_end,
                                          font=self.main_gui.main_font)
         self.stray_box_end.set('{:.1f}'.format(self.doas_worker.end_stray_wave))
+        self.stray_box_end.bind('<FocusOut>', self.update_stray_end)
 
         label = tk.Label(self.frame2, text='Stray light correction (min.):', font=self.main_gui.main_font).pack(side=tk.LEFT)
         self.stray_box_start.pack(side=tk.LEFT)
@@ -109,12 +111,14 @@ class SpectraPlot:
                                               textvariable=self.fit_wind_start, command=self.update_fit_wind_start,
                                               font=self.main_gui.main_font)
         self.fit_wind_box_start.set('{:.1f}'.format(self.doas_worker.start_fit_wave))
+        self.fit_wind_box_start.bind('<FocusOut>', self.update_fit_wind_start)
         self.fit_wind_end = tk.DoubleVar()
         self.fit_wind_end.set(self.doas_worker.end_fit_wave)
         self.fit_wind_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
                                            textvariable=self.fit_wind_end, command=self.update_fit_wind_end,
                                             font=self.main_gui.main_font)
         self.fit_wind_box_end.set('{:.1f}'.format(self.doas_worker.end_fit_wave))
+        self.fit_wind_box_end.bind('<FocusOut>', self.update_fit_wind_end)
 
         self.fit_wind_box_end.pack(side=tk.RIGHT)
         label = tk.Label(self.frame2, text='Fit wavelength (max.):', font=self.main_gui.main_font).pack(side=tk.RIGHT)
@@ -186,7 +190,7 @@ class SpectraPlot:
         self.ax.set_xlim([self.doas_worker.wavelengths[0], self.doas_worker.wavelengths[-1]])
         self.q.put(1)
 
-    def update_stray_start(self):
+    def update_stray_start(self, event = None):
         """Updates stray light range on plot"""
         stray_start = self.stray_start.get()
 
@@ -210,7 +214,7 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_stray_end(self):
+    def update_stray_end(self, event = None):
         """Updates stray light range on plot"""
         stray_end = self.stray_end.get()
 
@@ -232,7 +236,7 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_fit_wind_start(self):
+    def update_fit_wind_start(self, event = None):
         """updates fit window on plot"""
         fit_wind_start = self.fit_wind_start.get()
 
@@ -254,7 +258,7 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_fit_wind_end(self):
+    def update_fit_wind_end(self, event = None):
         """updates fit window on plot"""
         fit_wind_end = self.fit_wind_end.get()
 
