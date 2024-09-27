@@ -5,7 +5,7 @@
 Scripts are an edited version of the pyplis example scripts, adapted for use with the PiCam"""
 from __future__ import (absolute_import, division)
 
-from pycam.setupclasses import CameraSpecs, SpecSpecs
+from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
@@ -41,6 +41,7 @@ from skimage import transform as tf
 import warnings
 import traceback
 from ruamel.yaml import YAML
+from inspect import cleandoc
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -322,7 +323,23 @@ class PyplisWorker:
         self.missing_path_param_warn = None
         self.config = {}
         self.raw_configs = {}
-        self.load_config(config_path, "default")
+        self.load_default_conf_errors = None
+        try:
+            # Try Loading the config
+            self.load_config(config_path, "default")
+        except (FileNotFoundError, ValueError) as e:
+
+            # Record that the default config load was unsuccessful to show an error later 
+            self.load_default_conf_errors = cleandoc(f"""
+                Problem loading specified default config file:
+                {config_path}\n
+                Error: {e}\n
+                Reverting to config file supplied with PyCam""")
+
+            print(self.load_default_conf_errors)
+            
+            # If any files not found then retry with the supplied config
+            self.load_config(FileLocator.PROCESS_DEFAULTS, "default")
         self.apply_config()
 
     def load_config(self, file_path, conf_name):
