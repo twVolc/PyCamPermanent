@@ -346,7 +346,8 @@ class FTPClient:
 
         # Open connection if we have a host_ip
         if len(self.host_ip) > 0:
-            self.open_connection(self.host_ip, self.user, self.pwd)
+            self.open_connection(self.host_ip, self.user, self.pwd) and self.retrieve_schedule_files()
+
 
     def _default_specs(self):
         """Load in default specs for FTP transfer"""
@@ -364,10 +365,6 @@ class FTPClient:
             self.connection.login(user=username, passwd=password)
             self.connection.cwd(self.dir_data_remote)
             print('Got FTP connection from {}. File transfer now available.'.format(ip))
-
-            # Transfer wittypi file and script schedule file to local, so GUI is accurate when it's opened
-            # TODO THIS HASN'T BEEN TESTED!!!!! (18/04/2023)
-            self.retrieve_schedule_files()
             return True
         except BaseException as e:
             print('FTP connection encountered error - file transfer is inactive')
@@ -399,10 +396,11 @@ class FTPClient:
             time.sleep(0.5)
 
         # Test the new connection
-        self.test_connection()
+        self.test_connection() and self.retrieve_schedule_files()
 
     def retrieve_schedule_files(self):
         """Retrieves witty pi and crontab schedule files"""
+        # Transfer wittypi file and script schedule file to local, so GUI is accurate when it's opened
         # TODO THIS HASN'T BEEN TESTED!!!!! (18/04/2023)
         self.get_file(FileLocator.SCRIPT_SCHEDULE_PI, FileLocator.SCRIPT_SCHEDULE, rm=False)
         self.get_file(FileLocator.SCHEDULE_FILE_PI, FileLocator.SCHEDULE_FILE, rm=False)
