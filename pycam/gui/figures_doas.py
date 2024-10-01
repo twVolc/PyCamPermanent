@@ -91,6 +91,7 @@ class SpectraPlot:
                                            font=self.main_gui.main_font)
         self.stray_box_start.set('{:.1f}'.format(self.doas_worker.start_stray_wave))
         self.stray_box_start.bind('<FocusOut>', self.update_stray_start)
+        self.stray_box_start.bind('<Return>', self.update_stray_start)
         self.stray_end = tk.DoubleVar()
         self.stray_end.set(self.doas_worker.end_stray_wave)
         self.stray_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
@@ -98,6 +99,7 @@ class SpectraPlot:
                                          font=self.main_gui.main_font)
         self.stray_box_end.set('{:.1f}'.format(self.doas_worker.end_stray_wave))
         self.stray_box_end.bind('<FocusOut>', self.update_stray_end)
+        self.stray_box_end.bind('<Return>', self.update_stray_end)
 
         label = tk.Label(self.frame2, text='Stray light correction (min.):', font=self.main_gui.main_font).pack(side=tk.LEFT)
         self.stray_box_start.pack(side=tk.LEFT)
@@ -112,6 +114,7 @@ class SpectraPlot:
                                               font=self.main_gui.main_font)
         self.fit_wind_box_start.set('{:.1f}'.format(self.doas_worker.start_fit_wave))
         self.fit_wind_box_start.bind('<FocusOut>', self.update_fit_wind_start)
+        self.fit_wind_box_start.bind('<Return>', self.update_fit_wind_start)
         self.fit_wind_end = tk.DoubleVar()
         self.fit_wind_end.set(self.doas_worker.end_fit_wave)
         self.fit_wind_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
@@ -119,6 +122,7 @@ class SpectraPlot:
                                             font=self.main_gui.main_font)
         self.fit_wind_box_end.set('{:.1f}'.format(self.doas_worker.end_fit_wave))
         self.fit_wind_box_end.bind('<FocusOut>', self.update_fit_wind_end)
+        self.fit_wind_box_end.bind('<Return>', self.update_fit_wind_end)
 
         self.fit_wind_box_end.pack(side=tk.RIGHT)
         label = tk.Label(self.frame2, text='Fit wavelength (max.):', font=self.main_gui.main_font).pack(side=tk.RIGHT)
