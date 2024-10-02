@@ -244,6 +244,8 @@ class ImageFigure:
         self.img_row = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_y-1, width=4,
                                    textvariable=self._row, font=self.main_gui.main_font)
         self.img_row.grid(row=0, column=1, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.img_row.bind('<FocusOut>', self.x_sect_plot)
+        self.img_row.bind('<Return>', self.x_sect_plot)
 
         # Column spinbox
         row_col = ttk.Label(self.xsect_frame, text="Column:", font=self.main_gui.main_font)
@@ -252,11 +254,10 @@ class ImageFigure:
         self.img_col = ttk.Spinbox(self.xsect_frame, from_=0, to=self.specs.pix_num_x-1, width=4,
                                    textvariable=self._col, font=self.main_gui.main_font)
         self.img_col.grid(row=0, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
+        self.img_col.bind('<FocusOut>', self.x_sect_plot)
+        self.img_col.bind('<Return>', self.x_sect_plot)
 
-        self.x_sect_butt = ttk.Button(self.xsect_frame, text="Update plot", command=self.x_sect_plot)
-        self.x_sect_butt.grid(row=0, column=4, padx=self.pdx, pady=self.pdy)
-
-    def x_sect_plot(self, draw=True):
+    def x_sect_plot(self, event = None, draw=True):
         """Updates cross-section plot"""
         # Extract row and column digital numbers
         row_DN = self.image[self.row, :]
@@ -318,7 +319,7 @@ class ImageFigure:
         self.img_disp.set_data(self.image)
 
         # Update subplots - this includes a call to draw() so the figure will be updated after this
-        self.x_sect_plot(draw)
+        self.x_sect_plot(draw = draw)
 
     def cp_select(self, event):
         """
