@@ -12,6 +12,7 @@ bg_A_path: .\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399
 bg_B_path: .\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png
 cell_cal_dir: .\pycam\Data\Images\Villarrica\Cal_1\
 cal_type_int: 1
+cal_series_path: ''
 min_cd: 5.0e+16
 plot_iter: 0
 img_buff_size: 1500

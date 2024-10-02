@@ -45,6 +45,10 @@ warnings.simplefilter("ignore", RuntimeWarning)
 
 yaml = YAML()
 
+path_params = [
+    "img_dir", "dark_img_dir", "watching_dir", "spec_dir", "dark_spec_dir", "bg_A_path", "bg_B_path", "cell_cal_dir",
+    "pcs_lines", "img_registration", "dil_lines", "ld_lookup_1", "ld_lookup_2", "ILS_path", "default_cam_geom", "cal_series_path"
+]
 
 class PyplisWorker:
     """
@@ -319,10 +323,13 @@ class PyplisWorker:
 
     def load_config(self, file_path, conf_name):
         """load in a yml config file and place the contents in config attribute"""
+
+        file_path = os.path.normpath(file_path)
         with open(file_path, "r") as file:
             self.raw_configs[conf_name] = yaml.load(file)
 
         self.config.update(self.raw_configs[conf_name])
+        self.check_config_paths(file_path)
 
     def apply_config(self, subset = None):
         """take items in config dict and set them as attributes in pyplis_worker"""
@@ -330,27 +337,63 @@ class PyplisWorker:
             [setattr(self, key, value) for key, value in self.config.items() if key in subset]
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
-            
-    def save_all_pcs(self, path):
+
+    def check_config_paths(self, config_path):
+        config_dir = os.path.dirname(config_path)
+        for path_param in path_params:
+            # Skip if cal_type_int is not pre-loaded
+            if path_param == "cal_series_path" and self.config["cal_type_int"] != 3:
+                continue
+
+            config_value = self.config.get(path_param)
+            # Value could be a string or list of strings, we want to do the same thing to both but iterate over
+            # the list of strings.
+            # Not the most elegent way to do this, but it'll do for now.
+            if type(config_value) is str:
+                new_value = self.expand_config_path(config_value, config_dir)
+                self.config[path_param] = new_value
+            else:
+                for idx, val in enumerate(config_value):
+                    new_value = self.expand_config_path(val, config_dir)
+                    self.config[path_param][idx] = new_value
+
+    def expand_config_path(self, path, config_dir):
+        """ Converts paths string absolute path if needed"""
+
+        # Leave paths as they are, if using the supplied config
+        # (specified by a path relative to pycam location)
+        if not os.path.isabs(config_dir):
+            return path
+        # If it's an absolute path then just use as is
+        elif os.path.isabs(path):
+            return path
+        # If it's relative and in the cwd then expand it to an absolute path
+        elif os.path.exists(path):
+            return os.path.abspath(path)
+        # Otherwise prepend the path with the location of the config file
+        else:
+            return os.path.join(config_dir, path)
+
+    def save_all_pcs(self, save_dir):
         """Save all the currently loaded/drawn pcs lines to files and update config"""
         pcs_lines = []
         for line_n, line in enumerate(self.PCS_lines_all):
             if line is not None:
-                filename = "pcs_line_{}.txt".format(line_n+1)
-                filepath = os.path.join(path, filename)
-                save_pcs_line(line, filepath)
-                pcs_lines.append(filepath)
+                file_name = "pcs_line_{}.txt".format(line_n+1)
+                file_path = os.path.join(save_dir, file_name)
+                save_pcs_line(line, file_path)
+                pcs_lines.append(file_name)
         
         self.config["pcs_lines"] = pcs_lines
 
-    def save_all_dil(self, path):
+    def save_all_dil(self, save_dir):
         dil_lines = []
         for line_n, line in enumerate(self.fig_dilution.lines_pyplis):
             if line is not None:
-                filename = "dil_line_{}.txt".format(line_n+1)
-                filepath = os.path.join(path, filename)
-                save_light_dil_line(line, filepath)
-                dil_lines.append(filepath)
+                file_name = "dil_line_{}.txt".format(line_n+1)
+                file_path = os.path.join(save_dir, file_name)
+                save_light_dil_line(line, file_path)
+                dil_lines.append(file_name)
 
         self.config["dil_lines"] = dil_lines
 
@@ -358,6 +401,7 @@ class PyplisWorker:
         """Save a copy of the currently used image registratioon"""
         file_path = os.path.join(save_dir, "image_reg")
         file_path = self.img_reg.save_registration(file_path)
+        file_path = os.path.relpath(file_path, save_dir)
         self.config["img_registration"] = file_path
 
     def load_cam_geom(self, filepath):
@@ -383,7 +427,10 @@ class PyplisWorker:
 
         # If the file isn't specified then use a default name
         if filepath.find(".txt") == -1:
-            filepath = os.path.join(filepath, "cam_geom.txt")
+            save_path = "cam_geom.txt"
+            filepath = os.path.join(filepath, save_path)
+        else:
+            save_path = filepath
         
         # Open file object and write all attributes to it
         with open(filepath, 'w') as f:
@@ -392,7 +439,7 @@ class PyplisWorker:
             for key, value in self.geom_dict.items():
                 f.write('{}={}\n'.format(key, value))
 
-        self.config["default_cam_geom"] = filepath
+        self.config["default_cam_geom"] = save_path
 
     def save_doas_params(self):
 
