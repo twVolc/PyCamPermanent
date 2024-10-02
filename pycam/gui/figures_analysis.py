@@ -568,13 +568,13 @@ class ImageSO2(LoadSaveProcessingSettings):
         label = ttk.Label(self.frame_opts, text='\u03C4 max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=9, increment=0.01,
-                                    command=self.scale_img, font=self.main_gui.main_font)
+                                    command=self.scale_img, font=self.main_gui.main_font, state="disabled")
         self.spin_max.set('{:.2f}'.format(self.tau_max))
         self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
         self.spin_max.bind('<FocusOut>', self.scale_img)
         self.spin_max.bind('<Return>', self.scale_img)
         self.auto_tau_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_tau,
-                                              command=self.scale_img)
+                                              command=self.toggle_auto_tau_check)
         self.auto_tau_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
 
         # Colour level ppmm
@@ -582,12 +582,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         label = ttk.Label(self.frame_opts, text='ppm⋅m max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
-                                         increment=50, command=self.scale_img, font=self.main_gui.main_font)
+                                         increment=50, command=self.scale_img, font=self.main_gui.main_font, state="disabled")
         self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
         self.spin_ppmm_max.bind('<FocusOut>', self.scale_img)
         self.spin_ppmm_max.bind('<Return>', self.scale_img)
         self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
-                                               command=self.scale_img)
+                                               command=self.toggle_auto_ppmm_check)
         self.auto_ppmm_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
 
         # Optical flow checkbutton
@@ -620,6 +620,25 @@ class ImageSO2(LoadSaveProcessingSettings):
                                                 rectprops=dict(facecolor='red', edgecolor='blue', alpha=0.5, fill=True))
         else:
             raise ValueError('Unrecognised interactive_mode for ImageSO2')
+
+    def toggle_auto_tau_check(self):
+        
+        if self.auto_tau:
+            self.spin_max.configure(state="disabled")
+        else:
+            self.spin_max.configure(state="normal")
+
+        self.scale_img()
+
+    def toggle_auto_ppmm_check(self):
+        
+        if self.auto_ppmm:
+            self.spin_ppmm_max.configure(state="disabled")
+        else:
+            self.spin_ppmm_max.configure(state="normal")
+
+        self.scale_img()
+
 
     def draw_roi(self, eclick, erelease):
         """
