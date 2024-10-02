@@ -1270,7 +1270,8 @@ class TimeSeriesFigure:
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
                                            color=self.plot_styles[mode]['colour'],
                                            # color=self.colours[int(self.line_plot)],
-                                           marker=None)
+                                           marker=self.marker,
+                                           markersize=self.Veff_markersize)
                             self.pyplis_worker.results[self.line_plot][mode].plot(
                                 ax=self.axes[0],
                                 ls=self.plot_styles[mode]['ls'],
@@ -1337,7 +1338,8 @@ class TimeSeriesFigure:
             phi_upper = Series(veff + verr, times)
             phi_lower = Series(veff - verr, times)
             kwargs['lw'] = 0    # Plot no lines around fill
-            kwargs.pop('marker', None)  # Remove the amrker key as fill between doesn't take this
+            kwargs.pop('marker', None)  # Remove the marker key as fill between doesn't take this
+            kwargs.pop('markersize', None)
             self.axes[ax].fill_between(times, phi_lower, phi_upper, alpha=0.1, **kwargs)
         self.axes[ax].autoscale(axis='y')
         self.axes[ax].set_ylim([0, self.axes[ax].get_ylim()[1]])
