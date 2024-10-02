@@ -6,7 +6,7 @@ from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
     opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, automated_acq_handler,\
-    calibration_wind, instrument_cfg, temp_log
+    calibration_wind, instrument_cfg, temp_log, plume_velocity, nadeau_flow
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line, create_video
 import pycam.gui.settings as settings
@@ -178,8 +178,7 @@ class PyMenu:
 
         self.menus[tab].add_command(label='Setup paths', command=process_settings.generate_frame)
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
-        self.menus[tab].add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
-        self.menus[tab].add_command(label='Cross-correlation', command=cross_correlation.generate_frame)
+        self.menus[tab].add_command(label='Plume velocity settings', command=plume_velocity.generate_frame)
         self.menus[tab].add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_separator()
 
@@ -752,6 +751,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         opti_flow.load_defaults()
         light_dilution.load_defaults()
         cross_correlation.load_defaults()
+        nadeau_flow.load_defaults()
         doas_fov.load_defaults()
         calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
         calibration_wind.ils_frame.load_ILS()
