@@ -360,6 +360,8 @@ class DOASPlot(LoadSaveProcessingSettings):
                                      textvariable=self._shift, command=self.gather_vars, font=self.gui.main_font)
         # self.fit_wind_box_start.grid(row=0, column=1)
         self.shift_box.pack(side=tk.LEFT)
+        self.shift_box.bind('<FocusOut>', self.gather_vars)
+        self.shift_box.bind('<Return>', self.gather_vars)
 
         # Shift tolerance widgets
         label = ttk.Label(self.frame2, text='Shift tolerance', font=self.gui.main_font).pack(side=tk.LEFT)
@@ -367,6 +369,8 @@ class DOASPlot(LoadSaveProcessingSettings):
         self.shift_tol_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3, font=self.gui.main_font,
                                          textvariable=self._shift_tol, command=self.gather_vars)
         self.shift_tol_box.pack(side=tk.LEFT)
+        self.shift_tol_box.bind('<FocusOut>', self.gather_vars)
+        self.shift_tol_box.bind('<Return>', self.gather_vars)
 
         label2 = tk.Label(self.frame2, text='Stretch spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label2.grid(row=0, column=2)
@@ -375,6 +379,8 @@ class DOASPlot(LoadSaveProcessingSettings):
                                        textvariable=self._stretch, command=self.gather_vars)
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
+        self.stretch_box.bind('<FocusOut>', self.gather_vars)
+        self.stretch_box.bind('<Return>', self.gather_vars)
 
         # # If we are working with ifit we don't have these options - it does it automatically
         if isinstance(self.doas_worker, IFitWorker):
@@ -457,7 +463,7 @@ class DOASPlot(LoadSaveProcessingSettings):
     def stretch(self, value):
         self._stretch.set(value)
 
-    def gather_vars(self):
+    def gather_vars(self, event = None):
         """Sets all current settings to the correct worker and reprocesses DOAS"""
         for key in self.vars:
             setattr(self.doas_worker, key, getattr(self, key))
