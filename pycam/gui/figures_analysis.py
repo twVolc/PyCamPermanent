@@ -1126,6 +1126,8 @@ class TimeSeriesFigure:
                             }
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
+        self.ER_markersize = 3
+        self.Veff_markersize = 3
 
         # Initiate variables
         self.initiate_variables()
@@ -1277,7 +1279,8 @@ class TimeSeriesFigure:
                                 ymin=0,
                                 date_fmt=self.date_fmt,
                                 label=line_lab,
-                                marker=None,
+                                marker=self.marker,
+                                markersize=self.ER_markersize,
                                 in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
