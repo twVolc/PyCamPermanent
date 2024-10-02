@@ -319,6 +319,7 @@ class PyplisWorker:
 
         self.geom_dict = {}
 
+        self.missing_path_param_warn = None
         self.config = {}
         self.raw_configs = {}
         self.load_config(config_path, "default")
@@ -343,13 +344,25 @@ class PyplisWorker:
             [setattr(self, key, value) for key, value in self.config.items()]
 
     def check_config_paths(self, config_path, raw_config):
+        missing_path_params = []
         config_dir = os.path.dirname(config_path)
+
         for path_param in path_params:
             # Skip if cal_type_int is not pre-loaded
             if path_param == "cal_series_path" and raw_config["cal_type_int"] != 3:
                 continue
 
             config_value = raw_config.get(path_param)
+
+            # If there is no value in the config for this parameter then record and skip
+            # Unless it is when no other config file has been loaded, then throw an error.
+            if config_value is None:
+                if self.config:
+                    missing_path_params.append(path_param)
+                    continue
+                else:
+                    raise ValueError(f"Default value for {path_param} missing.")
+
             # Value could be a string or list of strings, we want to do the same thing to both
             # but iterate over the list of strings.
             # Not the most elegent way to do this, but it'll do for now.
@@ -360,6 +373,16 @@ class PyplisWorker:
                 for idx, val in enumerate(config_value):
                     new_value = self.expand_check_path(val, config_dir)
                     raw_config[path_param][idx] = new_value
+
+        if missing_path_params:
+            miss_param_str = [f"- {par}" for par in missing_path_params]
+
+            self.missing_path_param_warn = "\n".join(
+                ["The following parameters were not present in the loaded config:",
+                 *miss_param_str,
+                 "Current values were retained."])
+            print(self.missing_path_param_warn)
+
         return raw_config
 
     def expand_check_path(self, value, dir, path_param):
