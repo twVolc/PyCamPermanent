@@ -571,6 +571,8 @@ class ImageSO2(LoadSaveProcessingSettings):
                                     command=self.scale_img, font=self.main_gui.main_font)
         self.spin_max.set('{:.2f}'.format(self.tau_max))
         self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.spin_max.bind('<FocusOut>', self.scale_img)
+        self.spin_max.bind('<Return>', self.scale_img)
         self.auto_tau_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_tau,
                                               command=self.scale_img)
         self.auto_tau_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
@@ -582,6 +584,8 @@ class ImageSO2(LoadSaveProcessingSettings):
         self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
                                          increment=50, command=self.scale_img, font=self.main_gui.main_font)
         self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.spin_ppmm_max.bind('<FocusOut>', self.scale_img)
+        self.spin_ppmm_max.bind('<Return>', self.scale_img)
         self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
                                                command=self.scale_img)
         self.auto_ppmm_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
@@ -894,7 +898,7 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update canvas, first rescaling image, as the seismic canvas we use a different scale
         self.scale_img(draw=True)
 
-    def scale_img(self, draw=True):
+    def scale_img(self, event = None, draw=True):
         """
         Updates cmap scale
         :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
