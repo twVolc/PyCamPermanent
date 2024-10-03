@@ -10,6 +10,7 @@ from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
 from pycam.img_import import load_picam_png
+from pycam.exceptions import InvalidCalibration
 
 import pyplis
 from pyplis import LineOnImage
@@ -221,6 +222,7 @@ class PyplisWorker:
         self.doas_last_save = datetime.datetime.now()
         self.doas_last_fov_cal = datetime.datetime.now()
         self.doas_cal_adjust_offset = False   # If True, only use gradient of tau-CD plot to calibrate optical depths. If false, the offset is used too (at times could be useful as someimes the background (clear sky) of an image has an optical depth offset (is very negative or positive)
+        self.calibration_series = None          # Series for preloaded calibration
 
         self.img_dir = None
         self.proc_name = 'Processed_{}'     # Directory name for processing
@@ -254,7 +256,7 @@ class PyplisWorker:
         self._cal_series_path = None
         self.sens_mask_opts = [0,2]       # Use sensitivity mask when cal_type_int is set to one of the specified options, 0 = cell, 1 = doas, 2 = cell + doas
         self.use_sensitivity_mask = True  # If true, the sensitivty mask will be used to correct tau images
-        self.cal_type_int = 1             # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity), 4 = preloaded coefficients
+        self.cal_type_int = 1             # Calibration method: 0 = Cell, 1= DOAS, 2 = Cell and DOAS (cell used to adjust FOV sensitivity), 3 = preloaded coefficients
         self.cell_dict_A = {}
         self.cell_dict_B = {}
         self.cell_tau_dict = {}     # Dictionary holds optical depth images for each cell
@@ -673,8 +675,8 @@ class PyplisWorker:
     def cal_type_int(self, value):
         self._cal_type_int = value
         self.use_sensitivity_mask = value in self.sens_mask_opts
-        if (value != 3) and hasattr(self, 'calibration_series'):
-            delattr(self, 'calibration_series')
+        if value != 3:
+            self.calibration_series = None
 
     @property
     def nadeau_line_orientation(self):
@@ -2362,8 +2364,6 @@ class PyplisWorker:
             cal_img.edit_log["gascalib"] = True
 
         elif self.cal_type_int == 3:        # Preloaded calibration coefficients from CSV file
-            if self.calibration_series is None:
-                return cal_img
 
             # Find closest available calibration data point for current image time
             closest_index = self.calibration_series.index.get_indexer([self.img_A.meta['start_acq']], method='nearest')
@@ -2680,6 +2680,10 @@ class PyplisWorker:
         be erroneous.
         :param filename str Path to calibration file
         """
+
+        if not os.path.exists(filename):
+            raise InvalidCalibration("Calibration file does not exist")
+
         _, ext = os.path.splitext(filename)
         if ext != '.csv':
             print('PyplisWorker.load_cal_series: Cannot read file {} as it is not in the correct format (.csv)'.format(filename))
@@ -3704,11 +3708,28 @@ class PyplisWorker:
     def process_sequence(self):
         """Start _process_sequence in a thread, so that this can return after starting and the GUI doesn't lock up"""
         self.set_processing_directory(make_dir=True)
+
+        # If a calibration has been preloaded then resave it
+        if self.cal_type_int == 3:
+            self.save_preloaded_cal()
+
         self.save_config_plus(self.processed_dir)
         self.apply_config()
         self.process_thread = threading.Thread(target=self._process_sequence, args=())
         self.process_thread.daemon = True
         self.process_thread.start()
+
+    def save_preloaded_cal(self):
+        """ Save the preloaded calibration series to a file """
+
+        # DB 23-09-2024
+        # I don't think is possible to have a situation where cal_type_int = 3 and
+        # calibration_series is None, but just in case...
+        if self.calibration_series is not None:
+            self.write_calib_headerlines()
+            self.calibration_series.to_csv(self.calibration_file_path, mode = "a")
+        else:
+            raise InvalidCalibration("Preloaded calibration is selected but no calibration has been loaded.")
 
     def _process_sequence(self):
         """
@@ -3938,7 +3959,10 @@ class PyplisWorker:
             print('Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
-        
+
+        if self.cal_type_int == 3:
+            raise InvalidCalibration("Preloaded calibration is invalid for real-time processing")
+
         if directory is not None:
             self.watching_dir = directory
 
