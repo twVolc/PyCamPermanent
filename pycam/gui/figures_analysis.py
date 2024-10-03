@@ -5638,6 +5638,7 @@ class PlumeVelocityFrame:
         self.in_frame = False
         self.opti_flow.in_frame = False
         self.cross_corr.in_frame = False
+        self.nadeau_flow.in_frame = False
 
         self.cross_corr.update_variables()
         self.nadeau_flow.update_variables()
