@@ -2980,24 +2980,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        # Watching directory
-        label = ttk.Label(path_frame, text='Watching directory:', font=self.main_gui.main_font)
-        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.watching_label = ttk.Label(path_frame, text=self.watching_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
-        self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("watching_dir"))
-        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        row += 1
-
-        # Background img B directory
-        label = ttk.Label(path_frame, text='FTP output directory:', font=self.main_gui.main_font)
-        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.FTP_out_label = ttk.Label(path_frame, text=self.FTP_output_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
-        self.FTP_out_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("FTP_output_dir"))
-        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
-        row += 1
-
         # Dark directory
         label = ttk.Label(path_frame, text='Dark image directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
@@ -3034,6 +3016,24 @@ class ProcessSettings(LoadSaveProcessingSettings):
                                         font=self.main_gui.main_font, anchor='e')
         self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_dir("cal_series_path"))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Watching directory
+        label = ttk.Label(path_frame, text='Watching directory:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.watching_label = ttk.Label(path_frame, text=self.watching_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("watching_dir"))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # FTP output directory
+        label = ttk.Label(path_frame, text='FTP output directory:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.FTP_out_label = ttk.Label(path_frame, text=self.FTP_output_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.FTP_out_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("FTP_output_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Processing
