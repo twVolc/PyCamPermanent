@@ -4116,12 +4116,14 @@ class PyplisWorker:
     def start_watching_dir(self):
 
         if self.seq_info is not None:
-            self.seq_info.update_watch_dir(self.watching_dir)
+            self.seq_info.update_img_dir_lab(self.watching_dir, True)
         self.doas_worker.start_watching(self.watching_dir)
         self.start_watching()
 
     def stop_watching_dir(self):
         
+        if self.seq_info is not None:
+            self.seq_info.update_img_dir_lab(self.img_dir)
         self.doas_worker.stop_watching()
         self.stop_watching()
 
