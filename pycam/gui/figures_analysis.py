@@ -3024,7 +3024,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         row += 1
 
         # Watching directory
-        label = ttk.Label(path_frame, text='Watching directory:', font=self.main_gui.main_font)
+        label = ttk.Label(path_frame, text='Transfer directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.watching_label = ttk.Label(path_frame, text=self.transfer_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
