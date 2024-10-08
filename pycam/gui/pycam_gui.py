@@ -131,10 +131,10 @@ class PyCam(ttk.Frame):
         """Sets FTP output directory if it appears in the currently loaded config"""
         
         # Needs work to cover edge cases
-        watching_dir = getattr(pyplis_worker, "watching_dir", None)
-        if watching_dir is not None:
-            cfg.current_dir_img.root_dir = watching_dir
-            cfg.current_dir_spec.root_dir = watching_dir
+        transfer_dir = getattr(pyplis_worker, "transfer_dir", None)
+        if transfer_dir is not None:
+            cfg.current_dir_img.root_dir = transfer_dir
+            cfg.current_dir_spec.root_dir = transfer_dir
 
     def exit_app(self):
         """Closes application"""

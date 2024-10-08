@@ -104,7 +104,7 @@ class SpecWorker:
         self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
         self.q_doas = q_doas
         self.watcher = None
-        self.watching_dir = None
+        self.transfer_dir = None
         self.watching = False
 
         self._dark_dir = None

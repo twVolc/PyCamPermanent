@@ -2908,7 +2908,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.vars = {'plot_iter': int,
                      'bg_A_path': str,
                      'bg_B_path': str,
-                     'watching_dir': str,
+                     'transfer_dir': str,
                      'FTP_output_dir': str,
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
@@ -2926,7 +2926,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._plot_iter = tk.IntVar()
         self._bg_A = tk.StringVar()
         self._bg_B = tk.StringVar()
-        self._watching_dir = tk.StringVar()
+        self._transfer_dir = tk.StringVar()
         self._FTP_out_dir = tk.StringVar()
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
@@ -3026,9 +3026,9 @@ class ProcessSettings(LoadSaveProcessingSettings):
         # Watching directory
         label = ttk.Label(path_frame, text='Watching directory:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
-        self.watching_label = ttk.Label(path_frame, text=self.watching_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.watching_label = ttk.Label(path_frame, text=self.transfer_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("watching_dir"))
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("transfer_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3139,19 +3139,19 @@ class ProcessSettings(LoadSaveProcessingSettings):
         return truncate_path(self.dark_img_dir, self.path_str_length)
     
     @property
-    def watching_dir(self):
-        return self._watching_dir.get()
+    def transfer_dir(self):
+        return self._transfer_dir.get()
 
-    @watching_dir.setter
-    def watching_dir(self, value):
-        self._watching_dir.set(value)
+    @transfer_dir.setter
+    def transfer_dir(self, value):
+        self._transfer_dir.set(value)
         if hasattr(self, 'watching_label') and self.in_frame:
-            self.watching_label.configure(text=self.watching_dir_short)
+            self.watching_label.configure(text=self.transfer_dir_short)
 
     @property
-    def watching_dir_short(self):
+    def transfer_dir_short(self):
         """Returns shorter label for dark directory"""
-        return truncate_path(self.watching_dir, self.path_str_length)
+        return truncate_path(self.transfer_dir, self.path_str_length)
     
     @property
     def FTP_output_dir(self):
@@ -3345,7 +3345,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """
         pyplis_worker.config['plot_iter'] = self.plot_iter
         doas_worker.plot_iter = self.plot_iter
-        pyplis_worker.config['watching_dir'] = self.watching_dir
+        pyplis_worker.config['transfer_dir'] = self.transfer_dir
         pyplis_worker.config['FTP_output_dir'] = self.FTP_output_dir
         pyplis_worker.config['dark_img_dir'] = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
@@ -3379,7 +3379,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.config['plot_iter'])
-        self.watching_dir = pyplis_worker.config['watching_dir']
+        self.transfer_dir = pyplis_worker.config['transfer_dir']
         self.FTP_output_dir = pyplis_worker.config['FTP_output_dir']
         self.bg_A_path = pyplis_worker.config['bg_A_path']
         self.bg_B_path = pyplis_worker.config['bg_B_path']
