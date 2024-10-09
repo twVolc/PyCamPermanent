@@ -363,6 +363,11 @@ class SpecWorker:
         [setattr(self, wavelength, config.get(wavelength)) for wavelength in wavelengths
          if config.get(wavelength) is not None]
 
+    def get_shift(self, config):
+        shift_val = config.get("shift")
+        if shift_val is not None:
+            setattr(self, "shift", shift_val)
+
     def reset_stray_pix(self):
         self._start_stray_pix = None
         self._end_stray_pix = None

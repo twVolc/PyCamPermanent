@@ -127,7 +127,9 @@ class PyCam(ttk.Frame):
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         doas_worker.load_dir(prompt=False, plot=True)
         doas_worker.get_wavelengths(pyplis_worker.config)
+        doas_worker.get_shift(pyplis_worker.config)
         self.spec_wind.spec_frame.update_all()
+        self.spec_wind.doas_frame.update_vals()
         doas_worker.process_doas(plot=True)
         self.set_transfer_dir()
 

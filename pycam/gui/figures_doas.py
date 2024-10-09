@@ -502,6 +502,9 @@ class DOASPlot(LoadSaveProcessingSettings):
         # Draw updates
         self.Q.put(1)
 
+    def update_vals(self):
+        self.shift_box.set(self.doas_worker.shift)
+
     def __update_tab__(self, event):
         """
         Controls drawing of tab canvas when tab is selected
