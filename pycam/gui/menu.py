@@ -25,6 +25,7 @@ import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
 from shutil import copyfile
+from inspect import cleandoc
 import os
 import threading
 
@@ -755,7 +756,18 @@ class LoadFrame(LoadSaveProcessingSettings):
                 initialdir=self.init_dir)
         
         if len(filename) > 0:
-            self.pyplis_worker.load_config(filename, "user")
+            try:
+                self.pyplis_worker.load_config(filename, "user")
+            except FileNotFoundError as e:
+                error_msg = cleandoc(
+                    f"""
+                    Config load unsuccessful\n
+                    Error: {e}
+                    """)
+
+                messagebox.showerror("Config load failure",
+                                     error_msg)
+                return
 
             self.reload_config()
 
@@ -786,6 +798,11 @@ class LoadFrame(LoadSaveProcessingSettings):
             ftp_output_dir = getattr(self.pyplis_worker, "FTP_output_dir")
             cfg.current_dir_img.root_dir = ftp_output_dir
             cfg.current_dir_spec.root_dir = ftp_output_dir
+
+        if pyplis_worker.missing_path_param_warn is not None:
+            messagebox.showwarning("Missing path params not updated",
+                                   pyplis_worker.missing_path_param_warn)
+            pyplis_worker.missing_path_param_warn = None
 
     def reset_pcs_lines(self):
         """Reset current PCS lines"""

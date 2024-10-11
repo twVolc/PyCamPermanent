@@ -5,7 +5,7 @@
 Scripts are an edited version of the pyplis example scripts, adapted for use with the PiCam"""
 from __future__ import (absolute_import, division)
 
-from pycam.setupclasses import CameraSpecs, SpecSpecs
+from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.utils import calc_dt, get_horizontal_plume_speed
 from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
 from pycam.directory_watcher import create_dir_watcher
@@ -41,6 +41,7 @@ from skimage import transform as tf
 import warnings
 import traceback
 from ruamel.yaml import YAML
+from inspect import cleandoc
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
@@ -319,9 +320,26 @@ class PyplisWorker:
 
         self.geom_dict = {}
 
+        self.missing_path_param_warn = None
         self.config = {}
         self.raw_configs = {}
-        self.load_config(config_path, "default")
+        self.load_default_conf_errors = None
+        try:
+            # Try Loading the config
+            self.load_config(config_path, "default")
+        except (FileNotFoundError, ValueError) as e:
+
+            # Record that the default config load was unsuccessful to show an error later 
+            self.load_default_conf_errors = cleandoc(f"""
+                Problem loading specified default config file:
+                {config_path}\n
+                Error: {e}\n
+                Reverting to config file supplied with PyCam""")
+
+            print(self.load_default_conf_errors)
+            
+            # If any files not found then retry with the supplied config
+            self.load_config(FileLocator.PROCESS_DEFAULTS, "default")
         self.apply_config()
 
     def load_config(self, file_path, conf_name):
@@ -329,10 +347,11 @@ class PyplisWorker:
 
         file_path = os.path.normpath(file_path)
         with open(file_path, "r") as file:
-            self.raw_configs[conf_name] = yaml.load(file)
+            raw_config = yaml.load(file)
 
+        checked_config = self.check_config_paths(file_path, raw_config)
+        self.raw_configs[conf_name] = checked_config
         self.config.update(self.raw_configs[conf_name])
-        self.check_config_paths(file_path)
 
     def apply_config(self, subset = None):
         """take items in config dict and set them as attributes in pyplis_worker"""
@@ -341,24 +360,60 @@ class PyplisWorker:
         else: 
             [setattr(self, key, value) for key, value in self.config.items()]
 
-    def check_config_paths(self, config_path):
+    def check_config_paths(self, config_path, raw_config):
+        missing_path_params = []
         config_dir = os.path.dirname(config_path)
+
         for path_param in path_params:
             # Skip if cal_type_int is not pre-loaded
-            if path_param == "cal_series_path" and self.config["cal_type_int"] != 3:
+            if path_param == "cal_series_path" and raw_config["cal_type_int"] != 3:
                 continue
 
-            config_value = self.config.get(path_param)
-            # Value could be a string or list of strings, we want to do the same thing to both but iterate over
-            # the list of strings.
+            config_value = raw_config.get(path_param)
+
+            # If there is no value in the config for this parameter then record and skip
+            # Unless it is when no other config file has been loaded, then throw an error.
+            if config_value is None:
+                if self.config:
+                    missing_path_params.append(path_param)
+                    continue
+                else:
+                    raise ValueError(f"Default value for {path_param} missing.")
+
+            # Value could be a string or list of strings, we want to do the same thing to both
+            # but iterate over the list of strings.
             # Not the most elegent way to do this, but it'll do for now.
             if type(config_value) is str:
-                new_value = self.expand_config_path(config_value, config_dir)
-                self.config[path_param] = new_value
+                new_value = self.expand_check_path(config_value, config_dir)
+                raw_config[path_param] = new_value
             else:
                 for idx, val in enumerate(config_value):
-                    new_value = self.expand_config_path(val, config_dir)
-                    self.config[path_param][idx] = new_value
+                    new_value = self.expand_check_path(val, config_dir)
+                    raw_config[path_param][idx] = new_value
+
+        if missing_path_params:
+            miss_param_str = [f"- {par}" for par in missing_path_params]
+
+            self.missing_path_param_warn = "\n".join(
+                ["The following parameters were not present in the loaded config:",
+                 *miss_param_str,
+                 "Current values were retained."])
+            print(self.missing_path_param_warn)
+
+        return raw_config
+
+    def expand_check_path(self, value, dir, path_param):
+        """
+        Runs the expand and check path methods and catches errors from either to produce 
+        informative error messages """
+        try:
+            new_value = self.expand_config_path(value, dir)
+            new_value = os.path.normpath(new_value)
+            self.check_path(new_value)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"{path_param} - {e}")
+
+        return new_value
 
     def expand_config_path(self, path, config_dir):
         """ Converts paths string absolute path if needed"""
@@ -367,6 +422,9 @@ class PyplisWorker:
         # (specified by a path relative to pycam location)
         if not os.path.isabs(config_dir):
             return path
+        
+        if path == '':
+            raise FileNotFoundError("Path not specified")
         # If it's an absolute path then just use as is
         elif os.path.isabs(path):
             return path
@@ -376,6 +434,10 @@ class PyplisWorker:
         # Otherwise prepend the path with the location of the config file
         else:
             return os.path.join(config_dir, path)
+
+    def check_path(self, path):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"File path {path} does not exist")
 
     def save_all_pcs(self, save_dir):
         """Save all the currently loaded/drawn pcs lines to files and update config"""
