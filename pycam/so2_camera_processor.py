@@ -384,11 +384,11 @@ class PyplisWorker:
             # but iterate over the list of strings.
             # Not the most elegent way to do this, but it'll do for now.
             if type(config_value) is str:
-                new_value = self.expand_check_path(config_value, config_dir)
+                new_value = self.expand_check_path(config_value, config_dir, path_param)
                 raw_config[path_param] = new_value
             else:
                 for idx, val in enumerate(config_value):
-                    new_value = self.expand_check_path(val, config_dir)
+                    new_value = self.expand_check_path(val, config_dir, path_param)
                     raw_config[path_param][idx] = new_value
 
         if missing_path_params:
