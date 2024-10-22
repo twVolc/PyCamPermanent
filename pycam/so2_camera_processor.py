@@ -2629,6 +2629,20 @@ class PyplisWorker:
                         print('No DOAS data point within {}s of image time: {}. '
                               'Image is not added to DOAS calibration'.format(self.max_doas_cam_dif,
                                                                               img_time.strftime('%H:%M:%S')))
+
+                        # Only add if the calibration is already available
+                        if self.fit_data.size > 0:
+
+                            # Add empty tau_values
+                            tau_val_ncols = self.tau_vals.shape[1]
+                            empty_tau_vals = np.column_stack([img_time, *np.repeat(np.nan, tau_val_ncols-1)])
+                            self.tau_vals = np.append( self.tau_vals, empty_tau_vals, axis = 0)
+
+                            # Add the last calibration values
+                            last_cal = self.fit_data[-1][1:]
+                            fit_data = np.hstack((img_time, *last_cal))
+                            self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
+
                         return
 
                     zero = datetime.timedelta(0)
