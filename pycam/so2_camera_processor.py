@@ -2611,11 +2611,11 @@ class PyplisWorker:
                     # point for img_time, so we can raise the error which moves us onto the interpolation section.
                     with self.doas_worker.lock:
                         cd = self.doas_worker.results.get(img_time)
+                        if cd is None:
+                            raise KeyError(f"spectra for {img_time} not found")
                         # Get index for cd_err
                         cd_err = self.doas_worker.results.fit_errs[
                             np.where(self.doas_worker.results.index.array == img_time)[0][0]]
-                    if cd is None:
-                        raise KeyError(f"spectra for {img_time} not found")
 
             except BaseException as e:
                 with self.doas_worker.lock:
