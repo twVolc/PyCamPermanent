@@ -2931,6 +2931,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.vars = {'plot_iter': int,
                      'bg_A_path': str,
                      'bg_B_path': str,
+                     'transfer_dir': str,
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
@@ -2947,6 +2948,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._plot_iter = tk.IntVar()
         self._bg_A = tk.StringVar()
         self._bg_B = tk.StringVar()
+        self._transfer_dir = tk.StringVar()
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
         self._cell_cal_dir = tk.StringVar()
@@ -3040,6 +3042,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
         butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_dir("cal_series_path"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Transfer directory
+        label = ttk.Label(path_frame, text='Transfer directory:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.watching_label = ttk.Label(path_frame, text=self.transfer_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("transfer_dir"))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
 
         # Processing
         settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
@@ -3135,6 +3147,21 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def dark_dir_short(self):
         """Returns shorter label for dark directory"""
         return truncate_path(self.dark_img_dir, self.path_str_length)
+    
+    @property
+    def transfer_dir(self):
+        return self._transfer_dir.get()
+
+    @transfer_dir.setter
+    def transfer_dir(self, value):
+        self._transfer_dir.set(value)
+        if hasattr(self, 'watching_label') and self.in_frame:
+            self.watching_label.configure(text=self.transfer_dir_short)
+
+    @property
+    def transfer_dir_short(self):
+        """Returns shorter label for dark directory"""
+        return truncate_path(self.transfer_dir, self.path_str_length)
 
     @property
     def dark_spec_dir(self):
@@ -3313,6 +3340,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """
         pyplis_worker.config['plot_iter'] = self.plot_iter
         doas_worker.plot_iter = self.plot_iter
+        pyplis_worker.config['transfer_dir'] = self.transfer_dir
         pyplis_worker.config['dark_img_dir'] = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
         pyplis_worker.config["cal_series_path"] = self.cal_series_path
@@ -3351,6 +3379,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.config['plot_iter'])
+        self.transfer_dir = pyplis_worker.config['transfer_dir']
         self.bg_A_path = pyplis_worker.config['bg_A_path']
         self.bg_B_path = pyplis_worker.config['bg_B_path']
         self.dark_img_dir = pyplis_worker.config['dark_img_dir']
