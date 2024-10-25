@@ -154,6 +154,14 @@ class SequenceInfo:
         self.date_lab.configure(text=self.date)
         self.time_lab.configure(text='{} - {}'.format(self.start_time, self.end_time))
 
+    def update_img_dir_lab(self, img_dir, watching = False):
+
+        if watching:
+            img_dir = "{} (Watching)".format(img_dir)
+
+        img_dir_short = truncate_path(img_dir, self.path_str_length)
+        self.img_dir_lab.configure(text=img_dir_short)
+
 
 class ImageSO2(LoadSaveProcessingSettings):
     """

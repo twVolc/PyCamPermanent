@@ -1023,7 +1023,8 @@ class PyplisWorker:
         self.set_processing_directory()
 
         # Update frame containing details of image directory
-        self.seq_info.update_variables()
+        if self.seq_info is not None:
+            self.seq_info.update_variables()
 
         # Display first images of sequence
         if len(self.img_list) > 0:
@@ -4201,12 +4202,16 @@ class PyplisWorker:
         self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
     def start_watching_dir(self):
-        
-        self.doas_worker.start_watching(self.watching_dir)
+
+        if self.seq_info is not None:
+            self.seq_info.update_img_dir_lab(self.transfer_dir, True)
+        self.doas_worker.start_watching(self.transfer_dir)
         self.start_watching()
 
     def stop_watching_dir(self):
         
+        if self.seq_info is not None:
+            self.seq_info.update_img_dir_lab(self.img_dir)
         self.doas_worker.stop_watching()
         self.stop_watching()
 
