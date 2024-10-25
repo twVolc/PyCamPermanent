@@ -3371,6 +3371,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
             return
         
         self.close_window()
+        self.main_gui.set_transfer_dir()
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
         doas_worker.load_dir(prompt=False)

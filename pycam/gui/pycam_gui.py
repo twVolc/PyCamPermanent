@@ -127,12 +127,16 @@ class PyCam(ttk.Frame):
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         doas_worker.load_dir(prompt=False, plot=True)
         doas_worker.process_doas(plot=True)
+        self.set_transfer_dir()
 
-        # Sets FTP_output_dir if it exists 
-        if pyplis_worker.config.get("FTP_output_dir") is not None:
-            ftp_output_dir = pyplis_worker.config.get("FTP_output_dir")
-            cfg.current_dir_img.root_dir = ftp_output_dir
-            cfg.current_dir_spec.root_dir = ftp_output_dir
+    def set_transfer_dir(self):
+        """Sets transfer directory if it appears in the currently loaded config"""
+        
+        # Needs work to cover edge cases
+        transfer_dir = getattr(pyplis_worker, "transfer_dir", None)
+        if transfer_dir is not None:
+            cfg.current_dir_img.root_dir = transfer_dir
+            cfg.current_dir_spec.root_dir = transfer_dir
 
         if pyplis_worker.load_default_conf_errors is not None:
             messagebox.showwarning("Default Config Error",
