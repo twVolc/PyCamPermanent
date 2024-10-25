@@ -223,8 +223,8 @@ class PyMenu:
         tab = 'Real-time Processing'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
-        self.menus[tab].add_command(label="Start Watching Directory", command=self.start_watching_dir)
-        self.menus[tab].add_command(label="Stop Watching Directory", command=pyplis_worker.stop_watching_dir)
+        self.menus[tab].add_command(label="Start Watching Transfer Directory", command=self.start_watching_dir)
+        self.menus[tab].add_command(label="Stop Watching Transfer Directory", command=pyplis_worker.stop_watching_dir)
 
         # -------------------------------------------------------------------------------------------------------
 
