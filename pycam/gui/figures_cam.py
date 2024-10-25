@@ -451,16 +451,25 @@ class ImageRegistrationFrame:
         self.frame = ttk.LabelFrame(self.parent, text='Image Registration:', relief=tk.RAISED)
 
         # Registration method widgets
-        self.reg_none = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='No Registration', value=0,
-                                        command=lambda: self.img_reg_select(self.reg_meth))
+        self.reg_none = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='No Registration',
+                                        value=0, command=lambda: self.img_reg_select(self.reg_meth))
         self.reg_none.grid(row=0, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
-        self.reg_cp = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='Control Point', value=1,
-                                      command=lambda: self.img_reg_select(self.reg_meth))
-        self.reg_cp.grid(row=1, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
 
+        # Control point box
+        self.cp_frame = ttk.Frame(self.frame, relief=tk.GROOVE, borderwidth=2)
+        self.cp_frame.grid(row=1, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
+        self.reg_cp = ttk.Radiobutton(self.cp_frame, variable=self._reg_meth, text='Control Point', 
+                                      value=1, state="disabled",
+                                      command=lambda: self.img_reg_select(self.reg_meth))
+        self.reg_cp.grid(row=0, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
+        # Control point
+        run_button = tk.Button(self.cp_frame, text='Run',
+                               command=lambda: self.img_reg_select(self.reg_cp['value'], rerun=True))
+        run_button.grid(row=1, column=0, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
         self.cv_frame = ttk.Frame(self.frame, relief=tk.GROOVE, borderwidth=2)
         self.cv_frame.grid(row=2, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
-        self.reg_cv = ttk.Radiobutton(self.cv_frame, variable=self._reg_meth, text='OpenCV ECC', value=2,
+        self.reg_cv = ttk.Radiobutton(self.cv_frame, variable=self._reg_meth, text='OpenCV ECC',
+                                      value=2, state="disabled",
                                       command=lambda: self.img_reg_select(self.reg_meth))
         self.reg_cv.grid(row=0, column=0, columnspan=2, pady=self.pdy, sticky='w')
 
@@ -476,6 +485,10 @@ class ImageRegistrationFrame:
         self.num_it_ent.grid(row=2, column=2, padx=self.pdx, pady=self.pdy, sticky='ew')
         label = ttk.Label(self.cv_frame, text='e-10', font=self.main_gui.main_font)
         label.grid(row=2, column=3, padx=self.pdx, pady=self.pdy, sticky='w')
+
+        run_button = tk.Button(self.cv_frame, text='Run',
+                               command=lambda: self.img_reg_select(self.reg_cv['value'], rerun=True))
+        run_button.grid(row=6, column=0, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
 
     @property
     def reg_meth(self):
