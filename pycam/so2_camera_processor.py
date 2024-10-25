@@ -3125,13 +3125,24 @@ class PyplisWorker:
         # Loop through results dictionary and add the 'total' measurements
         mode = 'flow_glob'
         for i, img_time in enumerate(total_emissions['time']):
-            self.results['total'][mode]._start_acq.append(img_time)
-            self.results['total'][mode]._phi.append(np.nansum(total_emissions['phi'][i]))
-            self.results['total'][mode]._phi_err.append(
-                np.sqrt(np.nansum(np.power(total_emissions['phi_err'][i], 2))))
-            self.results['total'][mode]._velo_eff.append(np.nanmean(total_emissions['veff'][i]))
-            self.results['total'][mode]._velo_eff_err.append(
-                np.sqrt(np.nansum(np.power(total_emissions['veff_err'][i], 2))))
+
+            phi_tot = np.nansum(total_emissions['phi'][i])
+            phi_err_tot = np.sqrt(np.nansum(np.power(total_emissions['phi_err'][i], 2)))
+            velo_eff_tot = np.nanmean(total_emissions['veff'][i])
+            velo_eff_err_tot = np.sqrt(np.nansum(np.power(total_emissions['veff_err'][i], 2)))
+
+            if img_time in self.results['total'][mode]._start_acq:
+                time_idx = self.results['total'][mode]._start_acq.index(img_time)
+                self.results['total'][mode]._phi[time_idx] = phi_tot
+                self.results['total'][mode]._phi_err[time_idx] = phi_err_tot
+                self.results['total'][mode]._velo_eff[time_idx] = velo_eff_tot
+                self.results['total'][mode]._velo_eff_err[time_idx] = velo_eff_err_tot
+            else:
+                self.results['total'][mode]._start_acq.append(img_time_tot)
+                self.results['total'][mode]._phi.append(phi_tot)
+                self.results['total'][mode]._phi_err.append(phi_err_tot)
+                self.results['total'][mode]._velo_eff.append(velo_eff_tot)
+                self.results['total'][mode]._velo_eff_err.append(velo_eff_err_tot)
 
         # # Ensure the results dictionary is sorted (may not be critical?)
         # sorted_args = np.array(self.results['total'][mode]._start_acq).argsort()
