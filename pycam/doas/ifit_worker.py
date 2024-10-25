@@ -848,15 +848,15 @@ class IFitWorker(SpecWorker):
         Also starts a processing thread, so that the images which arrive can be processed
         """
         if self.watching:
-            print('IFit worker: Already watching for spectra: {}'.format(self.watching_dir))
+            print('IFit worker: Already watching for spectra: {}'.format(self.transfer_dir))
             print('IFit worker: Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
         self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
         self.watcher.start()
-        self.watching_dir = directory
+        self.transfer_dir = directory
         self.watching = True
-        print('IFit worker: Watching {} for new spectra'.format(self.watching_dir[-30:]))
+        print('IFit worker: Watching {} for new spectra'.format(self.transfer_dir[-30:]))
 
         # Start the processing thread
         self.start_processing_thread()
@@ -866,7 +866,7 @@ class IFitWorker(SpecWorker):
         if self.watching:
             if self.watcher is not None:
                 self.watcher.stop()
-                print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+                print('Stopped watching {} for new images'.format(self.transfer_dir[-30:]))
                 self.watching = False
 
                 # Stop processing thread when we stop watching the directory

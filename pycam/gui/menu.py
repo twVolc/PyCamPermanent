@@ -223,8 +223,8 @@ class PyMenu:
         tab = 'Real-time Processing'
         keys.append(tab)
         self.menus[tab] = tk.Menu(self.frame, tearoff=0)
-        self.menus[tab].add_command(label="Start Watching Directory", command=self.start_watching_dir)
-        self.menus[tab].add_command(label="Stop Watching Directory", command=pyplis_worker.stop_watching_dir)
+        self.menus[tab].add_command(label="Start Watching Transfer Directory", command=self.start_watching_dir)
+        self.menus[tab].add_command(label="Stop Watching Transfer Directory", command=pyplis_worker.stop_watching_dir)
 
         # -------------------------------------------------------------------------------------------------------
 
@@ -792,12 +792,7 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.apply_config()
         self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         self.doas_worker.load_dir(self.pyplis_worker.spec_dir, prompt=False, plot=True)
-
-        # This will work but doesn't cover all edge cases
-        if self.pyplis_worker.config.get("FTP_output_dir") is not None:
-            ftp_output_dir = getattr(self.pyplis_worker, "FTP_output_dir")
-            cfg.current_dir_img.root_dir = ftp_output_dir
-            cfg.current_dir_spec.root_dir = ftp_output_dir
+        self.main_gui.set_transfer_dir()
 
         if pyplis_worker.missing_path_param_warn is not None:
             messagebox.showwarning("Missing path params not updated",

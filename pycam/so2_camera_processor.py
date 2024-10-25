@@ -48,7 +48,7 @@ warnings.simplefilter("ignore", RuntimeWarning)
 yaml = YAML()
 
 path_params = [
-    "img_dir", "dark_img_dir", "watching_dir", "spec_dir", "dark_spec_dir", "bg_A_path", "bg_B_path", "cell_cal_dir",
+    "img_dir", "dark_img_dir", "transfer_dir", "spec_dir", "dark_spec_dir", "bg_A_path", "bg_B_path", "cell_cal_dir",
     "pcs_lines", "img_registration", "dil_lines", "ld_lookup_1", "ld_lookup_2", "ILS_path", "default_cam_geom", "cal_series_path"
 ]
 
@@ -306,7 +306,7 @@ class PyplisWorker:
         self.process_thread = None  # Placeholder for threading object
         self.in_processing = False
         self.watching = False       # Bool defining if the object is currently watching a directory
-        self.watching_dir = None    # Directory that is currently being watched
+        self.transfer_dir = None    # Directory where images are transfered to (either in RTP or FTP)
         self.watcher = None         # Directory watcher object
         self.watched_imgs = dict()  # Dictionary containing new files added to directory - keys are times of images
         self.watched_pair = {self.cam_specs.file_filterids['on']: None,         #For use with force_pair_processing
@@ -1023,7 +1023,8 @@ class PyplisWorker:
         self.set_processing_directory()
 
         # Update frame containing details of image directory
-        self.seq_info.update_variables()
+        if self.seq_info is not None:
+            self.seq_info.update_variables()
 
         # Display first images of sequence
         if len(self.img_list) > 0:
@@ -4028,7 +4029,7 @@ class PyplisWorker:
         Also starts a processing thread, so that the images which arrive can be processed
         """
         if self.watching:
-            print('Already watching: {}'.format(self.watching_dir))
+            print('Already watching: {}'.format(self.transfer_dir))
             print('Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
@@ -4037,13 +4038,13 @@ class PyplisWorker:
             raise InvalidCalibration("Preloaded calibration is invalid for real-time processing")
 
         if directory is not None:
-            self.watching_dir = directory
+            self.transfer_dir = directory
 
-        if self.watching_dir is not None:
-            self.watcher = create_dir_watcher(self.watching_dir, recursive, self.directory_watch_handler)
+        if self.transfer_dir is not None:
+            self.watcher = create_dir_watcher(self.transfer_dir, recursive, self.directory_watch_handler)
             self.watcher.start()
             self.watching = True
-            print('Watching {} for new images'.format(self.watching_dir[-30:]))
+            print('Watching {} for new images'.format(self.transfer_dir[-30:]))
         else:
             print("No Directory to watch provided")
             return
@@ -4055,7 +4056,7 @@ class PyplisWorker:
         """Stop directory watcher and end processing thread"""
         if self.watcher is not None and self.watching:
             self.watcher.stop()
-            print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+            print('Stopped watching {} for new images'.format(self.transfer_dir[-30:]))
             self.watching = False
 
             # Stop processing thread when we stop watching the directory
@@ -4201,12 +4202,16 @@ class PyplisWorker:
         self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
 
     def start_watching_dir(self):
-        
-        self.doas_worker.start_watching(self.watching_dir)
+
+        if self.seq_info is not None:
+            self.seq_info.update_img_dir_lab(self.transfer_dir, True)
+        self.doas_worker.start_watching(self.transfer_dir)
         self.start_watching()
 
     def stop_watching_dir(self):
         
+        if self.seq_info is not None:
+            self.seq_info.update_img_dir_lab(self.img_dir)
         self.doas_worker.stop_watching()
         self.stop_watching()
 
