@@ -48,7 +48,7 @@ warnings.simplefilter("ignore", RuntimeWarning)
 yaml = YAML()
 
 path_params = [
-    "img_dir", "dark_img_dir", "watching_dir", "spec_dir", "dark_spec_dir", "bg_A_path", "bg_B_path", "cell_cal_dir",
+    "img_dir", "dark_img_dir", "transfer_dir", "spec_dir", "dark_spec_dir", "bg_A_path", "bg_B_path", "cell_cal_dir",
     "pcs_lines", "img_registration", "dil_lines", "ld_lookup_1", "ld_lookup_2", "ILS_path", "default_cam_geom", "cal_series_path"
 ]
 
