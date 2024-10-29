@@ -2617,13 +2617,18 @@ class PyplisWorker:
                     # point for img_time, so we can raise the error which moves us onto the interpolation section.
                     with self.doas_worker.lock:
                         cd = self.doas_worker.results.get(img_time)
+                        if cd is None:
+                            raise KeyError(f"spectra for {img_time} not found")
                         # Get index for cd_err
                         cd_err = self.doas_worker.results.fit_errs[
                             np.where(self.doas_worker.results.index.array == img_time)[0][0]]
-                    if cd is None:
-                        raise KeyError(f"spectra for {img_time} not found")
 
             except BaseException as e:
+                
+                # Give warning when unexpected (i.e. non-KeyError) is caught.
+                if type(e) is not KeyError:
+                    print(f"Unexpected error: {e}" )
+
                 with self.doas_worker.lock:
                     # If there is no data for the specific time of the image we will have to interpolate
                     dts = self.doas_worker.results.index - img_time
@@ -2635,6 +2640,20 @@ class PyplisWorker:
                         print('No DOAS data point within {}s of image time: {}. '
                               'Image is not added to DOAS calibration'.format(self.max_doas_cam_dif,
                                                                               img_time.strftime('%H:%M:%S')))
+
+                        # Only add if the calibration is already available
+                        if self.fit_data.size > 0:
+
+                            # Add empty tau_values
+                            tau_val_ncols = self.tau_vals.shape[1]
+                            empty_tau_vals = np.column_stack([img_time, *np.repeat(np.nan, tau_val_ncols-1)])
+                            self.tau_vals = np.append( self.tau_vals, empty_tau_vals, axis = 0)
+
+                            # Add the last calibration values
+                            last_cal = self.fit_data[-1][1:]
+                            fit_data = np.hstack((img_time, *last_cal))
+                            self.fit_data = np.append(self.fit_data, fit_data[np.newaxis, :], axis = 0)
+
                         return
 
                     zero = datetime.timedelta(0)
