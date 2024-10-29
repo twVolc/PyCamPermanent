@@ -793,6 +793,10 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         self.doas_worker.load_dir(self.pyplis_worker.spec_dir, prompt=False, plot=True)
         self.main_gui.set_transfer_dir()
+        self.doas_worker.get_wavelengths(pyplis_worker.config)
+        self.doas_worker.get_shift(pyplis_worker.config)
+        self.main_gui.spec_wind.spec_frame.update_all()
+        self.main_gui.spec_wind.doas_frame.update_vals()
 
         if pyplis_worker.missing_path_param_warn is not None:
             messagebox.showwarning("Missing path params not updated",
