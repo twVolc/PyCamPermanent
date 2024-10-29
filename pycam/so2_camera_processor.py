@@ -2618,6 +2618,11 @@ class PyplisWorker:
                             np.where(self.doas_worker.results.index.array == img_time)[0][0]]
 
             except BaseException as e:
+                
+                # Give warning when unexpected (i.e. non-KeyError) is caught.
+                if type(e) is not KeyError:
+                    print(f"Unexpected error: {e}" )
+
                 with self.doas_worker.lock:
                     # If there is no data for the specific time of the image we will have to interpolate
                     dts = self.doas_worker.results.index - img_time
