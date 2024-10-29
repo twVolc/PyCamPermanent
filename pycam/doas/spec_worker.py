@@ -361,7 +361,8 @@ class SpecWorker:
 
     def get_wavelengths(self, config):
         """ Get wavelengths fron config dict and set as attributes"""
-        wavelengths = ["start_stray_wave", "end_stray_wave", "start_fit_wave", "end_fit_wave"]
+        wavelengths = ["start_stray_wave", "end_stray_wave", "start_fit_wave", "end_fit_wave",
+                       "start_fit_wave_ld", "end_fit_wave_ld"]
         [setattr(self, wavelength, config.get(wavelength)) for wavelength in wavelengths
          if config.get(wavelength) is not None]
 

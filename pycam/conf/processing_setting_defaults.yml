@@ -72,6 +72,8 @@ start_stray_wave: 293
 end_stray_wave: 296
 start_fit_wave: 308
 end_fit_wave: 318
+start_fit_wave_ld: 312
+start_fit_wave_ld: 322
 shift: 0
 
 # Plume speed algorithms
