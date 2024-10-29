@@ -41,6 +41,8 @@ class SpecWorker:
         self._end_stray_wave = 296
         self._start_fit_wave = 308       # Update fit window to more reasonable starting size (initial setting was to create a big grid
         self._end_fit_wave = 318
+        self.start_fit_wave_ld = 312      # Second fit window (used in light dilution correction)
+        self.end_fit_wave_ld = 322
         
         self._start_stray_pix = None    # Pixel space stray light window definitions
         self._end_stray_pix = None
