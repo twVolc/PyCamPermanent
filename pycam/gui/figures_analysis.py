@@ -39,6 +39,7 @@ import threading
 from pandas import Series
 import io
 import pickle
+import copy
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
@@ -1156,6 +1157,7 @@ class TimeSeriesFigure:
                             'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
                             'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
                             }
+        self.disp_plot = copy.deepcopy(self.pyplis_worker.velo_modes)   # Dictionary of which velocity modes to display in plot
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
         self.ER_markersize = 3
@@ -1290,7 +1292,7 @@ class TimeSeriesFigure:
 
         if self.line_plot.lower() != 'none':
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode]:
+                if self.pyplis_worker.velo_modes[mode] and self.disp_plot[mode]:
                     try:
                         if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
                             line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
