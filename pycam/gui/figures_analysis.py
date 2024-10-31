@@ -1347,33 +1347,39 @@ class TimeSeriesFigure:
         if self.line_plot.lower() != 'none':
             self.plot_bg_roi(marker=self.marker)
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode] and getattr(self, mode):
-                    try:
-                        if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
-                            line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
-                            if mode == 'flow_histo':    # Flow dir is reliant on flow_histo (the plot function currently is anyway)
-                                self.plot_flow_dir(self.line_plot, label=line_lab,
-                                                   color=self.colours[int(self.line_plot)],
-                                                   marker='.')
-                            self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
-                                           label=line_lab, ls=self.plot_styles[mode]['ls'],
-                                           color=self.plot_styles[mode]['colour'],
-                                           # color=self.colours[int(self.line_plot)],
-                                           marker=self.marker,
-                                           markersize=self.Veff_markersize)
-                            self.pyplis_worker.results[self.line_plot][mode].plot(
-                                ax=self.axes[0],
-                                ls=self.plot_styles[mode]['ls'],
-                                color=self.plot_styles[mode]['colour'],
-                                lw=1.5,
-                                ymin=0,
-                                date_fmt=self.date_fmt,
-                                label=line_lab,
-                                marker=self.marker,
-                                markersize=self.ER_markersize,
-                                in_kg=False)
-                    except KeyError:
-                        print('No emission rate analysis data available for {}'.format(self.line_plot))
+                if self.pyplis_worker.velo_modes[mode]:
+                    self.disp_plot_checks[mode].configure(state=tk.ACTIVE)
+                    if getattr(self, mode):
+                        try:
+                            if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
+                                line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
+                                if mode == 'flow_histo':    # Flow dir is reliant on flow_histo (the plot function currently is anyway)
+                                    self.plot_flow_dir(self.line_plot, label=line_lab,
+                                                       color=self.colours[int(self.line_plot)],
+                                                       marker='.')
+                                self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
+                                               label=line_lab, ls=self.plot_styles[mode]['ls'],
+                                               color=self.plot_styles[mode]['colour'],
+                                               # color=self.colours[int(self.line_plot)],
+                                               marker=self.marker,
+                                               markersize=self.Veff_markersize)
+                                self.pyplis_worker.results[self.line_plot][mode].plot(
+                                    ax=self.axes[0],
+                                    ls=self.plot_styles[mode]['ls'],
+                                    color=self.plot_styles[mode]['colour'],
+                                    lw=1.5,
+                                    ymin=0,
+                                    date_fmt=self.date_fmt,
+                                    label=line_lab,
+                                    marker=self.marker,
+                                    markersize=self.ER_markersize,
+                                    in_kg=False)
+                        except KeyError:
+                            print('No emission rate analysis data available for {}'.format(self.line_plot))
+                else:
+                    self.disp_plot_checks[mode].configure(state=tk.DISABLED)
+
+
 
         # Plot the summed total
         if self.plot_total and len(self.total_lines) > 1:
