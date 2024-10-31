@@ -1182,6 +1182,8 @@ class TimeSeriesFigure:
         self.plot_total = 1
         self.lines = []                     # List holding ids of all lines currently drawn
         self.total_lines = []               # Lines which contribute to the 'total' emission rate
+        for key in self.disp_plot:
+            setattr(self, key, tk.BooleanVar())
 
     @property
     def plot_total(self):
@@ -1205,20 +1207,71 @@ class TimeSeriesFigure:
     def line_plot(self, value):
         self._line_plot.set(value)
 
+    @property
+    def flow_glob(self):
+        return self._flow_glob.get()
+
+    @flow_glob.setter
+    def flow_glob(self, value):
+        self._flow_glob.set(value)
+
+    @property
+    def flow_nadeau(self):
+        return self._flow_nadeau.get()
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self._flow_nadeau.set(value)
+
+    @property
+    def flow_raw(self):
+        return self._flow_raw.get()
+
+    @flow_raw.setter
+    def flow_raw(self, value):
+        self._flow_raw.set(value)
+
+    @property
+    def flow_histo(self):
+        return self._flow_histo.get()
+
+    @flow_histo.setter
+    def flow_histo(self, value):
+        self._flow_histo.set(value)
+
+    @property
+    def flow_hybrid(self):
+        return self._flow_hybrid.get()
+
+    @flow_hybrid.setter
+    def flow_hybrid(self, value):
+        self._flow_hybrid.set(value)
+
     def _build_opts(self):
         """Builds options widget"""
         self.opts_frame = ttk.LabelFrame(self.frame, text='Options')
 
+        row = 0
         lab = ttk.Label(self.opts_frame, text='Plot line:', font=self.main_gui.main_font)
-        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         self.line_opts = ttk.Combobox(self.opts_frame, textvariable=self._line_plot, justify='left',
                                       state='readonly', font=self.main_gui.main_font)
         self.line_opts.bind('<<ComboboxSelected>>', self.update_plot)
-        self.line_opts.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        self.line_opts.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
+        row += 1
         self.plt_tot_check = ttk.Checkbutton(self.opts_frame, text='Plot sum of all lines', variable=self._plot_total,
                                              command=self.update_plot)
-        self.plt_tot_check.grid(row=1, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+        self.plt_tot_check.grid(row=row, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+
+        # Options for toggling different velocity plot on and off
+        row += 1
+        self.disp_plot_checks = {}
+        for i, key in enumerate(self.disp_plot.keys()):
+            self.disp_plot_checks[key] = ttk.Checkbutton(self.opts_frame, text=key,
+                                                         variable=getattr(self, '_{}'.format(key)),
+                                                         command=self.update_plot)
+            self.disp_plot_checks[key].grid(row=row, column=i, columnspan=2, sticky='w', padx=2, pady=2)
 
         # Update current line options
         self.update_lines(plot=False)
