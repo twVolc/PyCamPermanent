@@ -1182,7 +1182,7 @@ class TimeSeriesFigure:
         self.lines = []                     # List holding ids of all lines currently drawn
         self.total_lines = []               # Lines which contribute to the 'total' emission rate
         for key in self.pyplis_worker.velo_modes:
-            setattr(self, '_{}'.format(key), tk.BooleanVar())
+            setattr(self, '_{}'.format(key), tk.BooleanVar(value=True))
 
     @property
     def plot_total(self):
@@ -1269,10 +1269,10 @@ class TimeSeriesFigure:
         plot_check_frame.grid(row=row, column=0, columnspan=4, sticky='nsew')
         self.disp_plot_checks = {}
         for i, key in enumerate(self.pyplis_worker.velo_modes.keys()):
-            self.disp_plot_checks[key] = ttk.Checkbutton(self.plot_check_frame, text=key,
+            self.disp_plot_checks[key] = ttk.Checkbutton(plot_check_frame, text=key,
                                                          variable=getattr(self, '_{}'.format(key)),
                                                          command=self.update_plot)
-            self.disp_plot_checks[key].grid(row=0, column=i, columnspan=2, sticky='w', padx=2, pady=2)
+            self.disp_plot_checks[key].grid(row=0, column=i, sticky='w', padx=2, pady=2)
 
         # Update current line options
         self.update_lines(plot=False)
