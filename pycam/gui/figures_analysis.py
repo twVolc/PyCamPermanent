@@ -1157,7 +1157,6 @@ class TimeSeriesFigure:
                             'flow_histo': {'ls': 'dashed', 'marker': '2', 'colour': 'darkmagenta'},
                             'flow_hybrid': {'ls': 'dashdot', 'marker': '3', 'colour': 'fuchsia'}
                             }
-        self.disp_plot = copy.deepcopy(self.pyplis_worker.velo_modes)   # Dictionary of which velocity modes to display in plot
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
         self.ER_markersize = 3
@@ -1182,8 +1181,8 @@ class TimeSeriesFigure:
         self.plot_total = 1
         self.lines = []                     # List holding ids of all lines currently drawn
         self.total_lines = []               # Lines which contribute to the 'total' emission rate
-        for key in self.disp_plot:
-            setattr(self, key, tk.BooleanVar())
+        for key in self.pyplis_worker.velo_modes:
+            setattr(self, '_{}'.format(key), tk.BooleanVar())
 
     @property
     def plot_total(self):
@@ -1266,12 +1265,14 @@ class TimeSeriesFigure:
 
         # Options for toggling different velocity plot on and off
         row += 1
+        plot_check_frame = ttk.Frame(self.opts_frame)
+        plot_check_frame.grid(row=row, column=0, columnspan=4, sticky='nsew')
         self.disp_plot_checks = {}
-        for i, key in enumerate(self.disp_plot.keys()):
-            self.disp_plot_checks[key] = ttk.Checkbutton(self.opts_frame, text=key,
+        for i, key in enumerate(self.pyplis_worker.velo_modes.keys()):
+            self.disp_plot_checks[key] = ttk.Checkbutton(self.plot_check_frame, text=key,
                                                          variable=getattr(self, '_{}'.format(key)),
                                                          command=self.update_plot)
-            self.disp_plot_checks[key].grid(row=row, column=i, columnspan=2, sticky='w', padx=2, pady=2)
+            self.disp_plot_checks[key].grid(row=0, column=i, columnspan=2, sticky='w', padx=2, pady=2)
 
         # Update current line options
         self.update_lines(plot=False)
@@ -1344,15 +1345,16 @@ class TimeSeriesFigure:
             ax.clear()
 
         if self.line_plot.lower() != 'none':
+            self.plot_bg_roi(marker=self.marker)
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode] and self.disp_plot[mode]:
+                if self.pyplis_worker.velo_modes[mode] and getattr(self, mode):
                     try:
                         if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
                             line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
-                            self.plot_bg_roi(marker=self.marker)
-                            self.plot_flow_dir(self.line_plot, label=line_lab,
-                                               color=self.colours[int(self.line_plot)],
-                                               marker='.')
+                            if mode == 'flow_histo':    # Flow dir is reliant on flow_histo (the plot function currently is anyway)
+                                self.plot_flow_dir(self.line_plot, label=line_lab,
+                                                   color=self.colours[int(self.line_plot)],
+                                                   marker='.')
                             self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
                                            color=self.plot_styles[mode]['colour'],
@@ -1376,7 +1378,7 @@ class TimeSeriesFigure:
         # Plot the summed total
         if self.plot_total and len(self.total_lines) > 1:
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode]:
+                if self.pyplis_worker.velo_modes[mode] and getattr(self, mode):
                     try:
                         if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
                             self.pyplis_worker.results['total'][mode].plot(
