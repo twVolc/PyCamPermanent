@@ -115,6 +115,7 @@ class PyCam(ttk.Frame):
         cross_correlation.initiate_variables(self)
         nadeau_flow.start_draw(self.root)
         nadeau_flow.initiate_variables(self)
+        opti_flow.fig_time_series = self.anal_wind.time_series
         opti_flow.initiate_variables(self)
         light_dilution.add_gui(self)
         light_dilution.initiate_variables()
