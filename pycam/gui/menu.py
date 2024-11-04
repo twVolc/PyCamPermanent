@@ -727,6 +727,7 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         if os.path.exists(filename):
             self.pyplis_worker.img_reg.load_registration(filename, img_reg_frame=self.img_reg_frame, rerun=rerun)
+            self.img_reg_frame.update_reg_radios()
 
     def load_all(self):
         """Runs all load functions to prepare pyplis worker"""

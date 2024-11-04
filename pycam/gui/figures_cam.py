@@ -580,6 +580,10 @@ class ImageRegistrationFrame:
         # img_tau_prev as well as img_tau, which register_img() won't do on its own)
         # self.pyplis_worker.load_sequence(img_dir=self.pyplis_worker.img_dir, plot_bg=False)
 
+        if rerun:
+            self.update_reg_radios()
+            self.reg_meth = meth
+
     def update_reg_radios(self):
         """
         Update the state of the image registration radio buttons based on availability of registrations
