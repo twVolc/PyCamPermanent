@@ -4388,23 +4388,23 @@ class ImageRegistration:
             with open(pathname, 'rb') as f:
                 self.cp_tform = pickle.load(f)
             self.got_cp_transform = True
-            try:
-                img_reg_frame.reg_meth = 1
-            except AttributeError:
-                pass
+            reg_meth = 1
         elif file_ext == 'npy':
             self.method = 'cv'
             with open(pathname, 'rb') as f:
                 self.warp_matrix_cv = np.load(f)
             self.got_cv_transform = True
-            try:
-                img_reg_frame.reg_meth = 2
-                if rerun:
-                    img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
-            except AttributeError:
-                pass
+            reg_meth = 2
         else:
             print('Unrecognised file type, cannot load registration')
+            return
+        
+        try:
+            img_reg_frame.reg_meth = reg_meth
+            if rerun:
+                img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
+        except AttributeError:
+            pass
 
 
 # ## SCRIPT FUNCTION DEFINITIONS
