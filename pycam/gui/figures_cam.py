@@ -466,6 +466,11 @@ class ImageRegistrationFrame:
         run_button = tk.Button(self.cp_frame, text='Run',
                                command=lambda: self.img_reg_select(self.reg_cp['value'], rerun=True))
         run_button.grid(row=1, column=0, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
+        res_button = tk.Button(self.cp_frame, text='Reset',
+                               command=lambda: self.img_reg_reset(self.reg_cp['value']))
+        res_button.grid(row=1, column=1, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
+
+        # OpenCV Box
         self.cv_frame = ttk.Frame(self.frame, relief=tk.GROOVE, borderwidth=2)
         self.cv_frame.grid(row=2, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
         self.reg_cv = ttk.Radiobutton(self.cv_frame, variable=self._reg_meth, text='OpenCV ECC',
@@ -489,6 +494,9 @@ class ImageRegistrationFrame:
         run_button = tk.Button(self.cv_frame, text='Run',
                                command=lambda: self.img_reg_select(self.reg_cv['value'], rerun=True))
         run_button.grid(row=6, column=0, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
+        res_button = tk.Button(self.cv_frame, text='Reset',
+                               command=lambda: self.img_reg_reset(self.reg_cv['value']))
+        res_button.grid(row=6, column=1, columnspan=1, padx=self.pdx, pady=self.pdy, sticky='e')
 
     @property
     def reg_meth(self):
@@ -598,4 +606,22 @@ class ImageRegistrationFrame:
             self.reg_cv.config(state="normal")
         else:
             self.reg_cv.config(state="disabled")
+
+    def img_reg_reset(self, meth):
+        """ Reset image registration
+
+        :param int meth: Variable representing the different registration options
+        """
+
+        if meth == 1:
+            self.img_reg.got_cp_transform = False
+        elif meth == 2:
+            self.img_reg.got_cv_transform = False
+        
+        # If the method being reset is the currently slected one, then move to the no reg option
+        # Otherwise just update the radio buttons
+        if meth == self.reg_meth:
+            self.img_reg_select(0, rerun=True)
+        else:
+            self.update_reg_radios()
 
