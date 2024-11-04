@@ -100,8 +100,6 @@ class ImageFigure:
         self.xsect_frame.grid(row=1, column=0, padx=5, pady=5, sticky='w')
         self.fig_frame.grid(row=2, column=0, columnspan=3, padx=5, pady=5)
 
-        self.save_butt = ttk.Button(self.frame, text='Save\n Control Points', command=self.cp_update)
-        self.save_butt.grid(row=1, column=1, padx=5, pady=5, sticky='nsew')
         self.reset_butt = ttk.Button(self.frame, text='Reset\n Control Points', command=self.cp_reset)
         self.reset_butt.grid(row=1, column=2, padx=5, pady=5, sticky='nsew')
 
@@ -344,19 +342,6 @@ class ImageFigure:
         else:
             print('Clicked outside axes bounds but inside plot window')
 
-    def cp_update(self):
-        """Save control points
-        ->
-        Attempt transform calculation if len(saved_coordinates_A) == len(saved_coordinates_B)"""
-
-        # Update saved coordinates in <ImageRegistartionFrame> object
-        setattr(self.img_reg, 'saved_coordinates_{}'.format(self.band),
-                np.array(getattr(self.img_reg, 'coordinates_{}'.format(self.band))))
-
-        # Invoke registration function which will perform registration if control point conditions are satisfied
-        if self.img_reg.reg_meth == 1:
-            self.img_reg.img_reg_select(1)      # The method is set to cp within this function
-
     def cp_reset(self):
         """
         Reset control points
@@ -548,7 +533,7 @@ class ImageRegistrationFrame:
                     kwargs['coord_B'] = np.array(self.coordinates_B)
                 else:
                     messagebox.showinfo('Control point registration.',
-                        'To update image registration select the same number of control points for each image, and save.')
+                        'To update image registration select the same number of control points for each image, and click run.')
                     return
 
         # CV warp
