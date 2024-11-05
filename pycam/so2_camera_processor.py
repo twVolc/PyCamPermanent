@@ -3349,6 +3349,21 @@ class PyplisWorker:
 
                 ICA_Mass = self.calculate_ICA_mass(cds, distarr) 
 
+                if flow is not None:
+                    delt = flow.del_t
+
+                    if (self.velo_modes['flow_raw'] or self.velo_modes['flow_hybrid']):
+                        # retrieve diplacement vectors along line
+                        dx = line.get_line_profile(flow.flow[:, :, 0])
+                        dy = line.get_line_profile(flow.flow[:, :, 1])
+                    
+                    if self.velo_modes['flow_histo'] or self.velo_modes['flow_hybrid']:
+                        # get mask specifying plume pixels
+                        mask = img.get_thresh_mask(self.min_cd)
+                        props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
+                                                            dir_multi_gauss=self.use_multi_gauss)
+                        idx = -1
+
                 # Cross-correlation emission rate retrieval
                 if self.velo_modes['flow_glob']:
                     # If vel_glob is None but cross-correlation is requested we store all required variables in a buffer
@@ -3397,26 +3412,20 @@ class PyplisWorker:
                         total_emissions['flow_nadeau']['veff_err'].append(np.nan)
 
                 # Raw farneback velocity field emission rate retrieval
-                if self.velo_modes['flow_raw']:
-                    if flow is not None:
-                        delt = flow.del_t
+                if self.velo_modes['flow_raw'] and flow is not None:
 
-                        # retrieve diplacement vectors along line
-                        dx = line.get_line_profile(flow.flow[:, :, 0])
-                        dy = line.get_line_profile(flow.flow[:, :, 1])
+                    # determine array containing effective velocities
+                    # through the line using dot product with line normal
+                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
 
-                        # detemine array containing effective velocities
-                        # through the line using dot product with line normal
-                        veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+                    # Calculate mean of effective velocity through l and
+                    # uncertainty using 2 sigma confidence of standard
+                    # deviation
+                    veff_avg = veff_arr.mean()
+                    veff_err = veff_avg * self.optflow_err_rel_veff
 
-                        # Calculate mean of effective velocity through l and
-                        # uncertainty using 2 sigma confidence of standard
-                        # deviation
-                        veff_avg = veff_arr.mean()
-                        veff_err = veff_avg * self.optflow_err_rel_veff
-
-                        # Get emission rate
-                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err, disterr)
+                    # Get emission rate
+                    phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err, disterr)
 
                         # Update results dictionary
                         res['flow_raw']._start_acq.append(img_time)
@@ -3433,19 +3442,13 @@ class PyplisWorker:
                             total_emissions['flow_raw']['veff_err'].append(veff_err)
 
                 # Histogram analysis of farneback velocity field for emission rate retrieval
-                if self.velo_modes['flow_histo']:
-                    if flow is not None:
-                        # get mask specifying plume pixels
-                        mask = img.get_thresh_mask(self.min_cd)
-                        props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
-                                                            dir_multi_gauss=self.use_multi_gauss)
-                        idx = -1
+                if self.velo_modes['flow_histo'] and flow is not None:
 
-                        # get effective velocity through the pcs based on
-                        # results from histogram analysis
-                        (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
-                                                       sigma_tol=flow.settings.hist_sigma_tol)
-                        phi, phi_err = self.det_emission_rate_kgs(cds, v, distarr, cd_err, verr, disterr)
+                    # get effective velocity through the pcs based on
+                    # results from histogram analysis
+                    (v, verr) = props.get_velocity(idx, distarr.mean(), disterr, line.normal_vector,
+                                                    sigma_tol=flow.settings.hist_sigma_tol)
+                    phi, phi_err = self.det_emission_rate_kgs(cds, v, distarr, cd_err, verr, disterr)
 
                         # Update results dictionary
                         res['flow_histo']._start_acq.append(img_time)
@@ -3468,81 +3471,68 @@ class PyplisWorker:
                             total_emissions['flow_histo']['veff_err'].append(verr)
 
                 # Hybrid histogram analysis of farneback velocity field for emission rate retrieval
-                if self.velo_modes['flow_hybrid']:
-                    if flow is not None:
-                        # get results from local plume properties analysis
-                        if not self.velo_modes['flow_histo']:
-                            mask = img.get_thresh_mask(self.min_cd)
-                            props.get_and_append_from_farneback(flow, line=line, pix_mask=mask,
-                                                                dir_multi_gauss=self.use_multi_gauss)
-                            idx = -1
+                if self.velo_modes['flow_hybrid'] and flow is not None:
 
-                        if dx is None:
-                            # extract raw diplacement vectors along line
-                            dx = line.get_line_profile(flow.flow[:, :, 0])
-                            dy = line.get_line_profile(flow.flow[:, :, 1])
+                    if verr is None:
+                        # get effective velocity through the pcs based on
+                        # results from histogram analysis
+                        (_, verr) = props.get_velocity(idx, distarr.mean(), disterr,
+                                                        line.normal_vector,
+                                                        sigma_tol=flow.settings.hist_sigma_tol)
 
-                        if verr is None:
-                            # get effective velocity through the pcs based on
-                            # results from histogram analysis
-                            (_, verr) = props.get_velocity(idx, distarr.mean(), disterr,
-                                                           line.normal_vector,
-                                                           sigma_tol=flow.settings.hist_sigma_tol)
+                    # determine orientation angles and magnitudes along
+                    # raw optflow output
+                    phis = np.rad2deg(np.arctan2(dx, -dy))[cond]
+                    mag = np.sqrt(dx ** 2 + dy ** 2)[cond]
 
-                        # determine orientation angles and magnitudes along
-                        # raw optflow output
-                        phis = np.rad2deg(np.arctan2(dx, -dy))[cond]
-                        mag = np.sqrt(dx ** 2 + dy ** 2)[cond]
+                    # get expectation values of predominant displacement
+                    # vector
+                    min_len = (props.len_mu[idx] - props.len_sigma[idx])
 
-                        # get expectation values of predominant displacement
-                        # vector
-                        min_len = (props.len_mu[idx] - props.len_sigma[idx])
+                    min_len = max([min_len, flow.settings.min_length])
 
-                        min_len = max([min_len, flow.settings.min_length])
+                    dir_min = (props.dir_mu[idx] -
+                                flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+                    dir_max = (props.dir_mu[idx] + flow.settings.hist_sigma_tol * props.dir_sigma[idx])
 
-                        dir_min = (props.dir_mu[idx] -
-                                   flow.settings.hist_sigma_tol * props.dir_sigma[idx])
-                        dir_max = (props.dir_mu[idx] + flow.settings.hist_sigma_tol * props.dir_sigma[idx])
+                    # get bool mask for indices along the pcs
+                    bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
 
-                        # get bool mask for indices along the pcs
-                        bad = ~ (np.logical_and(phis > dir_min, phis < dir_max) * (mag > min_len))
+                    try:
+                        frac_bad = sum(bad) / float(len(bad))
+                    except ZeroDivisionError:
+                        frac_bad = 0
+                    indices = np.arange(len(bad))[bad]
+                    # now check impact of ill-constraint motion vectors
+                    # on ICA
+                    ica_fac_ok = sum(cds[~bad] / sum(cds))
 
-                        try:
-                            frac_bad = sum(bad) / float(len(bad))
-                        except ZeroDivisionError:
-                            frac_bad = 0
-                        indices = np.arange(len(bad))[bad]
-                        # now check impact of ill-constraint motion vectors
-                        # on ICA
-                        ica_fac_ok = sum(cds[~bad] / sum(cds))
+                    vec = props.displacement_vector(idx)
 
-                        vec = props.displacement_vector(idx)
+                    flc = flow.replace_trash_vecs(displ_vec=vec, min_len=min_len,
+                                                    dir_low=dir_min, dir_high=dir_max)
 
-                        flc = flow.replace_trash_vecs(displ_vec=vec, min_len=min_len,
-                                                      dir_low=dir_min, dir_high=dir_max)
+                    dx = line.get_line_profile(flc.flow[:, :, 0])
+                    dy = line.get_line_profile(flc.flow[:, :, 1])
+                    veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
 
-                        delt = flow.del_t
-                        dx = line.get_line_profile(flc.flow[:, :, 0])
-                        dy = line.get_line_profile(flc.flow[:, :, 1])
-                        veff_arr = np.dot(n, (dx, dy))[cond] * distarr / delt
+                    # Calculate mean of effective velocity through l and
+                    # uncertainty using 2 sigma confidence of standard
+                    # deviation
+                    veff_avg = veff_arr.mean()
+                    fl_err = veff_avg * self.optflow_err_rel_veff
 
-                        # Calculate mean of effective velocity through l and
-                        # uncertainty using 2 sigma confidence of standard
-                        # deviation
-                        veff_avg = veff_arr.mean()
-                        fl_err = veff_avg * self.optflow_err_rel_veff
+                    # neglect uncertainties in the successfully constraint
+                    # flow vectors along the pcs by initiating an zero
+                    # array ...
+                    veff_err_arr = np.ones(len(veff_arr)) * fl_err
+                    # ... and set the histo errors for the indices of
+                    # ill-constraint flow vectors on the pcs (see above)
+                    veff_err_arr[indices] = verr
 
-                        # neglect uncertainties in the successfully constraint
-                        # flow vectors along the pcs by initiating an zero
-                        # array ...
-                        veff_err_arr = np.ones(len(veff_arr)) * fl_err
-                        # ... and set the histo errors for the indices of
-                        # ill-constraint flow vectors on the pcs (see above)
-                        veff_err_arr[indices] = verr
-
-                        # Determine emission rate
-                        phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
-                        veff_err_avg = veff_err_arr.mean()
+                    # Determine emission rate
+                    phi, phi_err = self.det_emission_rate_kgs(cds, veff_arr, distarr, cd_err, veff_err_arr, disterr)
+                    veff_err_avg = veff_err_arr.mean()
 
                         # Add to EmissionRates object
                         res['flow_hybrid']._start_acq.append(img_time)
