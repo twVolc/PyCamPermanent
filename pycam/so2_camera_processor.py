@@ -4267,7 +4267,8 @@ class PyplisWorker:
         self.stop_watching()
 
     def save_results(self, only_last_value=False):
-        save_emission_rates_as_txt(self.processed_dir, self.results, only_last_value=only_last_value)
+        save_emission_rates_as_txt(self.processed_dir, self.results, self.ICA_masses,
+                                   only_last_value=only_last_value)
         
         # Calibration only produced when DOAS in calibration type and not needed for pre-loaded
         if self.cal_type_int in [1,2]:
