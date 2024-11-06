@@ -3164,7 +3164,7 @@ class PyplisWorker:
                 self.results['total'][mode]._velo_eff[time_idx] = velo_eff_tot
                 self.results['total'][mode]._velo_eff_err[time_idx] = velo_eff_err_tot
             else:
-                self.results['total'][mode]._start_acq.append(img_time_tot)
+                self.results['total'][mode]._start_acq.append(img_time)
                 self.results['total'][mode]._phi.append(phi_tot)
                 self.results['total'][mode]._phi_err.append(phi_err_tot)
                 self.results['total'][mode]._velo_eff.append(velo_eff_tot)
