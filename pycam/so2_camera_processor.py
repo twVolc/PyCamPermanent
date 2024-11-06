@@ -173,6 +173,7 @@ class PyplisWorker:
         self.lightcorr_A = None                         # Light dilution corrected image
         self.lightcorr_B = None                         # Light dilution corrected image
         self.results = {}
+        self.ICA_masses = {}
         self.init_results()
 
         # Some pyplis tracking parameters
@@ -964,7 +965,8 @@ class PyplisWorker:
             if line is not None:
                 line_id = line.line_id
                 self.add_line_to_results(line_id)
-
+                self.ICA_masses[line_id] = {"datetime": [], "value": []}
+        
         # Add EmissionRates objects for the total emission rates (sum of all lines)
         self.results['total'] = {}
         for mode in self.velo_modes:
@@ -3373,7 +3375,8 @@ class PyplisWorker:
                 verr = None                 # Used and redefined later in flow_histo/flow_hybrid
                 dx, dy = None, None         # Generated later. Instantiating here optimizes by preventing repeats later
 
-                ICA_Mass = self.calculate_ICA_mass(cds, distarr) 
+                ICA_mass = self.calculate_ICA_mass(cds, distarr)
+                self.update_ICA_masses(line_id, img_time, ICA_mass)
 
                 if flow is not None:
                     delt = flow.del_t
@@ -3576,6 +3579,16 @@ class PyplisWorker:
             self.fig_series.update_plot()
 
         return self.results
+    
+    def update_ICA_masses(self, line_id, img_time, ICA_mass):
+        """Append ICA mass result to results dictionary
+
+        :param str line_id: ID of line ICA mass generated for
+        :param datetime img_time: Timepoint for ICA mass
+        :param float ICA_mass: Value of ICA mass
+        """
+        self.ICA_masses[line_id]["datetime"].append(img_time)
+        self.ICA_masses[line_id]["value"].append(ICA_mass)
 
     @staticmethod
     def det_emission_rate_kgs(*args, **kwargs):
