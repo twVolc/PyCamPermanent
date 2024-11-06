@@ -969,6 +969,7 @@ class PyplisWorker:
         
         # Add EmissionRates objects for the total emission rates (sum of all lines)
         self.results['total'] = {}
+        self.ICA_masses['total'] = {"datetime": [], "value": []}
         for mode in self.velo_modes:
             self.results['total'][mode] = EmissionRates('total', mode)
 
@@ -3325,6 +3326,8 @@ class PyplisWorker:
                            'flow_histo': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_hybrid': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []},
                            'flow_nadeau': {'phi': [], 'phi_err': [], 'veff': [], 'veff_err': []}}
+        
+        ICA_mass_total = 0
 
         # Get IDs of all lines we want to add up to give the total emissions (basically exclude cross-correlation line)
         lines_total = [line.line_id for line in self.PCS_lines if isinstance(line, LineOnImage)]
@@ -3377,6 +3380,8 @@ class PyplisWorker:
 
                 ICA_mass = self.calculate_ICA_mass(cds, distarr)
                 self.update_ICA_masses(line_id, img_time, ICA_mass)
+
+                if line_include: ICA_mass_total += ICA_mass
 
                 if flow is not None:
                     delt = flow.del_t
@@ -3574,6 +3579,8 @@ class PyplisWorker:
                 self.results['total'][mode]._velo_eff.append(np.nanmean(total_emissions[mode]['veff']))
                 self.results['total'][mode]._velo_eff_err.append(
                     np.sqrt(np.nansum(np.power(total_emissions[mode]['veff_err'], 2))))
+
+        self.update_ICA_masses('total', img_time, ICA_mass_total)
 
         if plot:
             self.fig_series.update_plot()
