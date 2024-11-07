@@ -423,6 +423,7 @@ class ImageRegistrationFrame:
         # TK variables
         self._reg_meth = tk.IntVar()        # Vals [0 = None, 1 = CP, 2 = CV]
         self.reg_meth = 0
+        self.previous_reg_meth = None
         self._num_it = tk.IntVar()
         self.num_it = 500
         self._term_eps = tk.DoubleVar()
@@ -437,7 +438,7 @@ class ImageRegistrationFrame:
 
         # Registration method widgets
         self.reg_none = ttk.Radiobutton(self.frame, variable=self._reg_meth, text='No Registration',
-                                        value=0, command=lambda: self.img_reg_select(self.reg_meth))
+                                        value=0, command=self.on_radio_change)
         self.reg_none.grid(row=0, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
 
         # Control point box
@@ -445,7 +446,7 @@ class ImageRegistrationFrame:
         self.cp_frame.grid(row=1, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
         self.reg_cp = ttk.Radiobutton(self.cp_frame, variable=self._reg_meth, text='Control Point', 
                                       value=1, state="disabled",
-                                      command=lambda: self.img_reg_select(self.reg_meth))
+                                      command=self.on_radio_change)
         self.reg_cp.grid(row=0, column=0, columnspan=2, padx=self.pdx, pady=self.pdy, sticky='w')
         # Control point
         run_button = tk.Button(self.cp_frame, text='Run',
@@ -460,7 +461,7 @@ class ImageRegistrationFrame:
         self.cv_frame.grid(row=2, column=0, columnspan=4, padx=3, pady=2, sticky='nsew')
         self.reg_cv = ttk.Radiobutton(self.cv_frame, variable=self._reg_meth, text='OpenCV ECC',
                                       value=2, state="disabled",
-                                      command=lambda: self.img_reg_select(self.reg_meth))
+                                      command=self.on_radio_change)
         self.reg_cv.grid(row=0, column=0, columnspan=2, pady=self.pdy, sticky='w')
 
         # OpenCV options
@@ -489,6 +490,7 @@ class ImageRegistrationFrame:
 
     @reg_meth.setter
     def reg_meth(self, value):
+        self.previous_reg_meth = value
         self._reg_meth.set(value)
 
     @property
@@ -506,6 +508,14 @@ class ImageRegistrationFrame:
     @term_eps.setter
     def term_eps(self, value):
         self._term_eps.set(value) / (10 ** -10)
+
+    def on_radio_change(self):
+        """Handler for radio button changes."""
+        current_value = self._reg_meth.get()
+        # Only proceed if the value has changed
+        if self.previous_reg_meth != current_value:
+            self.previous_reg_meth = current_value
+            self.img_reg_select(current_value)
 
     def img_reg_select(self, meth, rerun = False):
         """Initiates registration depending on the method selected
