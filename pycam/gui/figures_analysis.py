@@ -3087,7 +3087,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("dark_img_dir"))
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("dark_img_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3097,7 +3097,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length,
                                          font=self.main_gui.main_font, anchor='e')
         self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("dark_spec_dir"))
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("dark_spec_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3107,17 +3107,17 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_label = ttk.Label(path_frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_dir("cell_cal_dir"))
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("cell_cal_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        # Cell calibration directory
+        # Preloaded calibration filepath
         label = ttk.Label(path_frame, text='Calibration time series file:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.cal_series_label = ttk.Label(path_frame, text=self.cal_series_path_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_dir("cal_series_path"))
+        butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_path("cal_series_path", file=True))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3126,7 +3126,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.watching_label = ttk.Label(path_frame, text=self.transfer_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_dir("transfer_dir"))
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_path("transfer_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -3367,28 +3367,33 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def time_zone(self, value):
         self._time_zone.set(value)
 
-    def change_dir(self, val_name, set_config=False):
+    def change_path(self, val_name, file = False, set_config=False):
         """
-        Generalised function for setting a directory via the GUI
+        Generalised function for setting a file or directory path via the GUI
         :param val_name: str    Name of the parameter in the config/backend to be set
+        :param file: bool       Is the path to a file? if true then use the file dialog, otherwise use the dir dialog
         :param set_config: bool
             If true, this will set the pyplis_worker value automatically. This means that this function can be used
             from outside of the process_settings widget and the directory will automatically be updated, without
             requiring the OK click from the settings widget which usually instigates gather_vars.
         """
-        curr_dir = getattr(self, val_name)
+        curr_path = getattr(self, val_name)
 
-        new_dir = filedialog.askdirectory(initialdir=curr_dir)
+        if not file:
+            new_path = filedialog.askdirectory(initialdir=curr_path)
+        else:
+            new_path = filedialog.askopenfilename(initialdir=curr_path)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
         if self.in_frame:
             self.frame.lift()
 
-        if len(new_dir) > 0:
-            setattr(self, val_name, new_dir)
+        if len(new_path) > 0:
+            setattr(self, val_name, new_path)
 
         if set_config:
-            pyplis_worker.config[val_name] = new_dir
+            pyplis_worker.config[val_name] = new_path
+
 
     def set_cell_cal_dir(self, cal_dir):
         """Directly sets cell calibration directory without filedialog"""
@@ -4183,7 +4188,7 @@ class CellCalibFrame:
 
     def change_cal_dir(self):
         """Changes the cell directory and loads calibration"""
-        self.process_setts.change_dir("cell_cal_dir", set_config=True)
+        self.process_setts.change_path("cell_cal_dir", set_config=True)
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
 
