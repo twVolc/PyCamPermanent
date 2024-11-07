@@ -7,9 +7,11 @@ from __future__ import (absolute_import, division)
 
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.utils import calc_dt, get_horizontal_plume_speed
-from pycam.io_py import save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw, save_pcs_line, save_light_dil_line
+from pycam.io_py import (
+    save_img, save_emission_rates_as_txt, save_so2_img, save_so2_img_raw,
+    save_pcs_line, save_light_dil_line, load_picam_png
+)
 from pycam.directory_watcher import create_dir_watcher
-from pycam.img_import import load_picam_png
 from pycam.exceptions import InvalidCalibration
 
 import pyplis
@@ -39,7 +41,6 @@ import os
 import cv2
 from skimage import transform as tf
 import warnings
-import traceback
 from ruamel.yaml import YAML
 from inspect import cleandoc
 warnings.simplefilter("ignore", UserWarning)
@@ -248,7 +249,6 @@ class PyplisWorker:
         self.img_tau_prev = copy.deepcopy(self.img_A)
         self.img_cal = None         # Calibrated image
         self.img_cal_prev = None
-        self.test_img = copy.deepcopy(self.img_A)
 
         # Calibration attributes
         self.got_doas_fov = False
@@ -1194,23 +1194,21 @@ class PyplisWorker:
 
         self.prep_img(img, img_path, band, plot, temporary)
 
-
     def get_img(self, img_path, attempts = 1):
         
         while attempts > 0:
             # Try and load the image
-            img = pyplis.image.Img(img_path, self.load_img_func)
-
-            # If successful then leave the loop
-            if img.img is not None:
+            try:
+                img = pyplis.image.Img(img_path, self.load_img_func)
+            except FileNotFoundError as e:
+                err = e
+                time.sleep(0.2)
+                attempts -= 1
+            else:
                 break
-            
-            # Otherwise wait half a second and decrease the number of attempts left
-            time.sleep(0.1)
-            attempts -= 1
         else:
             # This will run once the number of repeats is 0
-            raise FileNotFoundError(f"Image from {img_path} could not be loaded. Skipping pair.")
+            raise err
 
         img.filename = img_path.split('\\')[-1].split('/')[-1]
         img.pathname = img_path
@@ -3602,12 +3600,6 @@ class PyplisWorker:
         if img_path_B is not None:
             img_B = self.get_img(img_path_B, attempts=3)
 
-        try:
-            img = img_A - self.test_img
-            img = img_B - self.test_img
-        except (TypeError, AttributeError) as e:
-            raise FileNotFoundError('{}'.format(e))
-
         # Can pass None to this function for img paths, and then the current images will be processed
         if img_path_A is not None:
             self.prep_img(img_A, img_path_A, band='A', plot=plot)
@@ -4009,8 +4001,9 @@ class PyplisWorker:
             # Process the pair
             try:
                 self.process_pair(img_path_A, img_path_B, plot=self.plot_iter)
-            except FileNotFoundError:
-                traceback.print_exc()
+            except FileNotFoundError as e:
+                print(e)
+                print("Skipping pair")
                 continue
 
             # Save all images that have been requested
@@ -4424,23 +4417,23 @@ class ImageRegistration:
             with open(pathname, 'rb') as f:
                 self.cp_tform = pickle.load(f)
             self.got_cp_transform = True
-            try:
-                img_reg_frame.reg_meth = 1
-            except AttributeError:
-                pass
+            reg_meth = 1
         elif file_ext == 'npy':
             self.method = 'cv'
             with open(pathname, 'rb') as f:
                 self.warp_matrix_cv = np.load(f)
             self.got_cv_transform = True
-            try:
-                img_reg_frame.reg_meth = 2
-                if rerun:
-                    img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
-            except AttributeError:
-                pass
+            reg_meth = 2
         else:
             print('Unrecognised file type, cannot load registration')
+            return
+        
+        try:
+            img_reg_frame.reg_meth = reg_meth
+            if rerun:
+                img_reg_frame.pyplis_worker.load_sequence(img_dir=img_reg_frame.pyplis_worker.img_dir, plot_bg=False)
+        except AttributeError:
+            pass
 
 
 # ## SCRIPT FUNCTION DEFINITIONS
