@@ -353,11 +353,13 @@ def save_so2_img(path, img, filename=None, compression=0, max_val=None):
     cv2.imwrite(full_path, im2save, png_compression)
 
 
-def save_emission_rates_as_txt(path, emission_dict, only_last_value=False):
+def save_emission_rates_as_txt(path, emission_dict, ICA_dict, only_last_value=False):
     """
     Saves emission rates as text files every hour - emission rates are split into hour-long
     :param path:            str     Directory to save to
     :param emission_dict:   dict    Dictionary of emission rates for different lines and different flow modes
+                                    Assumed to be time-sorted
+    :param ICA_dict         dict    Dictionary of ICA masses for different lines
                                     Assumed to be time-sorted
     :param only_last_value: bool    If True, add only the most recent values to the output file
     :return:
@@ -385,7 +387,13 @@ def save_emission_rates_as_txt(path, emission_dict, only_last_value=False):
         except BaseException as e:
             print('Could not save emission rate data as path definition is not valid:\n'
                   '{}'.format(e))
-                
+        
+        index = -1 if only_last_value else 0
+
+        ICA_masses_df = DataFrame(ICA_dict[line_id]['value'][index:],
+                                  index = ICA_dict[line_id]['datetime'][index:],
+                                  columns = ["ICA_mass_(kg/m)"])
+
         for flow_mode in emission_dict[line_id]:
             emis_dict = emission_dict[line_id][flow_mode]
             # Check there is data in this dictionary - if not, we don't save this data
@@ -405,6 +413,8 @@ def save_emission_rates_as_txt(path, emission_dict, only_last_value=False):
                 # Convert emis_dict object to dataframe
                 emission_df = emis_dict.to_pandas_dataframe()
                 header = True
+
+            emission_df = emission_df.join(ICA_masses_df)
 
             # Round to 3 decimal places
             emission_df = emission_df.round(3)
