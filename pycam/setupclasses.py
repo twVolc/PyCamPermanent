@@ -12,7 +12,8 @@ from .utils import check_filename
 
 pycam_details = {
     'version': '2024.11 - Paricutin',
-    'date': '29 Nov 2024'
+    'date': '29 Nov 2024',
+    'repo_url': 'https://github.com/volcanotech-sw/PyCamPermanent/'
     }
 
 
