@@ -12,7 +12,7 @@
 
 1. If you have `git` installed then clone the PyCamPermanent repo and move into the PyCamPermanent directory:
 ```
-git clone https://github.com/twVolc/PyCamPermanent.git
+git clone https://github.com/volcanotech-sw/PyCamPermanent.git
 cd PyCamPermanent
 ```
 
