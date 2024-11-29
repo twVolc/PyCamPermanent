@@ -4,7 +4,7 @@
 Each window forms a tab which can be accessed through the 'View' menu."""
 
 from .acquisition import CameraSettingsWidget, SpectrometerSettingsWidget
-from .misc import Indicator, ScrollWindow, MessageWindow
+from .misc import ScrollWindow, MessageWindow
 import pycam.gui.cfg as cfg
 from pycam.doas.cfg import doas_worker
 from pycam.gui.figures_cam import ImageFigure, ImageRegistrationFrame

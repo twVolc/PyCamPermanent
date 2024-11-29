@@ -8,7 +8,6 @@ from .misc import Indicator
 from pycam.networking.sockets import SocketClient, ExternalRecvConnection, ExternalSendConnection
 from pycam.networking.FTP import FTPClient, CurrentDirectories
 from .settings import GUISettings
-import os
 import copy
 
 # ======================================================================================================================
@@ -30,10 +29,8 @@ send_comms = ExternalSendConnection(sock=sock, acc_conn=False)
 indicator = Indicator()
 
 # Current directory objects
-current_dir_img = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_data_dir] + 'Images/'),
-                                     specs=CameraSpecs())
-current_dir_spec = CurrentDirectories(root=os.path.join(config[ConfigInfo.local_data_dir] + 'Spectra/'),
-                                      specs=SpecSpecs())
+current_dir_img = CurrentDirectories(root=config[ConfigInfo.local_data_dir], specs=CameraSpecs())
+current_dir_spec = CurrentDirectories(root=config[ConfigInfo.local_data_dir], specs=SpecSpecs())
 
 # FTP client
 ftp_client = FTPClient(img_dir=current_dir_img, spec_dir=current_dir_spec, network_info=config,

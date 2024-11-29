@@ -90,12 +90,16 @@ class SpectraPlot:
                                            textvariable=self.stray_start, command=self.update_stray_start,
                                            font=self.main_gui.main_font)
         self.stray_box_start.set('{:.1f}'.format(self.doas_worker.start_stray_wave))
+        self.stray_box_start.bind('<FocusOut>', self.update_stray_start)
+        self.stray_box_start.bind('<Return>', self.update_stray_start)
         self.stray_end = tk.DoubleVar()
         self.stray_end.set(self.doas_worker.end_stray_wave)
         self.stray_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
                                          textvariable=self.stray_end, command=self.update_stray_end,
                                          font=self.main_gui.main_font)
         self.stray_box_end.set('{:.1f}'.format(self.doas_worker.end_stray_wave))
+        self.stray_box_end.bind('<FocusOut>', self.update_stray_end)
+        self.stray_box_end.bind('<Return>', self.update_stray_end)
 
         label = tk.Label(self.frame2, text='Stray light correction (min.):', font=self.main_gui.main_font).pack(side=tk.LEFT)
         self.stray_box_start.pack(side=tk.LEFT)
@@ -109,12 +113,16 @@ class SpectraPlot:
                                               textvariable=self.fit_wind_start, command=self.update_fit_wind_start,
                                               font=self.main_gui.main_font)
         self.fit_wind_box_start.set('{:.1f}'.format(self.doas_worker.start_fit_wave))
+        self.fit_wind_box_start.bind('<FocusOut>', self.update_fit_wind_start)
+        self.fit_wind_box_start.bind('<Return>', self.update_fit_wind_start)
         self.fit_wind_end = tk.DoubleVar()
         self.fit_wind_end.set(self.doas_worker.end_fit_wave)
         self.fit_wind_box_end = ttk.Spinbox(self.frame2, from_=1, to=400, increment=0.1, width=5, format='%.1f',
                                            textvariable=self.fit_wind_end, command=self.update_fit_wind_end,
                                             font=self.main_gui.main_font)
         self.fit_wind_box_end.set('{:.1f}'.format(self.doas_worker.end_fit_wave))
+        self.fit_wind_box_end.bind('<FocusOut>', self.update_fit_wind_end)
+        self.fit_wind_box_end.bind('<Return>', self.update_fit_wind_end)
 
         self.fit_wind_box_end.pack(side=tk.RIGHT)
         label = tk.Label(self.frame2, text='Fit wavelength (max.):', font=self.main_gui.main_font).pack(side=tk.RIGHT)
@@ -186,17 +194,21 @@ class SpectraPlot:
         self.ax.set_xlim([self.doas_worker.wavelengths[0], self.doas_worker.wavelengths[-1]])
         self.q.put(1)
 
-    def update_stray_start(self):
+    def update_stray_start(self, event = None, stray_start = None):
         """Updates stray light range on plot"""
-        stray_start = self.stray_start.get()
+        if stray_start is None:
+            stray_start = self.stray_start.get()
+        else:
+            self.stray_start.set(stray_start)
 
         # Ensure the end of the stray range doesn't become less than the start
         if stray_start >= self.stray_end.get():
             stray_start = self.stray_end.get() - 0.1
             self.stray_start.set(stray_start)
 
-        # Update DOASWorker with new stray range
-        self.doas_worker.start_stray_wave = stray_start
+        # Update DOASWorker with new stray range if different
+        if stray_start != self.doas_worker.start_stray_wave:
+            self.doas_worker.start_stray_wave = stray_start
 
         # Update plot
         self.min_stray_line[0].set_data([self.doas_worker.start_stray_wave, self.doas_worker.start_stray_wave], [0, self.max_DN])
@@ -210,17 +222,21 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_stray_end(self):
+    def update_stray_end(self, event = None, stray_end = None):
         """Updates stray light range on plot"""
-        stray_end = self.stray_end.get()
+        if stray_end is None:
+            stray_end = self.stray_end.get()
+        else:
+            self.stray_end.set(stray_end)
 
         # Ensure the end of the stray range doesn't become less than the start
         if stray_end <= self.stray_start.get():
             stray_end = self.stray_start.get() + 0.1
             self.stray_end.set(stray_end)
 
-        # Update DOASWorker with new stray range
-        self.doas_worker.end_stray_wave = stray_end
+        # Update DOASWorker with new stray range if different
+        if stray_end != self.doas_worker.end_stray_wave:
+            self.doas_worker.end_stray_wave = stray_end
 
         # Update plot
         self.max_stray_line[0].set_data([self.doas_worker.end_stray_wave, self.doas_worker.end_stray_wave], [0, self.max_DN])
@@ -232,17 +248,22 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_fit_wind_start(self):
+    def update_fit_wind_start(self, event = None, fit_wind_start = None):
         """updates fit window on plot"""
-        fit_wind_start = self.fit_wind_start.get()
+        if fit_wind_start is None:
+            fit_wind_start = self.fit_wind_start.get()
+        else:
+            self.fit_wind_start.set(fit_wind_start)
+
 
         # Ensure the end of the fit window doesn't become less than the start
         if fit_wind_start >= self.fit_wind_end.get():
             fit_wind_start = self.fit_wind_end.get() - 0.1
             self.fit_wind_start.set(fit_wind_start)
 
-        # Update DOASWorker with new fit window
-        self.doas_worker.start_fit_wave = fit_wind_start
+        # Update DOASWorker with new fit window if different
+        if fit_wind_start != self.doas_worker.start_fit_wave:
+            self.doas_worker.start_fit_wave = fit_wind_start
 
         # Update plot
         self.min_line[0].set_data([self.doas_worker.start_fit_wave, self.doas_worker.start_fit_wave], [0, self.max_DN])
@@ -254,9 +275,12 @@ class SpectraPlot:
             self.doas_worker.process_doas()
             self.doas_plot.update_plot()
 
-    def update_fit_wind_end(self):
+    def update_fit_wind_end(self, event = None, fit_wind_end = None):
         """updates fit window on plot"""
-        fit_wind_end = self.fit_wind_end.get()
+        if fit_wind_end is None:
+            fit_wind_end = self.fit_wind_end.get()
+        else:
+            self.fit_wind_end.set(fit_wind_end)
 
         # Ensure the end of the fit window doesn't become less than the start
         if fit_wind_end <= self.fit_wind_start.get():
@@ -264,7 +288,8 @@ class SpectraPlot:
             self.fit_wind_end.set(fit_wind_end)
 
         # Update DOASWorker with new fit window
-        self.doas_worker.end_fit_wave = fit_wind_end
+        if fit_wind_end != self.doas_worker.end_fit_wave:
+            self.doas_worker.end_fit_wave = fit_wind_end
 
         # Update plot
         self.max_line[0].set_data([self.doas_worker.end_fit_wave, self.doas_worker.end_fit_wave], [0, self.max_DN])
@@ -288,6 +313,12 @@ class SpectraPlot:
         except queue.Empty:
             pass
         self.root.after(refresh_rate, self.__draw_canv__)
+
+    def update_all(self):
+        self.update_stray_start(stray_start = self.doas_worker.start_stray_wave)
+        self.update_stray_end(stray_end = self.doas_worker.end_stray_wave)
+        self.update_fit_wind_start(fit_wind_start = self.doas_worker.start_fit_wave)
+        self.update_fit_wind_end(fit_wind_end = self.doas_worker.end_fit_wave)
 
     def close_widget(self):
         """Closes widget cleanly, by stopping __draw_canv__()"""
@@ -352,6 +383,8 @@ class DOASPlot(LoadSaveProcessingSettings):
                                      textvariable=self._shift, command=self.gather_vars, font=self.gui.main_font)
         # self.fit_wind_box_start.grid(row=0, column=1)
         self.shift_box.pack(side=tk.LEFT)
+        self.shift_box.bind('<FocusOut>', self.gather_vars)
+        self.shift_box.bind('<Return>', self.gather_vars)
 
         # Shift tolerance widgets
         label = ttk.Label(self.frame2, text='Shift tolerance', font=self.gui.main_font).pack(side=tk.LEFT)
@@ -359,6 +392,8 @@ class DOASPlot(LoadSaveProcessingSettings):
         self.shift_tol_box = ttk.Spinbox(self.frame2, from_=-20, to=20, increment=1, width=3, font=self.gui.main_font,
                                          textvariable=self._shift_tol, command=self.gather_vars)
         self.shift_tol_box.pack(side=tk.LEFT)
+        self.shift_tol_box.bind('<FocusOut>', self.gather_vars)
+        self.shift_tol_box.bind('<Return>', self.gather_vars)
 
         label2 = tk.Label(self.frame2, text='Stretch spectrum:', font=self.gui.main_font).pack(side=tk.LEFT)
         # label2.grid(row=0, column=2)
@@ -367,6 +402,8 @@ class DOASPlot(LoadSaveProcessingSettings):
                                        textvariable=self._stretch, command=self.gather_vars)
         # self.fit_wind_box_end.grid(row=0, column=3)
         self.stretch_box.pack(side=tk.LEFT)
+        self.stretch_box.bind('<FocusOut>', self.gather_vars)
+        self.stretch_box.bind('<Return>', self.gather_vars)
 
         # # If we are working with ifit we don't have these options - it does it automatically
         if isinstance(self.doas_worker, IFitWorker):
@@ -449,7 +486,7 @@ class DOASPlot(LoadSaveProcessingSettings):
     def stretch(self, value):
         self._stretch.set(value)
 
-    def gather_vars(self):
+    def gather_vars(self, event = None):
         """Sets all current settings to the correct worker and reprocesses DOAS"""
         for key in self.vars:
             setattr(self.doas_worker, key, getattr(self, key))
@@ -464,6 +501,9 @@ class DOASPlot(LoadSaveProcessingSettings):
 
         # Draw updates
         self.Q.put(1)
+
+    def update_vals(self):
+        self.shift_box.set(self.doas_worker.shift)
 
     def __update_tab__(self, event):
         """
@@ -691,6 +731,14 @@ class CDSeries:
         # Set axis limits
         if len(times) > 0:
             self.ax.set_xlim([times[0] - datetime.timedelta(seconds=5), times[-1] + datetime.timedelta(seconds=5)])
+
+            # Set y-limits
+            max_fit_err = np.max(np.ma.masked_invalid(fit_errs))
+            ymin = np.min(np.ma.masked_invalid(cds)) - max_fit_err
+            if ymin > 0:
+                ymin = 0
+            ymax = np.max(np.ma.masked_invalid(cds)) + max_fit_err
+            self.ax.set_ylim([ymin, ymax])
 
         # Update plot
         self.q.put(1)

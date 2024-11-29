@@ -5,12 +5,14 @@
 # General settings
 img_dir: .\pycam\Data\Images\Villarrica\Seq_1\
 dark_img_dir: .\pycam\Data\Images\Villarrica\Cal_1\
+transfer_dir: .\pycam\Data\ 
 spec_dir: .\pycam\tests\test_data\test_spectra\
 dark_spec_dir: .\pycam\tests\test_data\test_spectra\
 bg_A_path: .\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143723_fltrA_1ag_1399829ss_Clear.png
 bg_B_path: .\pycam\Data\Images\Villarrica\Cal_1\2018-03-26T143715_fltrB_1ag_99980ss_Clear.png
 cell_cal_dir: .\pycam\Data\Images\Villarrica\Cal_1\
 cal_type_int: 1
+cal_series_path: ''
 min_cd: 5.0e+16
 plot_iter: 0
 img_buff_size: 1500
@@ -31,8 +33,13 @@ ld_lookup_2:
 
 # Processing save settings
 save_img_aa: 0
+type_img_aa: .npy
 save_img_cal: 0
+type_img_cal: .npy
 save_img_so2: 0
+png_compression: 0
+save_fig_so2: 0
+type_fig_so2: ppmm
 save_doas_cal: 0
 
 # Plume background model
@@ -61,6 +68,13 @@ fov_rad: 0
 centre_pix_x: 0
 centre_pix_y: 0
 doas_cal_adjust_offset: 0
+start_stray_wave: 293
+end_stray_wave: 296
+start_fit_wave: 308
+end_fit_wave: 318
+start_fit_wave_ld: 312
+end_fit_wave_ld: 322
+shift: 0
 
 # Plume speed algorithms
 flow_raw: 1

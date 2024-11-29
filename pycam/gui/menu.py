@@ -2,12 +2,11 @@
 
 """Holds classes for building a menu bar in tkinter"""
 
-from pycam.setupclasses import pycam_details
 from pycam.gui.network import ConnectionGUI, instrument_cmd, run_pycam
 import pycam.gui.cfg as cfg
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, cell_calib, \
     opti_flow, light_dilution, cross_correlation, doas_fov, basic_acq_handler, automated_acq_handler,\
-    calibration_wind, instrument_cfg, temp_log
+    calibration_wind, instrument_cfg, temp_log, plume_velocity, nadeau_flow
 from pycam.gui.misc import About, LoadSaveProcessingSettings
 from pycam.io_py import save_pcs_line, load_pcs_line, save_light_dil_line, load_light_dil_line, create_video
 import pycam.gui.settings as settings
@@ -17,6 +16,7 @@ from pycam.doas.cfg import doas_worker
 from pycam.setupclasses import FileLocator
 from pycam.networking.ssh import open_ssh, ssh_cmd, close_ssh
 from pycam.utils import truncate_path
+from pycam.exceptions import InvalidCalibration
 
 from pyplis import LineOnImage
 
@@ -25,10 +25,9 @@ import tkinter.ttk as ttk
 from tkinter import filedialog
 from tkinter import messagebox
 from shutil import copyfile
-import time
+from inspect import cleandoc
 import os
 import threading
-import multiprocessing
 
 
 class PyMenu:
@@ -181,8 +180,7 @@ class PyMenu:
 
         self.menus[tab].add_command(label='Setup paths', command=process_settings.generate_frame)
         self.menus[tab].add_command(label='Background model', command=plume_bg.generate_frame)
-        self.menus[tab].add_command(label='Plume velocity settings', command=opti_flow.generate_frame)
-        self.menus[tab].add_command(label='Cross-correlation', command=cross_correlation.generate_frame)
+        self.menus[tab].add_command(label='Plume velocity settings', command=plume_velocity.generate_frame)
         self.menus[tab].add_command(label='Light dilution settings', command=light_dilution.generate_frame)
         self.menus[tab].add_separator()
 
@@ -218,6 +216,15 @@ class PyMenu:
         self.menus[tab].add_separator()
 
         self.menus[tab].add_command(label='Stop Processing', command=self.stop_sequence_processing)
+
+        # -------------------------------------------------------------------------------------------------------
+
+        # Real-time Processing tab
+        tab = 'Real-time Processing'
+        keys.append(tab)
+        self.menus[tab] = tk.Menu(self.frame, tearoff=0)
+        self.menus[tab].add_command(label="Start Watching Transfer Directory", command=self.start_watching_dir)
+        self.menus[tab].add_command(label="Stop Watching Transfer Directory", command=pyplis_worker.stop_watching_dir)
 
         # -------------------------------------------------------------------------------------------------------
 
@@ -375,6 +382,26 @@ class PyMenu:
         pyplis_worker.stop_sequence_processing()
         doas_worker.stop_sequence_processing()
 
+    def start_watching_dir(self):
+        try:
+            pyplis_worker.start_watching_dir()
+        except InvalidCalibration:
+            pyplis_worker.stop_watching_dir()
+            messagebox.showerror(
+                'Invalid calibration type',
+                'Error! Preloaded calibration is invalid for real-time processing. \n'
+                'Please select a different calibration type in\n'
+                'Processing Settings > Setup paths\n'
+                'and try again.')
+            
+    def process_sequence(self):
+        try:
+            pyplis_worker.process_sequence()
+        except InvalidCalibration:
+            messagebox.showwarning('Must load calibration',
+                                    'Warning! Preloaded calibration is selected but no '
+                                    'calibration file has been loaded. Please select a file to '
+                                    'load to enable calibration.')
 
 class Settings:
     """Class to control the settings from the GUI toolbar"""
@@ -479,6 +506,8 @@ class LoadFrame(LoadSaveProcessingSettings):
         change_conf_butt.grid(row=row, column=0, sticky='we', padx=self.pdx, pady=self.pdy)
         revert_conf_butt = ttk.Button(default_conf_frame, text='Revert to original default config', command=self.revert_default_conf)
         revert_conf_butt.grid(row=row, column=1, sticky='w', padx=self.pdx, pady=self.pdy)
+        load_def_conf_butt = ttk.Button(default_conf_frame, text='Load default config', command=lambda: self.load_config_file(filename = self.default_conf_path))
+        load_def_conf_butt.grid(row=row, column=2, sticky='we', padx=self.pdx, pady=self.pdy)
 
     @property
     def pcs_lines(self):
@@ -698,6 +727,7 @@ class LoadFrame(LoadSaveProcessingSettings):
 
         if os.path.exists(filename):
             self.pyplis_worker.img_reg.load_registration(filename, img_reg_frame=self.img_reg_frame, rerun=rerun)
+            self.img_reg_frame.update_reg_radios()
 
     def load_all(self):
         """Runs all load functions to prepare pyplis worker"""
@@ -718,14 +748,27 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.in_frame = False
         self.frame.destroy()
 
-    def load_config_file(self):
+    def load_config_file(self, filename = None):
         """Load in a config file selected by the user"""
-        filename = filedialog.askopenfilename(
-            title='Select config file',
-            initialdir=self.init_dir)
+
+        if filename is None: 
+            filename = filedialog.askopenfilename(
+                title='Select config file',
+                initialdir=self.init_dir)
         
         if len(filename) > 0:
-            self.pyplis_worker.load_config(filename, "user")
+            try:
+                self.pyplis_worker.load_config(filename, "user")
+            except FileNotFoundError as e:
+                error_msg = cleandoc(
+                    f"""
+                    Config load unsuccessful\n
+                    Error: {e}
+                    """)
+
+                messagebox.showerror("Config load failure",
+                                     error_msg)
+                return
 
             self.reload_config()
 
@@ -735,12 +778,14 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.fig_tau.load_defaults()
         self.pyplis_worker.fig_tau.reload_roi()
         self.reload_all()
+        self.main_gui.menu.save_frame.load_defaults()
         geom_settings.load_instrument_setup(self.pyplis_worker.config["default_cam_geom"], show_info=False)
         process_settings.load_defaults()
         plume_bg.load_defaults()
         opti_flow.load_defaults()
         light_dilution.load_defaults()
         cross_correlation.load_defaults()
+        nadeau_flow.load_defaults()
         doas_fov.load_defaults()
         calibration_wind.ils_frame.ILS_path = self.pyplis_worker.config["ILS_path"]
         calibration_wind.ils_frame.load_ILS()
@@ -748,6 +793,16 @@ class LoadFrame(LoadSaveProcessingSettings):
         self.pyplis_worker.apply_config()
         self.pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         self.doas_worker.load_dir(self.pyplis_worker.spec_dir, prompt=False, plot=True)
+        self.main_gui.set_transfer_dir()
+        self.doas_worker.get_wavelengths(pyplis_worker.config)
+        self.doas_worker.get_shift(pyplis_worker.config)
+        self.main_gui.spec_wind.spec_frame.update_all()
+        self.main_gui.spec_wind.doas_frame.update_vals()
+
+        if pyplis_worker.missing_path_param_warn is not None:
+            messagebox.showwarning("Missing path params not updated",
+                                   pyplis_worker.missing_path_param_warn)
+            pyplis_worker.missing_path_param_warn = None
 
     def reset_pcs_lines(self):
         """Reset current PCS lines"""
@@ -770,11 +825,8 @@ class LoadFrame(LoadSaveProcessingSettings):
             self.default_conf_path = filename
 
     def revert_default_conf(self):
-        """Revert the default config back to the original setting and reset the location"""
+        """reset the location of the defult config back to the original"""
 
-        # Reset contents of original file to contents of backup file
-        copyfile(FileLocator.PROCESS_DEFAULTS_BACKUP, FileLocator.PROCESS_DEFAULTS)
-        
         # Reset recorded location of default config
         self.default_conf_path = FileLocator.PROCESS_DEFAULTS
 
@@ -809,11 +861,17 @@ class SaveFrame(LoadSaveProcessingSettings):
 
         # Objects to save in processing
         self.vars = {'save_img_aa': int,
+                     'type_img_aa': str,
                      'save_img_cal': int,
+                     'type_img_cal': str,
                      'save_img_so2': int,
+                     'png_compression': int,
+                     'save_fig_so2': int,
+                     'type_fig_so2': str,
                      'save_doas_cal': int}
 
         self.img_types = ['.npy', '.mat']
+        self.fig_so2_units = ['ppmm', 'tau']
         self._save_img_aa = tk.BooleanVar()
         self._type_img_aa = tk.StringVar()
         self.type_img_aa = self.img_types[0]
@@ -821,6 +879,8 @@ class SaveFrame(LoadSaveProcessingSettings):
         self._type_img_cal = tk.StringVar()
         self.type_img_cal = self.img_types[0]
         self._save_img_so2 = tk.BooleanVar()
+        self._save_fig_so2 = tk.BooleanVar()
+        self._type_fig_so2 = tk.StringVar()
         self._png_compression = tk.IntVar()
         self.png_compression = 0
 
@@ -828,16 +888,20 @@ class SaveFrame(LoadSaveProcessingSettings):
 
     def gather_vars(self):
         self.pyplis_worker.config['save_img_aa'] = self.save_img_aa
-        self.pyplis_worker.type_img_aa = self.type_img_aa
+        self.pyplis_worker.config['type_img_aa'] = self.type_img_aa
 
         self.pyplis_worker.config['save_img_cal'] = self.save_img_cal
-        self.pyplis_worker.type_img_cal = self.type_img_cal
+        self.pyplis_worker.config['type_img_cal'] = self.type_img_cal
 
         self.pyplis_worker.config['save_img_so2'] = self.save_img_so2
-        self.pyplis_worker.png_compression = self.png_compression
+        self.pyplis_worker.config['png_compression'] = self.png_compression
+
+        self.pyplis_worker.config['save_fig_so2'] = self.save_fig_so2
+        self.pyplis_worker.config['type_fig_so2'] = self.type_fig_so2
 
         self.pyplis_worker.config['save_doas_cal'] = self.save_doas_cal
 
+        self.pyplis_worker.apply_config(subset=self.vars.keys())
         if hasattr(self, 'frame'):
             tk.messagebox.showinfo('Save settings updated',
                                    'Save settings have been updated and will apply to next processing run',
@@ -886,6 +950,22 @@ class SaveFrame(LoadSaveProcessingSettings):
     @save_img_so2.setter
     def save_img_so2(self, value):
         self._save_img_so2.set(value)
+
+    @property
+    def save_fig_so2(self):
+        return self._save_fig_so2.get()
+
+    @save_fig_so2.setter
+    def save_fig_so2(self, value):
+        self._save_fig_so2.set(value)
+
+    @property
+    def type_fig_so2(self):
+        return self._type_fig_so2.get()
+
+    @type_fig_so2.setter
+    def type_fig_so2(self, value):
+        self._type_fig_so2.set(value)
 
     @property
     def png_compression(self):
@@ -993,6 +1073,18 @@ class SaveFrame(LoadSaveProcessingSettings):
         img_types.grid(row=0, column=1, sticky='nsew', padx=2)
         row += 1
 
+        # SO2 matplotlib figure save
+        check = ttk.Checkbutton(self.save_proc_frame, text='Save SO2 figure', variable=self._save_fig_so2)
+        check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        type_frame = ttk.Frame(self.save_proc_frame, relief=tk.RAISED, borderwidth=3)
+        type_frame.grid(row=row, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        lab = ttk.Label(type_frame, text='Units:', font=self.main_gui.main_font)
+        lab.grid(row=0, column=0, sticky='w')
+        fig_units = ttk.OptionMenu(type_frame, self._type_fig_so2, self.type_fig_so2, *self.fig_so2_units)
+        fig_units.config(width=5)
+        fig_units.grid(row=0, column=1, sticky='nsew', padx=2)
+        row += 1
+
         # DOAS fit save
         check = ttk.Checkbutton(self.save_proc_frame, text='Save DOAS-AA calibration', variable=self._save_doas_cal)
         check.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
@@ -1004,8 +1096,6 @@ class SaveFrame(LoadSaveProcessingSettings):
         butt_frame.grid_columnconfigure(0, weight=1)
         butt = ttk.Button(butt_frame, text='Apply settings', command=self.gather_vars)
         butt.grid(row=0, column=0, sticky='e', padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(butt_frame, text='Set as defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
 
     def save_pcs(self):
         """Saves PCS line"""

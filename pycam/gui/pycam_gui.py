@@ -14,11 +14,11 @@
 from pycam.gui.menu import PyMenu
 from pycam.gui.windows import CameraWind, SpecWind, AnalysisWind
 from pycam.networking.sockets import SocketClient
-from pycam.setupclasses import ConfigInfo, FileLocator
+from pycam.setupclasses import ConfigInfo
 from pycam.utils import read_file
 from pycam.gui.cfg_menu_frames import geom_settings, process_settings, plume_bg, doas_fov, opti_flow, \
     light_dilution, cross_correlation, basic_acq_handler, automated_acq_handler, instrument_cfg, calibration_wind,\
-    comm_recv_handler, cell_calib
+    comm_recv_handler, cell_calib, nadeau_flow
 import pycam.gui.cfg as cfg
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
@@ -113,6 +113,9 @@ class PyCam(ttk.Frame):
         cell_calib.initiate_variables(self)
         cross_correlation.start_draw(self.root)
         cross_correlation.initiate_variables(self)
+        nadeau_flow.start_draw(self.root)
+        nadeau_flow.initiate_variables(self)
+        opti_flow.fig_time_series = self.anal_wind.time_series
         opti_flow.initiate_variables(self)
         light_dilution.add_gui(self)
         light_dilution.initiate_variables()
@@ -124,7 +127,26 @@ class PyCam(ttk.Frame):
         pyplis_worker.doas_worker = doas_worker     # Set DOAS worker to pyplis attribute
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot_bg=False)
         doas_worker.load_dir(prompt=False, plot=True)
+        doas_worker.get_wavelengths(pyplis_worker.config)
+        doas_worker.get_shift(pyplis_worker.config)
+        self.spec_wind.spec_frame.update_all()
+        self.spec_wind.doas_frame.update_vals()
         doas_worker.process_doas(plot=True)
+        self.set_transfer_dir()
+
+    def set_transfer_dir(self):
+        """Sets transfer directory if it appears in the currently loaded config"""
+        
+        # Needs work to cover edge cases
+        transfer_dir = getattr(pyplis_worker, "transfer_dir", None)
+        if transfer_dir is not None:
+            cfg.current_dir_img.root_dir = transfer_dir
+            cfg.current_dir_spec.root_dir = transfer_dir
+
+        if pyplis_worker.load_default_conf_errors is not None:
+            messagebox.showwarning("Default Config Error",
+                                   pyplis_worker.load_default_conf_errors)
+            pyplis_worker.load_default_conf_errors = None
 
     def exit_app(self):
         """Closes application"""

@@ -5,14 +5,14 @@ Contains all classes associated with building figures for the analysis functions
 """
 
 from pycam.gui.cfg import gui_setts, fig_face_colour, axes_colour
-from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings
+from pycam.gui.misc import SpinboxOpt, LoadSaveProcessingSettings, ScrollWindow
 from pycam.setupclasses import CameraSpecs, SpecSpecs, FileLocator
 from pycam.cfg import pyplis_worker
 from pycam.doas.cfg import doas_worker
 from pycam.doas.ifit_worker import IFitWorker
 from pycam.so2_camera_processor import UnrecognisedSourceError
 from pycam.utils import make_circular_mask_line, truncate_path
-from pycam.io_py import save_pcs_line, load_pcs_line
+from pycam.exceptions import InvalidCalibration
 
 from pyplis import LineOnImage, Img
 from pyplis.helpers import make_circular_mask, shifted_color_map
@@ -28,17 +28,18 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import matplotlib.cm as cm
-from matplotlib.transforms import Bbox
 import matplotlib.widgets as widgets
 import matplotlib.patches as patches
 import matplotlib.lines as mpllines
-import matplotlib.ticker as ticker
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
 import time
 import queue
 import threading
 from pandas import Series
+import io
+import pickle
+import copy
 
 refresh_rate = 200    # Refresh rate of draw command when in processing thread
 
@@ -153,6 +154,14 @@ class SequenceInfo:
         self.num_img_tot_lab.configure(text=str(self.num_img_tot))
         self.date_lab.configure(text=self.date)
         self.time_lab.configure(text='{} - {}'.format(self.start_time, self.end_time))
+
+    def update_img_dir_lab(self, img_dir, watching = False):
+
+        if watching:
+            img_dir = "{} (Watching)".format(img_dir)
+
+        img_dir_short = truncate_path(img_dir, self.path_str_length)
+        self.img_dir_lab.configure(text=img_dir_short)
 
 
 class ImageSO2(LoadSaveProcessingSettings):
@@ -569,11 +578,13 @@ class ImageSO2(LoadSaveProcessingSettings):
         label = ttk.Label(self.frame_opts, text='\u03C4 max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_max = ttk.Spinbox(self.frame_opts, width=4, textvariable=self._tau_max, from_=0, to=9, increment=0.01,
-                                    command=self.scale_img, font=self.main_gui.main_font)
+                                    command=self.scale_img, font=self.main_gui.main_font, state="disabled")
         self.spin_max.set('{:.2f}'.format(self.tau_max))
         self.spin_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.spin_max.bind('<FocusOut>', self.scale_img)
+        self.spin_max.bind('<Return>', self.scale_img)
         self.auto_tau_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_tau,
-                                              command=self.scale_img)
+                                              command=self.toggle_auto_tau_check)
         self.auto_tau_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
 
         # Colour level ppmm
@@ -581,10 +592,12 @@ class ImageSO2(LoadSaveProcessingSettings):
         label = ttk.Label(self.frame_opts, text='ppm⋅m max.:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, padx=2, pady=2, sticky='w')
         self.spin_ppmm_max = ttk.Spinbox(self.frame_opts, width=5, textvariable=self._ppmm_max, from_=0, to=50000,
-                                         increment=50, command=self.scale_img, font=self.main_gui.main_font)
+                                         increment=50, command=self.scale_img, font=self.main_gui.main_font, state="disabled")
         self.spin_ppmm_max.grid(row=row, column=1, padx=2, pady=2, sticky='ew')
+        self.spin_ppmm_max.bind('<FocusOut>', self.scale_img)
+        self.spin_ppmm_max.bind('<Return>', self.scale_img)
         self.auto_ppmm_check = ttk.Checkbutton(self.frame_opts, text='Auto', variable=self._auto_ppmm,
-                                               command=self.scale_img)
+                                               command=self.toggle_auto_ppmm_check)
         self.auto_ppmm_check.grid(row=row, column=2, padx=2, pady=2, sticky='w')
 
         # Optical flow checkbutton
@@ -617,6 +630,25 @@ class ImageSO2(LoadSaveProcessingSettings):
                                                 rectprops=dict(facecolor='red', edgecolor='blue', alpha=0.5, fill=True))
         else:
             raise ValueError('Unrecognised interactive_mode for ImageSO2')
+
+    def toggle_auto_tau_check(self):
+        
+        if self.auto_tau:
+            self.spin_max.configure(state="disabled")
+        else:
+            self.spin_max.configure(state="normal")
+
+        self.scale_img()
+
+    def toggle_auto_ppmm_check(self):
+        
+        if self.auto_ppmm:
+            self.spin_ppmm_max.configure(state="disabled")
+        else:
+            self.spin_ppmm_max.configure(state="normal")
+
+        self.scale_img()
+
 
     def draw_roi(self, eclick, erelease):
         """
@@ -895,24 +927,25 @@ class ImageSO2(LoadSaveProcessingSettings):
         # Update canvas, first rescaling image, as the seismic canvas we use a different scale
         self.scale_img(draw=True)
 
-    def scale_img(self, draw=True):
+    def scale_img(self, event = None, draw=True):
         """
         Updates cmap scale
         :param draw: bool   Defines whether the image canvas is redrawn after updating cmap
         :return:
         """
-        print('In scale image')
         if self.disp_cal:
-            print('In disp cal')
             # Get vmax either automatically or by defined spinbox value
             if self.auto_ppmm:
                 self.vmax_cal = np.nanpercentile(self.image_cal, 99)
             else:
                 self.vmax_cal = self.ppmm_max
-            if self.cmap.name == 'seismic':
-                vmin = -self.vmax_cal
+            if self.vmax_cal > 0:
+                if self.cmap.name == 'seismic':
+                    vmin = -self.vmax_cal
+                else:
+                    vmin = 0
             else:
-                vmin = 0
+                vmin = np.nanpercentile(self.image_cal, 1)
             self.img_disp.set_clim(vmin=vmin, vmax=self.vmax_cal)
             self.cbar.ax.set_title('ppm.m')
         else:
@@ -1054,6 +1087,30 @@ class ImageSO2(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
+    def save_figure(self, img_time=None, savedir=None):
+        """
+        Save matplotlib figure to file
+        param: savedir str      directory to save file in.
+                                If None, directory is taken from PyplisWorker.save_img_dir
+        """
+        # Get save directory
+        if savedir is None:
+            savedir = self.pyplis_worker.saved_img_dir
+
+        # Generate filename based on image time
+        if img_time is None:
+            img_time = self.pyplis_worker.img_tau.meta['start_acq']
+        time_str = img_time.strftime(self.pyplis_worker.cam_specs.file_datestr)
+        filename = '{}_SO2_fig'.format(time_str)
+        savepath = os.path.join(savedir, filename)
+
+        # Save matplotlib figure to filepath. Make copy first to maybe stop white flashing
+        buf = io.BytesIO()
+        pickle.dump(self.fig, buf)
+        buf.seek(0)
+        fig = pickle.load(buf)
+        fig.savefig(savepath, bbox_inches='tight')
+
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
@@ -1102,6 +1159,8 @@ class TimeSeriesFigure:
                             }
         self.colours = self.pyplis_worker.fig_tau.line_colours
         self.marker = '.'
+        self.ER_markersize = 3
+        self.Veff_markersize = 3
 
         # Initiate variables
         self.initiate_variables()
@@ -1122,6 +1181,8 @@ class TimeSeriesFigure:
         self.plot_total = 1
         self.lines = []                     # List holding ids of all lines currently drawn
         self.total_lines = []               # Lines which contribute to the 'total' emission rate
+        for key in self.pyplis_worker.velo_modes:
+            setattr(self, '_{}'.format(key), tk.BooleanVar(value=True))
 
     @property
     def plot_total(self):
@@ -1145,20 +1206,93 @@ class TimeSeriesFigure:
     def line_plot(self, value):
         self._line_plot.set(value)
 
+    @property
+    def flow_glob(self):
+        return self._flow_glob.get()
+
+    @flow_glob.setter
+    def flow_glob(self, value):
+        self._flow_glob.set(value)
+        if value:
+            self.disp_plot_checks['flow_glob'].configure(state=tk.ACTIVE)
+        else:
+            self.disp_plot_checks['flow_glob'].configure(state=tk.DISABLED)
+
+    @property
+    def flow_nadeau(self):
+        return self._flow_nadeau.get()
+
+    @flow_nadeau.setter
+    def flow_nadeau(self, value):
+        self._flow_nadeau.set(value)
+        if value:
+            self.disp_plot_checks['flow_nadeau'].configure(state=tk.ACTIVE)
+        else:
+            self.disp_plot_checks['flow_nadeau'].configure(state=tk.DISABLED)
+
+    @property
+    def flow_raw(self):
+        return self._flow_raw.get()
+
+    @flow_raw.setter
+    def flow_raw(self, value):
+        self._flow_raw.set(value)
+        if value:
+            self.disp_plot_checks['flow_raw'].configure(state=tk.ACTIVE)
+        else:
+            self.disp_plot_checks['flow_raw'].configure(state=tk.DISABLED)
+
+    @property
+    def flow_histo(self):
+        return self._flow_histo.get()
+
+    @flow_histo.setter
+    def flow_histo(self, value):
+        self._flow_histo.set(value)
+        if value:
+            self.disp_plot_checks['flow_histo'].configure(state=tk.ACTIVE)
+        else:
+            self.disp_plot_checks['flow_histo'].configure(state=tk.DISABLED)
+
+    @property
+    def flow_hybrid(self):
+        return self._flow_hybrid.get()
+
+    @flow_hybrid.setter
+    def flow_hybrid(self, value):
+        self._flow_hybrid.set(value)
+        if value:
+            self.disp_plot_checks['flow_hybrid'].configure(state=tk.ACTIVE)
+        else:
+            self.disp_plot_checks['flow_hybrid'].configure(state=tk.DISABLED)
+
     def _build_opts(self):
         """Builds options widget"""
         self.opts_frame = ttk.LabelFrame(self.frame, text='Options')
 
+        row = 0
         lab = ttk.Label(self.opts_frame, text='Plot line:', font=self.main_gui.main_font)
-        lab.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        lab.grid(row=row, column=0, sticky='w', padx=2, pady=2)
         self.line_opts = ttk.Combobox(self.opts_frame, textvariable=self._line_plot, justify='left',
                                       state='readonly', font=self.main_gui.main_font)
         self.line_opts.bind('<<ComboboxSelected>>', self.update_plot)
-        self.line_opts.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        self.line_opts.grid(row=row, column=1, sticky='nsew', padx=2, pady=2)
 
+        row += 1
         self.plt_tot_check = ttk.Checkbutton(self.opts_frame, text='Plot sum of all lines', variable=self._plot_total,
                                              command=self.update_plot)
-        self.plt_tot_check.grid(row=1, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+        self.plt_tot_check.grid(row=row, column=0, columnspan=2, sticky='w', padx=2, pady=2)
+
+        # Options for toggling different velocity plot on and off
+        row += 1
+        plot_check_frame = ttk.Frame(self.opts_frame)
+        plot_check_frame.grid(row=row, column=0, columnspan=4, sticky='nsew')
+        self.disp_plot_checks = {}
+        for i, key in enumerate(self.pyplis_worker.velo_modes.keys()):
+            self.disp_plot_checks[key] = ttk.Checkbutton(plot_check_frame, text=key,
+                                                         variable=getattr(self, '_{}'.format(key)),
+                                                         command=self.update_plot)
+            self.disp_plot_checks[key].grid(row=0, column=i, sticky='w', padx=2, pady=2)
 
         # Update current line options
         self.update_lines(plot=False)
@@ -1231,20 +1365,22 @@ class TimeSeriesFigure:
             ax.clear()
 
         if self.line_plot.lower() != 'none':
+            self.plot_bg_roi(marker=self.marker)
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode]:
+                if self.pyplis_worker.velo_modes[mode] and getattr(self, mode):
                     try:
                         if len(self.pyplis_worker.results[self.line_plot][mode]._phi) > 0:
                             line_lab = 'line_{}: {}'.format(int(self.line_plot) + 1, mode)
-                            self.plot_bg_roi(marker=self.marker)
-                            self.plot_flow_dir(self.line_plot, label=line_lab,
-                                               color=self.colours[int(self.line_plot)],
-                                               marker='.')
+                            if mode == 'flow_histo':    # Flow dir is reliant on flow_histo (the plot function currently is anyway)
+                                self.plot_flow_dir(self.line_plot, label=line_lab,
+                                                   color=self.colours[int(self.line_plot)],
+                                                   marker='.')
                             self.plot_veff(self.pyplis_worker.results[self.line_plot][mode],
                                            label=line_lab, ls=self.plot_styles[mode]['ls'],
                                            color=self.plot_styles[mode]['colour'],
                                            # color=self.colours[int(self.line_plot)],
-                                           marker=None)
+                                           marker=self.marker,
+                                           markersize=self.Veff_markersize)
                             self.pyplis_worker.results[self.line_plot][mode].plot(
                                 ax=self.axes[0],
                                 ls=self.plot_styles[mode]['ls'],
@@ -1253,7 +1389,8 @@ class TimeSeriesFigure:
                                 ymin=0,
                                 date_fmt=self.date_fmt,
                                 label=line_lab,
-                                marker=None,
+                                marker=self.marker,
+                                markersize=self.ER_markersize,
                                 in_kg=False)
                     except KeyError:
                         print('No emission rate analysis data available for {}'.format(self.line_plot))
@@ -1261,7 +1398,7 @@ class TimeSeriesFigure:
         # Plot the summed total
         if self.plot_total and len(self.total_lines) > 1:
             for mode in self.pyplis_worker.velo_modes:
-                if self.pyplis_worker.velo_modes[mode]:
+                if self.pyplis_worker.velo_modes[mode] and getattr(self, mode):
                     try:
                         if len(self.pyplis_worker.results['total'][mode]._phi) > 0:
                             self.pyplis_worker.results['total'][mode].plot(
@@ -1310,7 +1447,8 @@ class TimeSeriesFigure:
             phi_upper = Series(veff + verr, times)
             phi_lower = Series(veff - verr, times)
             kwargs['lw'] = 0    # Plot no lines around fill
-            kwargs.pop('marker', None)  # Remove the amrker key as fill between doesn't take this
+            kwargs.pop('marker', None)  # Remove the marker key as fill between doesn't take this
+            kwargs.pop('markersize', None)
             self.axes[ax].fill_between(times, phi_lower, phi_upper, alpha=0.1, **kwargs)
         self.axes[ax].autoscale(axis='y')
         self.axes[ax].set_ylim([0, self.axes[ax].get_ylim()[1]])
@@ -2062,11 +2200,8 @@ class PlumeBackground(LoadSaveProcessingSettings):
         butt = ttk.Button(butt_frame, text='OK', command=self.save_and_close)
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=lambda: self.set_defaults(parent=self.frame))
-        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
         butt = ttk.Button(butt_frame, text='Preview', command=self.run_process)
-        butt.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -----------------------------
         # Reference areas
@@ -2873,6 +3008,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.vars = {'plot_iter': int,
                      'bg_A_path': str,
                      'bg_B_path': str,
+                     'transfer_dir': str,
                      'dark_img_dir': str,
                      'dark_spec_dir': str,
                      'cell_cal_dir': str,
@@ -2889,6 +3025,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self._plot_iter = tk.IntVar()
         self._bg_A = tk.StringVar()
         self._bg_B = tk.StringVar()
+        self._transfer_dir = tk.StringVar()
         self._dark_img_dir = tk.StringVar()
         self._dark_spec_dir = tk.StringVar()
         self._cell_cal_dir = tk.StringVar()
@@ -2950,7 +3087,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.dark_img_label = ttk.Label(path_frame, text=self.dark_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
         self.dark_img_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_img_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("dark_img_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -2960,7 +3097,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.dark_spec_label = ttk.Label(path_frame, text=self.dark_spec_dir_short, width=self.path_widg_length,
                                          font=self.main_gui.main_font, anchor='e')
         self.dark_spec_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_dark_spec_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("dark_spec_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
@@ -2970,18 +3107,28 @@ class ProcessSettings(LoadSaveProcessingSettings):
         self.cell_cal_label = ttk.Label(path_frame, text=self.cell_cal_dir_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cell_cal_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose Folder', command=self.get_cell_cal_dir)
+        butt = ttk.Button(path_frame, text='Choose Folder', command=lambda: self.change_path("cell_cal_dir"))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
         row += 1
 
-        # Cell calibration directory
+        # Preloaded calibration filepath
         label = ttk.Label(path_frame, text='Calibration time series file:', font=self.main_gui.main_font)
         label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
         self.cal_series_label = ttk.Label(path_frame, text=self.cal_series_path_short, width=self.path_widg_length,
                                         font=self.main_gui.main_font, anchor='e')
         self.cal_series_label.grid(row=row, column=1, padx=self.pdx, pady=self.pdy)
-        butt = ttk.Button(path_frame, text='Choose File', command=self.get_cal_series_path)
+        butt = ttk.Button(path_frame, text='Choose File', command=lambda: self.change_path("cal_series_path", file=True))
         butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
+
+        # Transfer directory
+        label = ttk.Label(path_frame, text='Transfer directory:', font=self.main_gui.main_font)
+        label.grid(row=row, column=0, sticky='w', padx=self.pdx, pady=self.pdy)
+        self.watching_label = ttk.Label(path_frame, text=self.transfer_dir_short, width=self.path_widg_length, anchor='e', font=self.main_gui.main_font)
+        self.watching_label.grid(row=row, column=1, sticky='e', padx=self.pdx, pady=self.pdy)
+        butt = ttk.Button(path_frame, text='Choose folder', command=lambda: self.change_path("transfer_dir"))
+        butt.grid(row=row, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
+        row += 1
 
         # Processing
         settings_frame = ttk.LabelFrame(self.frame, text='Processing parameters', borderwidth=5)
@@ -3055,9 +3202,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
         butt = ttk.Button(self.butt_frame, text='Apply', command=self.gather_vars)
         butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
 
-        butt = ttk.Button(self.butt_frame, text='Set As Defaults', command=self.set_defaults)
-        butt.pack(side=tk.LEFT, padx=self.pdx, pady=self.pdy)
-
     @property
     def plot_iter(self):
         return self._plot_iter.get()
@@ -3080,6 +3224,21 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def dark_dir_short(self):
         """Returns shorter label for dark directory"""
         return truncate_path(self.dark_img_dir, self.path_str_length)
+    
+    @property
+    def transfer_dir(self):
+        return self._transfer_dir.get()
+
+    @transfer_dir.setter
+    def transfer_dir(self, value):
+        self._transfer_dir.set(value)
+        if hasattr(self, 'watching_label') and self.in_frame:
+            self.watching_label.configure(text=self.transfer_dir_short)
+
+    @property
+    def transfer_dir_short(self):
+        """Returns shorter label for dark directory"""
+        return truncate_path(self.transfer_dir, self.path_str_length)
 
     @property
     def dark_spec_dir(self):
@@ -3208,48 +3367,33 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def time_zone(self, value):
         self._time_zone.set(value)
 
-    def get_dark_img_dir(self):
-        """Gives user options for retrieving dark image directory"""
-        dark_img_dir = filedialog.askdirectory(initialdir=self.dark_img_dir)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        self.frame.lift()
-
-        if len(dark_img_dir) > 0:
-            self.dark_img_dir = dark_img_dir
-
-    def get_dark_spec_dir(self):
-        """Gives user options for retrieving dark spectrum directory"""
-        dark_spec_dir = filedialog.askdirectory(initialdir=self.dark_spec_dir)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(dark_spec_dir) > 0:
-            self.dark_spec_dir = dark_spec_dir
-
-    def get_cell_cal_dir(self, set_var=False):
+    def change_path(self, val_name, file = False, set_config=False):
         """
-        Gives user options for retrieving cell calibration directory
-        :param set_var: bool
+        Generalised function for setting a file or directory path via the GUI
+        :param val_name: str    Name of the parameter in the config/backend to be set
+        :param file: bool       Is the path to a file? if true then use the file dialog, otherwise use the dir dialog
+        :param set_config: bool
             If true, this will set the pyplis_worker value automatically. This means that this function can be used
             from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is used by the
-            menu widget 'Load cell directory' submenu
+            requiring the OK click from the settings widget which usually instigates gather_vars.
         """
-        cell_cal_dir = filedialog.askdirectory(initialdir=self.cell_cal_dir)
+        curr_path = getattr(self, val_name)
+
+        if not file:
+            new_path = filedialog.askdirectory(initialdir=curr_path)
+        else:
+            new_path = filedialog.askopenfilename(initialdir=curr_path)
 
         # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
         if self.in_frame:
             self.frame.lift()
 
-        if len(cell_cal_dir) > 0:
-            self.cell_cal_dir = cell_cal_dir
+        if len(new_path) > 0:
+            setattr(self, val_name, new_path)
 
-        # Update pyplis worker value if requested (done when using submenu selection
-        if set_var:
-            pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
+        if set_config:
+            pyplis_worker.config[val_name] = new_path
+
 
     def set_cell_cal_dir(self, cal_dir):
         """Directly sets cell calibration directory without filedialog"""
@@ -3258,28 +3402,6 @@ class ProcessSettings(LoadSaveProcessingSettings):
             return
         self.cell_cal_dir = cal_dir
         pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
-
-    def get_cal_series_path(self, set_var=False):
-        """
-        Gives user options for retrieving calibration coefficients from file
-        :param set_var: bool
-            If true, this will set the pyplis_worker value automatically. This means that this function can be used
-            from outside of the process_settings widget and the directory will automatically be updated, without
-            requiring the OK click from the settings widget which usually instigates gather_vars. This is probably not
-            used anywhere currently
-        """
-        cal_series_path = filedialog.askopenfilename(initialdir=self.cal_series_path)
-
-        # Pull frame back to the top, as otherwise it tends to hide behind the main frame after closing the filedialog
-        if self.in_frame:
-            self.frame.lift()
-
-        if len(cal_series_path) > 0:
-            self.cal_series_path = cal_series_path
-
-        # Update pyplis worker value if requested (done when using submenu selection
-        if set_var:
-            pyplis_worker.config['cal_series_path'] = cal_series_path
 
     def get_bg_file(self, band):
         """Gives user options for retreiving dark directory"""
@@ -3300,6 +3422,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """
         pyplis_worker.config['plot_iter'] = self.plot_iter
         doas_worker.plot_iter = self.plot_iter
+        pyplis_worker.config['transfer_dir'] = self.transfer_dir
         pyplis_worker.config['dark_img_dir'] = self.dark_img_dir       # Load dark_dir prior to bg images - bg images require dark dir
         pyplis_worker.config['cell_cal_dir'] = self.cell_cal_dir
         pyplis_worker.config["cal_series_path"] = self.cal_series_path
@@ -3321,8 +3444,16 @@ class ProcessSettings(LoadSaveProcessingSettings):
     def save_close(self):
         """Gathers all variables and then closes"""
         self.gather_vars()
+        try:
+            pyplis_worker.apply_config(subset=self.vars.keys())
+        except InvalidCalibration:
+            messagebox.showwarning("Missing Calibration file",
+                                   "The Calibration file specified doesn't exist.\n"
+                                   "Please double check the path or choose a different calibration option.")
+            return
+        
         self.close_window()
-        pyplis_worker.apply_config(subset=self.vars.keys())
+        self.main_gui.set_transfer_dir()
         # Reload sequence, to ensure that the updates have been made
         pyplis_worker.load_sequence(pyplis_worker.img_dir, plot=True, plot_bg=False)
         doas_worker.load_dir(prompt=False)
@@ -3331,6 +3462,7 @@ class ProcessSettings(LoadSaveProcessingSettings):
         """Closes window"""
         # Reset values if cancel was pressed, by retrieving them from their associated places
         self.plot_iter = self.vars['plot_iter'](pyplis_worker.config['plot_iter'])
+        self.transfer_dir = pyplis_worker.config['transfer_dir']
         self.bg_A_path = pyplis_worker.config['bg_A_path']
         self.bg_B_path = pyplis_worker.config['bg_B_path']
         self.dark_img_dir = pyplis_worker.config['dark_img_dir']
@@ -3547,10 +3679,8 @@ class DOASFOVSearchFrame(LoadSaveProcessingSettings):
         butt_frame = ttk.Frame(self.frame_opts)
         butt_frame.grid(row=row, column=0, columnspan=3, sticky='nsew')
         butt_frame.grid_columnconfigure(0, weight=1)
-        def_butt = ttk.Button(butt_frame, text='Set as defaults', command=lambda: self.set_defaults(parent=self.frame))
-        def_butt.grid(row=0, column=0, sticky='e', padx=2, pady=2)
         app_butt = ttk.Button(butt_frame, text='Update settings', command=lambda: self.gather_vars(message=True))
-        app_butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
+        app_butt.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
         # --------------------------------------------------------------
 
         # --------------------------------------------------------------
@@ -4058,7 +4188,7 @@ class CellCalibFrame:
 
     def change_cal_dir(self):
         """Changes the cell directory and loads calibration"""
-        self.process_setts.get_cell_cal_dir(set_var=True)
+        self.process_setts.change_path("cell_cal_dir", set_config=True)
         self.frame.attributes('-topmost', 1)
         self.frame.attributes('-topmost', 0)
 
@@ -4241,6 +4371,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Cross-correlation'
+
         self.main_gui = None
         self.parent = None
         self.pyplis_worker = pyplis_work
@@ -4274,22 +4406,8 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         """
         self.main_gui = main_gui
    
-        self.vars = {'cross_corr_recal': int,
-                     'auto_nadeau_line': int,
-                     'source_coords': list,
-                     'nadeau_line_orientation': int,
-                     'nadeau_line_length': int,
-                     'max_nad_shift': int,
-                     'auto_nadeau_pcs': int
-                     }
+        self.vars = {'cross_corr_recal': int}
         self._cross_corr_recal = tk.IntVar()
-        self._auto_nadeau_line = tk.BooleanVar()
-        self._source_x = tk.IntVar()
-        self._source_y = tk.IntVar()
-        self._nadeau_line_orientation = tk.IntVar()
-        self._nadeau_line_length = tk.IntVar()
-        self._max_nad_shift = tk.IntVar()
-        self._auto_nadeau_pcs = tk.IntVar()
         self.update_variables()
 
     def update_variables(self):
@@ -4306,39 +4424,20 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if update_pyplis:
             self.pyplis_worker.apply_config(subset=self.vars.keys())
 
-    def generate_frame(self):
+    def generate_frame(self, frame):
         """
         Generates widget settings frame
         :return:
         """
-        if self.in_frame:
-            self.frame.attributes('-topmost', 1)
-            self.frame.attributes('-topmost', 0)
-            return
-
         self.update_variables() # Update to current settings
+        self.frame = ttk.Frame(frame)
 
         self.in_frame = True
-
-        self.frame = tk.Toplevel()
-        self.frame.title('Cross-correlation settings')
-        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
-
-        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
-        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
-
-        self.frame_ica = ttk.Frame(self.windows)
-        self.frame_ica.pack()
-        self.frame_nadeau = ttk.Frame(self.windows)
-        self.frame_nadeau.pack()
-
-        self.windows.add(self.frame_ica, text='ICA cross-correlation')
-        self.windows.add(self.frame_nadeau, text='Nadeau cross-correlation')
 
         # -------------------------------------
         # Information frame
         row = 0
-        self.frame_info = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
+        self.frame_info = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_info.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         label_1 = ttk.Label(self.frame_info, text='ICA gap [m]:')
@@ -4366,7 +4465,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Figure frame
         row += 1
-        self.frame_fig = ttk.Frame(self.frame_ica, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=row, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # -------------------------------------------
@@ -4385,16 +4484,158 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         self.fig_canvas._tkcanvas.pack(side=tk.TOP)
         # -------------------------------------------
 
+    @property
+    def cross_corr_recal(self):
+        """Time in minutes to rerun cross-correlation analysis"""
+        return self._cross_corr_recal.get()
 
+    @cross_corr_recal.setter
+    def cross_corr_recal(self, value):
+        self._cross_corr_recal.set(value)
+
+    def update_plot(self, ax, info=None):
+        """Updates cross-correlation plot"""
+        self.ax = ax
+        self.fig = ax[0].figure
+        # Adjust figure size
+        self.fig.set_size_inches(self.fig_size[0], self.fig_size[1], forward=True)
+        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1)
+        ax[0].set_ylabel(r'ICA SO$_2$ loading [arbitrary]')
+        ax[0].set_xlabel('Time')
+
+        # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
+        # the updated plot will be built
+        if self.in_frame:
+            self.fig_canvas.get_tk_widget().destroy()
+
+            self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
+            self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
+            self.fig_canvas.draw()
+
+            # Add toolbar so figures can be saved
+            toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
+            toolbar.update()
+            self.fig_canvas._tkcanvas.pack(side=tk.TOP)
+
+            self.update_info(info)
+
+            self.q.put(1)
+
+    def update_info(self, info):
+        """Updates cross-correlation info"""
+        try:
+            # Update info
+            self.label_ica_gap.configure(text='{:.1f}'.format(info['ica_gap']))
+            self.label_lag_frames.configure(text='{:.1f}'.format(info['lag_frames']))
+            self.label_lag_secs.configure(text='{:.1f}'.format(info['lag']))
+            self.label_speed.configure(text='{:.1f}'.format(info['velocity']))
+        except KeyError:
+            print('No cross-correlation info to update')
+
+    def __draw_canv__(self):
+        """Draws canvas periodically"""
+        try:
+            update = self.q.get(block=False)
+            if update == 1:
+                if self.in_frame:
+                    self.fig_canvas.draw()
+            else:
+                pass
+        except queue.Empty:
+            pass
+        self.parent.after(refresh_rate, self.__draw_canv__)
+
+
+class NadeauFlowSettings(LoadSaveProcessingSettings):
+    """
+    Flow Nadeau (parallel cross-correlation) plume speed settings class
+
+        To add a new variable:
+        1. Add it as a tk variable in initiate variables
+        2. Add it to the vars dictionary, along with its type
+        3. Add its associated widgets
+        4. Add its associated property with get and set options
+        5. Add its default value to processing_setting_defaults.txt
+    """
+    def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Nadeau flow'
+
+        self.main_gui = None
+        self.parent = None
+        self.pyplis_worker = pyplis_work
+        self.pyplis_worker.fig_nadeau = self
+        self.q = queue.Queue()
+        self.cam_specs = cam_specs
+        self.fig_setts = fig_setts
+        self.dpi = self.fig_setts.dpi
+        self.fig_size_nad = (6, 6)  # TODO build in options to change size of this figure
+        self.h_ratio = 3
+        self.w_ratio = 25
+
+        self.pdx = 5
+        self.pdy = 5
+
+        self.in_frame = False
+
+        if generate_frame:
+            self.initiate_variables()
+            self.generate_frame()
+
+    def start_draw(self, parent):
+        self.parent = parent
+        self.__draw_canv__()
+
+    def initiate_variables(self, main_gui):
+        """
+        Initiates all tkinter variables
+        :return:
+        """
+        self.main_gui = main_gui
+
+        self.vars = {'auto_nadeau_line': int,
+                     'source_coords': list,
+                     'nadeau_line_orientation': int,
+                     'nadeau_line_length': int,
+                     'max_nad_shift': int,
+                     'auto_nadeau_pcs': int
+                     }
+        self._auto_nadeau_line = tk.BooleanVar()
+        self._source_x = tk.IntVar()
+        self._source_y = tk.IntVar()
+        self._nadeau_line_orientation = tk.IntVar()
+        self._nadeau_line_length = tk.IntVar()
+        self._max_nad_shift = tk.IntVar()
+        self._auto_nadeau_pcs = tk.IntVar()
+        self.update_variables()
+
+    def update_variables(self):
+        """Updates variables with current pyplis settings"""
+        for key in self.vars.keys():
+            setattr(self, key, self.pyplis_worker.config[key])
+
+    def gather_vars(self, update_pyplis=False):
+        # UPDATE CONFIG FILE OF PYPLIS WORKER WITH ALL CURRENT SETTINGS
+        for key in self.vars:
+            self.pyplis_worker.config[key] = getattr(self, key)
+
+        # Apply the config if requested
+        if update_pyplis:
+            self.pyplis_worker.apply_config(subset=self.vars.keys())
+
+    def generate_frame(self, frame):
+        self.frame = ttk.Frame(frame)
+        self.in_frame = True
+
+        self.update_variables()  # Update to current settings
         # ----------------------------------------------
         # Building Nadeau frame
-        self.frame_opts_nad = ttk.LabelFrame(self.frame_nadeau, text='Options', relief=tk.RAISED, borderwidth=3)
+        self.frame_opts_nad = ttk.LabelFrame(self.frame, text='Options', relief=tk.RAISED, borderwidth=3)
         self.frame_opts_nad.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        self.frame_fig_nad = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig_nad = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig_nad.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
-        self.frame_nad_xcorr = ttk.Frame(self.frame_nadeau, relief=tk.RAISED, borderwidth=3)
+        self.frame_nad_xcorr = ttk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
         self.frame_nad_xcorr.grid(row=0, column=2, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         self.frame_nad_res = ttk.Frame(self.frame_nad_xcorr, relief=tk.RAISED, borderwidth=3)
@@ -4456,7 +4697,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
                                from_=1, to=len(self.pyplis_worker.PCS_lines_all), command=self.run_nadeau_line)
         pcs_spin.grid(row=row, column=1, sticky='ew', padx=self.pdx, pady=self.pdy)
 
-
         # -------------------------------------------
         # Build figure displaying cross-correlation
         # Make empty figure if we don't have a figure to use
@@ -4464,7 +4704,7 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
             # Create figure
             self.fig_nad, self.axes = plt.subplots(2, 1, figsize=self.fig_size_nad, dpi=self.dpi,
                                                    gridspec_kw={'height_ratios': [self.h_ratio, 1]})
-        self.fig.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
+        self.fig_nad.subplots_adjust(left=0.05, right=0.92, top=0.95, bottom=0.05, wspace=0.00)
 
         self.ax_nad = self.axes[0]
         self.ax_nad.set_aspect(1)
@@ -4547,15 +4787,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
 
         # Draw/update all plots on opening of frame
         self.run_nadeau_line()
-
-    @property
-    def cross_corr_recal(self):
-        """Time in minutes to rerun cross-correlation analysis"""
-        return self._cross_corr_recal.get()
-
-    @cross_corr_recal.setter
-    def cross_corr_recal(self, value):
-        self._cross_corr_recal.set(value)
 
     @property
     def auto_nadeau_line(self):
@@ -4646,45 +4877,6 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         except (IndexError, TypeError):
             print('Error when attempting to set gas source coordinates. Aborting setting.\n'
                   'Expected list with length 2, got type: {}'.format(type(value)))
-
-    def update_plot(self, ax, info=None):
-        """Updates cross-correlation plot"""
-        self.ax = ax
-        self.fig = ax[0].figure
-        # Adjust figure size
-        self.fig.set_size_inches(self.fig_size[0], self.fig_size[1], forward=True)
-        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1)
-        ax[0].set_ylabel(r'ICA SO$_2$ loading [arbitrary]')
-        ax[0].set_xlabel('Time')
-
-        # If we are in_frame then we update the plot. Otherwise we leave it and when generate_frame is next called
-        # the updated plot will be built
-        if self.in_frame:
-            self.fig_canvas.get_tk_widget().destroy()
-
-            self.fig_canvas = FigureCanvasTkAgg(self.fig, master=self.frame_fig)
-            self.fig_canvas.get_tk_widget().pack(side=tk.TOP)
-            self.fig_canvas.draw()
-
-            # Add toolbar so figures can be saved
-            toolbar = NavigationToolbar2Tk(self.fig_canvas, self.frame_fig)
-            toolbar.update()
-            self.fig_canvas._tkcanvas.pack(side=tk.TOP)
-
-            self.update_info(info)
-
-            self.q.put(1)
-
-    def update_info(self, info):
-        """Updates cross-correlation info"""
-        try:
-            # Update info
-            self.label_ica_gap.configure(text='{:.1f}'.format(info['ica_gap']))
-            self.label_lag_frames.configure(text='{:.1f}'.format(info['lag_frames']))
-            self.label_lag_secs.configure(text='{:.1f}'.format(info['lag']))
-            self.label_speed.configure(text='{:.1f}'.format(info['velocity']))
-        except KeyError:
-            print('No cross-correlation info to update')
 
     def update_source_plot(self):
         """Draws source coordinate marker on plot"""
@@ -4863,25 +5055,12 @@ class CrossCorrelationSettings(LoadSaveProcessingSettings):
         if draw:
             self.q.put(1)
 
-    def close_frame(self):
-        """
-        Closes frame and makes sure current values are correct
-        :return:
-        """
-        # UPDATE CURRENT SETTINGS FROM CONFIG FILE
-        self.update_variables()
-
-        self.in_frame = False
-        # Close frame
-        self.frame.destroy()
-
     def __draw_canv__(self):
         """Draws canvas periodically"""
         try:
             update = self.q.get(block=False)
             if update == 1:
                 if self.in_frame:
-                    self.fig_canvas.draw()
                     self.fig_canvas_nad.draw()
                     self.fig_canvas_lag.draw()
             else:
@@ -4903,10 +5082,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         5. Add its default value to processing_setting_defaults.txt
     """
     def __init__(self, generate_frame=False, pyplis_work=pyplis_worker, cam_specs=CameraSpecs(), fig_setts=gui_setts):
+        self.name = 'Optical flow'
 
         self.pyplis_worker = pyplis_work
         self.pyplis_worker.fig_opt = self
         self.fig_SO2 = None
+        self.fig_time_series = None
         self.q = queue.Queue()
         self.cam_specs = cam_specs
         self.fig_setts = fig_setts
@@ -4979,26 +5160,26 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # Load default values
         self.load_defaults()
 
-    def generate_frame(self):
+    def generate_frame(self, frame):
         """
         Generates widget settings frame
         :return:
         """
-        if self.in_frame:
-            self.frame.attributes('-topmost', 1)
-            self.frame.attributes('-topmost', 0)
-            return
-
         self.in_frame = True
+        self.frame = ttk.Frame(frame)
 
-        self.frame = tk.Toplevel()
-        self.frame.title('Plume velocity settings')
-        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+        # ========================================================
+        # Scroll window
+        self.plt_canvas = tk.Canvas(self.frame, borderwidth=0)
+        self.plt_canvas_scroll = ScrollWindow(self.frame, self.plt_canvas)
+        self.scroll_frame = ttk.Frame(self.plt_canvas_scroll.frame, borderwidth=2)
+        self.scroll_frame.pack(expand=True, fill=tk.BOTH, anchor='nw')
+        # ==========================================================
 
         # -------------------------
         # Build optical flow figure
         # -------------------------
-        self.frame_fig = tk.Frame(self.frame, relief=tk.RAISED, borderwidth=3)
+        self.frame_fig = tk.Frame(self.scroll_frame, relief=tk.RAISED, borderwidth=3)
         self.frame_fig.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
         # self.frame.rowconfigure(0, weight=1)
         self._build_fig_img()
@@ -5007,7 +5188,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # -----------------
         # Parameter options
         # -----------------
-        self.param_frame = ttk.LabelFrame(self.frame, text='Optical flow parameters', borderwidth=5)
+        self.param_frame = ttk.LabelFrame(self.scroll_frame, text='Optical flow parameters', borderwidth=5)
         self.param_frame.grid(row=1, column=0, sticky='nsew', padx=5, pady=5)
 
         row = 0
@@ -5042,7 +5223,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # ------------------------------
         # Pyplis Analysis options frame
         # ------------------------------
-        self.analysis_frame = ttk.LabelFrame(self.frame, text='Analysis parameters', borderwidth=5)
+        self.analysis_frame = ttk.LabelFrame(self.scroll_frame, text='Analysis parameters', borderwidth=5)
         self.analysis_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
         row = 0
 
@@ -5101,16 +5282,12 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # ----------------------------------
 
         # Set buttons
-        butt_frame = ttk.Frame(self.frame)
+        butt_frame = ttk.Frame(self.scroll_frame)
         butt_frame.grid(row=2, column=0, sticky='nsew')
 
         # Apply button
         butt = ttk.Button(butt_frame, text='Apply', command=lambda: self.gather_vars(run=True))
         butt.grid(row=0, column=0, sticky='nsew', padx=self.pdx, pady=self.pdy)
-
-        # Set default button
-        butt = ttk.Button(butt_frame, text='Set As Defaults', command=self.set_defaults)
-        butt.grid(row=0, column=1, sticky='nsew', padx=self.pdx, pady=self.pdy)
 
         # Setup thread-safe drawing
         self.__draw_canv__()
@@ -5294,6 +5471,7 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
         # Loop through flow options and set them
         for key in self.pyplis_worker.velo_modes:
             self.pyplis_worker.config[key] = bool(getattr(self, key))
+            setattr(self.fig_time_series, key, bool(getattr(self, key)))  # Update timeseires fig too
 
         non_opt_flow_setts = self.vars.keys() - self.settings_vars
 
@@ -5482,9 +5660,6 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
             setattr(self, key, self.pyplis_worker.velo_modes[key])
         self.use_multi_gauss = self.pyplis_worker.use_multi_gauss
 
-        # Close drawing function (it is started again on opening the frame
-        self.q.put(2)
-
         # Close frame
         self.frame.destroy()
 
@@ -5497,10 +5672,58 @@ class OptiFlowSettings(LoadSaveProcessingSettings):
                     self.img_canvas.draw()
                     self.vel_canvas.draw()
             else:
-                return
+                pass
         except queue.Empty:
             pass
         self.frame.after(refresh_rate, self.__draw_canv__)
+
+
+class PlumeVelocityFrame:
+    """
+    Class to hold all plume velocity settings within a single frame
+    """
+    def __init__(self, opti_flow=OptiFlowSettings(), cross_corr=CrossCorrelationSettings(),
+                 nadeau_flow=NadeauFlowSettings()):
+        self.opti_flow = opti_flow
+        self.cross_corr = cross_corr
+        self.nadeau_flow = nadeau_flow
+        self.in_frame = False
+
+    def generate_frame(self):
+        # Initial frame setup
+        if self.in_frame:
+            self.frame.attributes('-topmost', 1)
+            self.frame.attributes('-topmost', 0)
+            return
+        self.in_frame = True
+        self.frame = tk.Toplevel()
+        self.frame.title('Plume velocity settings')
+        self.frame.protocol('WM_DELETE_WINDOW', self.close_frame)
+
+        # Setup Notebook
+        self.windows = ttk.Notebook(self.frame, style='One.TNotebook.Tab')
+        self.windows.pack(fill='both', expand=1, padx=5, pady=5)
+
+        # Generate frames in Notebook
+        self.opti_flow.generate_frame(self.windows)
+        self.cross_corr.generate_frame(self.windows)
+        self.nadeau_flow.generate_frame(self.windows)
+
+        self.windows.add(self.opti_flow.frame, text=self.opti_flow.name)
+        self.windows.add(self.cross_corr.frame, text=self.cross_corr.name)
+        self.windows.add(self.nadeau_flow.frame, text=self.nadeau_flow.name)
+
+    def close_frame(self):
+        """Close frame handle"""
+        self.in_frame = False
+        self.opti_flow.in_frame = False
+        self.cross_corr.in_frame = False
+        self.nadeau_flow.in_frame = False
+
+        self.cross_corr.update_variables()
+        self.nadeau_flow.update_variables()
+        self.frame.destroy()
+
 
 
 class LightDilutionSettings(LoadSaveProcessingSettings):
@@ -5806,9 +6029,6 @@ class LightDilutionSettings(LoadSaveProcessingSettings):
         # Run button
         butt = ttk.Button(butt_frame, text='Run', command=self.run_dil_corr)
         butt.grid(row=0, column=1, sticky='ew', padx=2, pady=2)
-
-        butt = ttk.Button(butt_frame, text='Save defaults', command=self.set_defaults)
-        butt.grid(row=0, column=2, sticky='ew', padx=2, pady=2)
 
         # -------------------------
         # Build light dilution figure

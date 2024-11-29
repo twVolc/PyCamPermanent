@@ -1,0 +1,16 @@
+name: Restrict base branch
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+jobs:
+  restrict-base-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: praha-inc/action-restrict-base-branch@v1.0.2
+        with:
+          rules: |
+            master <- dev*
+            dev* <- */* *

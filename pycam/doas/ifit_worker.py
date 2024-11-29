@@ -7,45 +7,31 @@ critical for getting the gradient of AA vs ppm.m in camera calibration.
 This work may also allow light dilution correction following Varnam 2021
 """
 
+import os
 import time
 import queue
-import numpy as np
 import datetime
-import threading
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from itertools import compress
 from tkinter import filedialog
-from astropy.convolution import convolve
 from scipy.interpolate import griddata
-import matplotlib.pyplot as plt
 from matplotlib.pyplot import GridSpec
-import sys
-import os
-import pandas as pd
 from shapely.geometry import Point, Polygon     # For Varnam light dilution
 from shapely.strtree  import STRtree
-# Make it possible to import iFit by updating path
-# dir_path = os.path.dirname(os.path.realpath(__file__))
-# dir_path = os.path.split(dir_path)[0]
-# sys.path.append(os.path.join(dir_path, 'ifit'))
-
 from pycam.directory_watcher import create_dir_watcher
 from pycam.setupclasses import SpecSpecs, FileLocator
-from pycam.io_py import load_spectrum, spec_txt_2_npy
+from pycam.io_py import load_spectrum
+from pycam.ifit_ld import lookup
+from pycam.doas.spec_worker import SpecWorker, SpectraError
 from ifit.parameters import Parameters
 from ifit.spectral_analysis import Analyser
 from ifit.light_dilution import generate_ld_curves
-from pycam.ifit_ld import lookup
 from pydoas.analysis import DoasResults
 
-import shapely
 
-try:
-    from scipy.constants import N_A
-except BaseException:
-    N_A = 6.022140857e+23
-
-
-class IFitWorker:
+class IFitWorker(SpecWorker):
     """
     Class to control DOAS processing
     General order of play for processing:
@@ -58,9 +44,7 @@ class IFitWorker:
     """
     def __init__(self, routine=2, species={'SO2': {'path': '', 'value': 0}}, spec_specs=SpecSpecs(), spec_dir='C:\\',
                  dark_dir=None, q_doas=queue.Queue(), frs_path='./pycam/doas/calibration/sao2010.txt'):
-        self.routine = routine          # Defines routine to be used, either (1) Polynomial or (2) Digital Filtering
-
-        self.spec_specs = spec_specs    # Spectrometer specifications
+        super().__init__(routine, species, spec_specs, spec_dir, dark_dir, q_doas)
 
         # ======================================================================================================================
         # Initial Definitions
@@ -68,120 +52,28 @@ class IFitWorker:
         self.time_zone = 0              # Time zone for adjusting data times on load-in (relative to UTC)
 
         self.ppmm_conversion = 2.652e15   # convert absorption cross-section in cm2/molecule to ppm.m (MAY NEED TO CHANGE THIS TO A DICTIONARY AS THE CONVERSION MAY DIFFER FOR EACH SPECIES?)
-        self._conversion_factor = 2.663 * 1e-6  # Conversion for ppm.m into Kg m-2
-        MOL_MASS_SO2 = 64.0638  # g/mol
-        self.ppmm_conv = (self._conversion_factor * N_A * 1000) / (
-                100 ** 2 * MOL_MASS_SO2)  # Conversion for ppm.m to molecules cm-2
 
-        self.shift = 0                  # Shift of spectrum in number of pixels
-        self.shift_tol = 0              # Shift tolerance (will process data at multiple shifts defined by tolerance)
-        self.stretch = 0                # Stretch of spectrum
-        self.stretch_tol = 0            # As shift_tol but for stretch
-        self.stretch_adjuster = 0.0001  # Factor to scale stretch (needed if different spectrometers have different pixel resolutions otherwise the stretch applied may be in too large or too small stages)
-        self.stretch_resample = 100     # Number of points to resample the spectrum by during stretching
-        self._start_stray_pix = None    # Pixel space stray light window definitions
-        self._end_stray_pix = None
-        self._start_stray_wave = 293    # Wavelength space stray light window definitions
-        self._end_stray_wave = 296
-        self._start_fit_pix = None  # Pixel space fitting window definitions
-        self._end_fit_pix = None
         self._start_fit_wave_init = 300  # Wavelength space fitting window definitions       Set big range to start Analyser
         self._end_fit_wave_init = 340
-        self._start_fit_wave = 308       # Update fit window to more reasonable starting size (initial setting was to create a big grid
-        self._end_fit_wave = 318
-        self.start_fit_wave_2 = 312      # Second fit window (used in light dilution correction)
-        self.end_fit_wave_2 = 322
-        self.fit_window = None      # Fitting window, determined by set_fit_window()
-        self.fit_window_ref = None  # Placeholder for shifted fitting window for the reference spectrum
-        self.wave_fit = True        # If True, wavelength parameters are used to define fitting window
 
-        self.wavelengths = None         # Placeholder for wavelengths attribute which contains all wavelengths of spectra
-        self.wavelengths_cut = None     # Wavelengths in fit window
-        self._dark_spec = None           # Dark spectrum
-        self.dark_dict = {}             # Dictionary holding all dark spectra loaded in
-        self._clear_spec_raw = None     # Clear (fraunhofer) spectrum - not dark corrected
-        self._plume_spec_raw = None     # In-plume spectrum (main one which is used for calculation of SO2
-        self.clear_spec_corr = None     # Clear (fraunhofer) spectrum - typically dark corrected and stray light corrected
-        self.plume_spec_corr = None     # In-plume spectrum (main one which is used for calculation of SO2
         self.spec_time = None           # Time of currently loaded plume_spec
-        self.ref_spec = dict()          # Create empty dictionary for holding reference spectra
-        self.ref_spec_interp = dict()   # Empty dictionary to hold reference spectra after sampling to spectrometer wavelengths
-        self.ref_spec_conv = dict()     # Empty dictionary to hold reference spectra after convolving with ILS
-        self.ref_spec_cut = dict()      # Ref spectrum cut to fit window
-        self.ref_spec_ppmm = dict()   # Convolved ref spectrum scaled by ppmm_conversion factor
-        self.ref_spec_filter = dict()   # Filtered reference spectrum
-        self.ref_spec_fit = dict()      # Ref spectrum scaled by ppmm (for plotting)
-        self.ref_spec_types = ['SO2', 'O3', 'Ring'] # List of reference spectra types accepted/expected
         self.ref_spec_used = list(species.keys())   # Reference spectra we actually want to use at this time (similar to ref_spec_types - perhaps one is obsolete (or should be!)
-        self.abs_spec = None
-        self.abs_spec_cut = None
-        self.abs_spec_filt = None
-        self.abs_spec_species = dict()  # Dictionary of absorbances isolated for individual species
-        self.ILS_wavelengths = None     # Wavelengths for ILS
-        self._ILS = None                 # Instrument line shape (will be a numpy array)
         self.ils_path = None
-        self.processed_data = False     # Bool to define if object has processed DOAS yet - will become true once process_doas() is run
-
+        
         self.poly_order = 2  # Order of polynomial used to fit residual
 
-        self.start_ca = -2000  # Starting column amount for iterations
-        self.end_ca = 20000  # Ending column amount for iterations
-        self.vals_ca = np.arange(self.start_ca, self.end_ca+1)  # Array of column amounts to be iterated over
-        self.vals_ca_cut_idxs = np.arange(0, len(self.vals_ca), 100)
-        self.vals_ca_cut = self.vals_ca[self.vals_ca_cut_idxs]
-        self.mse_vals_cut = np.zeros(len(self.vals_ca_cut))
-        self.mse_vals = np.zeros(len(self.vals_ca))  # Array to hold mse values
-
-        self.std_err = None
         self.fit_errs = dict()
-        self.column_density = dict()
-
-        self.filetypes = dict(defaultextension='.png', filetypes=[('PNG', '*.png')])
-
-        # ----------------------------------------------------------------------------------
-        # We need to make sure that all images are dark subtracted before final processing
-        # Also make sure that we don't dark subtract more than once!
-        self.ref_convolved = False  # Bool defining if reference spe has been convolved - speeds up DOAS processing
-        self.new_spectra = True
-        self.dark_corrected_clear = False
-        self.dark_corrected_plume = False
-        self.stray_corrected_clear = False    # Bool defining if all necessary spectra have been stray light corrected
-        self.stray_corrected_plume = False    # Bool defining if all necessary spectra have been stray light corrected
-
-        self.have_dark = False  # Used to define if a dark image is loaded.
-        self.cal_dark_corr = False  # Tells us if the calibration image has been dark subtracted
-        self.clear_dark_corr = False  # Tells us if the clear image has been dark subtracted
-        self.plume_dark_corr = False  # Tells us if the plume image has been dark subtracted
-        # ==============================================================================================================
 
         # Processing loop attributes
-        self.process_thread = None      # Thread for running processing loop
-        self.processing_in_thread = False   # Flags whether the object is processing in a thread or in the main thread - therefore deciding whether plots should be updated herein or through pyplisworker
-        self.q_spec = queue.Queue()     # Queue where spectra files are placed, for processing herein
-        self.q_doas = q_doas
         self.q_stop = queue.Queue()     # Queue for stopping processing of sequence
-        self.watcher = None
-        self.watching_dir = None
-        self.watching = False
         self.STOP_FLAG = 'exit'
         self.plot_iter = True           # Plots time series plot iteratively if true
 
-        self._dark_dir = None
-        self.dark_dir = dark_dir        # Directory where dark images are stored
-        self.spec_dir = spec_dir        # Directory where plume spectra are stored
-        self.spec_dict = {}             # Dictionary containing all spectrum files from current spec_dir
-
         # Figures
-        self.fig_spec = None            # pycam.doas.SpectraPlot object
-        self.fig_doas = None            # pycam.doas.DOASPlot object
         self.fig_series = None          # pycam.doas.CDSeries object
-        self.dir_info = None            
 
         # Results object
-        self.results = DoasResults([], index=[], fit_errs=[], species_id='SO2')
         self.results.ldfs = []
-        self.save_date_fmt = '%Y-%m-%dT%H%M%S'
-        self.save_freq = [0]
 
         # ==============================================================================================================
         # iFit setup
@@ -255,144 +147,10 @@ class IFitWorker:
         self.ldf_best = np.nan      # Best estimate of light dilution factor
         self._LDF = 0               # User-defined LDF to process ifit data with
 
-    def reset_self(self, reset_dark=True):
-        """Some resetting of object, before processing occurs"""
-        # Reset dark dictionary
-        if reset_dark:
-            self.dark_dict = {}
-
-        # Reset results object
-        self.reset_doas_results()
-        self.reset_stray_pix()
-
-        # Reset last LDF correction
-        self.spec_time_last_ld = None
-
-        # Clear stop queue so old requests aren't caught
-        with self.q_stop.mutex:
-            self.q_stop.queue.clear()
-
-        # Clear images queue
-        with self.q_spec.mutex:
-            self.q_spec.queue.clear()
-
     @property
     def plume_spec_shift(self):
         """Shifted plume spectrum (to account for issues with spectrometer calibration"""
         return np.roll(self.plume_spec_corr, self.shift)
-
-    @property
-    def start_stray_wave(self):
-        return self._start_stray_wave
-
-    @start_stray_wave.setter
-    def start_stray_wave(self, value):
-        self._start_stray_wave = value
-
-        # Set pixel value too, if wavelengths attribute is present
-        if self.wavelengths is not None:
-            self._start_stray_pix = np.argmin(np.absolute(self.wavelengths - value))
-
-    @property
-    def end_stray_wave(self):
-        return self._end_stray_wave
-
-    @end_stray_wave.setter
-    def end_stray_wave(self, value):
-        self._end_stray_wave = value
-
-        # Set pixel value too, if wavelengths attribute is present
-        if self.wavelengths is not None:
-            self._end_stray_pix = np.argmin(np.absolute(self.wavelengths - value))
-
-    @property
-    def start_fit_wave(self):
-        return self._start_fit_wave
-
-    @start_fit_wave.setter
-    def start_fit_wave(self, value):
-        self._start_fit_wave = value
-        # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
-        # self.update_analyser()
-
-        # Set pixel value too, if wavelengths attribute is present
-        if self.wavelengths is not None:
-            self._start_fit_pix = np.argmin(np.absolute(self.wavelengths - value))
-
-    @property
-    def end_fit_wave(self):
-        return self._end_fit_wave
-
-    @end_fit_wave.setter
-    def end_fit_wave(self, value):
-        self._end_fit_wave = value
-        # self.analyser.fit_window = [self.start_fit_wave, self.end_fit_wave]
-        # self.update_analyser()
-
-        # Set pixel value too, if wavelengths attribute is present
-        if self.wavelengths is not None:
-            self._end_fit_pix = np.argmin(np.absolute(self.wavelengths - value))
-
-    # --------------------------------------------
-    # Set spectra attributes so that whenever they are updated we flag that they have not been dark or stray corrected
-    # If we have a new dark spectrum too we need to assume it is to be used for correcting spectra, so all corrected
-    # spectra, both dark and stray, become invalid
-    @property
-    def dark_spec(self):
-        return self._dark_spec
-
-    @dark_spec.setter
-    def dark_spec(self, value):
-        self._dark_spec = value
-
-        # If we have a new dark image all dark and stray corrections become invalid
-        self.dark_corrected_clear = False
-        self.dark_corrected_plume = False
-        self.stray_corrected_clear = False
-        self.stray_corrected_plume = False
-
-    @property
-    def dark_dir(self):
-        return self._dark_dir
-
-    @dark_dir.setter
-    def dark_dir(self, value):
-        """If dark_dir is changed we need to reset the dark_dict which holds preloaded dark specs"""
-        self.dark_dict = {}
-        self._dark_dir = value
-        print('Dark spectra directory set: {}'.format(self.dark_dir))
-
-    @property
-    def clear_spec_raw(self):
-        return self._clear_spec_raw
-
-    @clear_spec_raw.setter
-    def clear_spec_raw(self, value):
-        self._clear_spec_raw = value
-        self.dark_corrected_clear = False
-        self.stray_corrected_clear = False
-
-    @property
-    def plume_spec_raw(self):
-        return self._plume_spec_raw
-
-    @plume_spec_raw.setter
-    def plume_spec_raw(self, value):
-        self._plume_spec_raw = value
-        self.dark_corrected_plume = False
-        self.stray_corrected_plume = False
-
-    @property
-    def ILS(self):
-        """ILS array"""
-        return self._ILS
-
-    @ILS.setter
-    def ILS(self, value):
-        self._ILS = value
-
-        # If new ILS is generated, then must flag that ref spectrum is no longer convolved with up-to-date ILS
-        self.ref_convolved = False
 
     @property
     def LDF(self):
@@ -417,7 +175,29 @@ class IFitWorker:
         if value:
             self.LDF = 0.0
 
-    # -------------------------------------------
+    def reset_self(self, reset_dark=True):
+        """Some resetting of object, before processing occurs"""
+        # Reset dark dictionary
+        if reset_dark:
+            self.dark_dict = {}
+
+        # Reset results object
+        self.reset_doas_results()
+        self.reset_stray_pix()
+
+        # Reset last LDF correction
+        self.spec_time_last_ld = None
+
+        self.first_spec = True
+        self.doas_filepath = None
+
+        # Clear stop queue so old requests aren't caught
+        with self.q_stop.mutex:
+            self.q_stop.queue.clear()
+
+        # Clear images queue
+        with self.q_spec.mutex:
+            self.q_spec.queue.clear()
 
     def get_spec_time(self, filename, adj_time_zone=True):
         """
@@ -426,14 +206,7 @@ class IFitWorker:
         :param adj_time_zone: bool      If true, the file time is adjusted for the timezone
         :return spec_time:
         """
-        # Make sure filename only contains file and not larger pathname
-        filename = filename.split('\\')[-1].split('/')[-1]
-
-        # Extract time string from filename
-        time_str = filename.split('_')[self.spec_specs.file_date_loc]
-
-        # Turn time string into datetime object
-        spec_time = datetime.datetime.strptime(time_str, self.spec_specs.file_datestr)
+        spec_time = super().get_spec_time(filename)
 
         # Adjust for time zone
         if adj_time_zone:
@@ -454,34 +227,6 @@ class IFitWorker:
         spec_type = filename.split('_')[self.spec_specs.file_type_loc]
 
         return spec_type
-
-    def dark_corr_spectra(self):
-        """Subtract dark spectrum from spectra"""
-        if not self.dark_corrected_clear and self.clear_spec_raw is not None:
-            self.clear_spec_corr = self.clear_spec_raw - self.dark_spec
-            self.clear_spec_corr[self.clear_spec_corr < 0] = 0
-            self.dark_corrected_clear = True
-
-        if not self.dark_corrected_plume:
-            self.plume_spec_corr = self.plume_spec_raw - self.dark_spec
-            self.plume_spec_corr[self.plume_spec_corr < 0] = 0
-            self.dark_corrected_plume = True
-
-    def stray_corr_spectra(self):
-        """Correct spectra for stray light - spectra are assumed to be dark-corrected prior to running this function"""
-        # Set the range of stray pixels
-        stray_range = np.arange(self._start_stray_pix, self._end_stray_pix + 1)
-
-        if not self.stray_corrected_clear and self.clear_spec_corr is not None:
-            self.clear_spec_corr = self.clear_spec_corr - np.mean(self.clear_spec_corr[stray_range])
-            self.clear_spec_corr[self.clear_spec_corr < 0] = 0
-            self.stray_corrected_clear = True
-
-        # Correct plume spectra (assumed to already be dark subtracted)
-        if not self.stray_corrected_plume:
-            self.plume_spec_corr = self.plume_spec_corr - np.mean(self.plume_spec_corr[stray_range])
-            self.plume_spec_corr[self.plume_spec_corr < 0] = 0
-            self.stray_corrected_plume = True
 
     def load_ref_spec(self, pathname, species, value=None, update=True):
         """
@@ -514,78 +259,6 @@ class IFitWorker:
 
         # Assume we have loaded a new spectrum, so set this to False - ILS has not been convolved yet
         self.ref_convolved = False
-
-    def get_ref_spectrum(self):
-        """Load in reference spectrum"""
-        self.wavelengths = None  # Placeholder for wavelengths attribute which contains all wavelengths of spectra
-        #
-        # --------------------------------
-
-    def conv_ref_spec(self):
-        """
-        Convolves reference spectrum with instument line shape (ILS)
-        after first interpolating to spectrometer wavelengths
-        """
-        if self.wavelengths is None:
-            print('No wavelength data to perform convolution')
-            return
-
-        # Need an odd sized array for convolution, so if even we omit the last pixel
-        if self.ILS.size % 2 == 0:
-            self.ILS = self.ILS[:-1]
-
-        # Loop through all reference species we have loaded and resample their data to the spectrometers wavelengths
-        for f in self.ref_spec_used:
-            self.ref_spec_interp[f] = np.interp(self.wavelengths, self.ref_spec[f][:, 0], self.ref_spec[f][:, 1])
-            self.ref_spec_conv[f] = convolve(self.ref_spec_interp[f], self.ILS)
-            self.ref_spec_ppmm[f] = self.ref_spec_conv[f] * self.ppmm_conversion
-
-        # Update bool as we have now performed this process
-        self.ref_convolved = True
-
-    def load_calibration_spectrum(self, pathname):
-        """Load Calibation image for spectrometer"""
-        pass
-
-    def stretch_spectrum(self, ref_key):
-        """Stretch/squeeze reference spectrum to improve fit"""
-        if self.stretch == 0:
-            # If no stretch, extract reference spectrum using fit window and return
-            return self.ref_spec_filter[ref_key][self.fit_window_ref]
-        else:
-            stretch_inc = (self.stretch * self.stretch_adjuster) / self.stretch_resample  # Stretch increment for resampled spectrum
-
-            if self.stretch < 0:
-                # Generate the fit window for extraction
-                # Must be larger than fit window as a squeeze requires pulling in data outside of the fit window
-                if self.fit_window_ref[-1] < (len(self.wavelengths) - 50):
-                    extract_window = np.arange(self.fit_window_ref[0], self.fit_window_ref[-1] + 50)
-                else:
-                    extract_window = np.arange(self.fit_window_ref[0], len(self.wavelengths))
-            else:
-                extract_window = self.fit_window_ref
-
-            wavelengths = self.wavelengths[extract_window]
-            values = self.ref_spec_filter[ref_key][extract_window]
-
-            # Generate new arrays with 'stretch_resample' more data points
-            wavelengths_resampled = np.linspace(wavelengths[0], wavelengths[-1], len(wavelengths)*self.stretch_resample)
-            values_resample = np.interp(wavelengths_resampled, wavelengths, values)
-
-            num_pts = len(wavelengths_resampled)
-            wavelengths_stretch = np.zeros(num_pts)
-
-            # Stretch wavelengths
-            for i in range(num_pts):
-                wavelengths_stretch[i] = wavelengths_resampled[i] + (i * stretch_inc)
-
-            values_stretch = np.interp(self.wavelengths[self.fit_window_ref], wavelengths_stretch, values_resample)
-
-            return values_stretch
-
-    def load_spec(self):
-        """Load spectrum"""
-        pass
 
     def load_dark_spec(self, dark_spec_path):
         """Loads dark spectrum"""
@@ -687,33 +360,6 @@ class IFitWorker:
             self.fig_spec.update_dark()
             self.fig_spec.update_plume()
 
-    def reset_stray_pix(self):
-        self._start_stray_pix = None
-        self._end_stray_pix = None
-
-    def get_spec_list(self):
-        """
-        Gets list of spectra files from current spec_dir
-        Assumes all .npy files in the directory are spectra...
-        :returns: sd    dict    Dictionary containing all filenames
-        """
-        # Setup empty dictionary sd
-        sd = {}
-
-        # Get all files into associated list/dictionary entry
-        sd['all'] = [f for f in os.listdir(self.spec_dir) if self.spec_specs.file_ext in f]
-        sd['all'].sort()
-        sd['plume'] = [f for f in sd['all']
-                       if self.spec_specs.file_type['meas'] + self.spec_specs.file_ext in f]
-        sd['plume'].sort()
-        sd['clear'] = [f for f in sd['all']
-                       if self.spec_specs.file_type['clear'] + self.spec_specs.file_ext in f]
-        sd['clear'].sort()
-        sd['dark'] = [f for f in sd['all']
-                      if self.spec_specs.file_type['dark'] + self.spec_specs.file_ext in f]
-        sd['dark'].sort()
-        return sd
-
     def find_dark_spectrum(self, spec_dir, ss):
         """
         Searches for suitable dark spectrum in designated directory by finding one with the same shutter speed as
@@ -755,37 +401,6 @@ class IFitWorker:
         self.dark_dict[ss] = dark_spec
 
         return dark_spec
-
-    def save_dark(self, filename):
-        """Save dark spectrum"""
-        if self.wavelengths is None or self.dark_spec is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.dark_spec):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.dark_spec]),
-                   header='Dark spectrum\nWavelength [nm]\tIntensity [DN]')
-
-    def save_clear_raw(self, filename):
-        """Save clear spectrum"""
-        if self.wavelengths is None or self.clear_spec_raw is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.clear_spec_raw):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.clear_spec_raw]),
-                   header='Raw clear (Fraunhofer) spectrum\n'
-                          '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
-
-    def save_plume_raw(self, filename):
-        if self.wavelengths is None or self.plume_spec_raw is None:
-            raise ValueError('One or both attributes are NoneType. Cannot save.')
-        if len(self.wavelengths) != len(self.plume_spec_raw):
-            raise ValueError('Arrays are not the same length. Cannot save.')
-
-        np.savetxt(filename, np.transpose([self.wavelengths, self.plume_spec_raw]),
-                   header='Raw in-plume spectrum\n'
-                          '-Not dark-corrected\nWavelength [nm]\tIntensity [DN]')
 
     def process_doas(self, plot=False):
         """Handles the order of DOAS processing"""
@@ -842,7 +457,7 @@ class IFitWorker:
                     # Process second fit window
                     fit_1 = self.analyser.fit_spectrum([self.wavelengths, self.plume_spec_shift],
                                                        calc_od=self.ref_spec_used,
-                                                       fit_window=[self.start_fit_wave_2, self.end_fit_wave_2])
+                                                       fit_window=[self.start_fit_wave_ld, self.end_fit_wave_ld])
                     self.fit_0_uncorr = fit_0   # Save uncorrected fits as attributes
                     self.fit_1_uncorr = fit_1
                     df_lookup, df_refit, fit_0, fit_1 = self.ld_lookup(so2_dat=(fit_0.params['SO2'].fit_val,
@@ -926,7 +541,7 @@ class IFitWorker:
             print('CDs (ppmm): {:.0f}'.format(np.array(cd) / self.ppmm_conv))
 
         # Save results
-        self.save_results(save_all=True)
+        self.save_results()
 
     def reset_doas_results(self):
         """Makes empty doas results object"""
@@ -945,29 +560,30 @@ class IFitWorker:
         except KeyError:
             cd_err = np.nan
 
-        # Faster append method - seems to work
-        self.results.loc[doas_dict['time']] = cd
-        if isinstance(self.results.fit_errs, list):
-            self.results.fit_errs.append(cd_err)
-        elif isinstance(self.results.fit_errs, np.ndarray):
-            self.results.fit_errs = np.append(self.results.fit_errs, cd_err)
-        else:
-            print('ERROR! Unrecognised datatype for ifit fit errors')
+        with self.lock:
+            # Faster append method - seems to work
+            self.results.loc[doas_dict['time']] = cd
+            if isinstance(self.results.fit_errs, list):
+                self.results.fit_errs.append(cd_err)
+            elif isinstance(self.results.fit_errs, np.ndarray):
+                self.results.fit_errs = np.append(self.results.fit_errs, cd_err)
+            else:
+                print('ERROR! Unrecognised datatype for ifit fit errors')
 
-        # Light dilution
-        try:
-            ldf = doas_dict['LDF']
-        except KeyError:
-            ldf = np.nan
+            # Light dilution
+            try:
+                ldf = doas_dict['LDF']
+            except KeyError:
+                ldf = np.nan
 
-        # If there is no ldf attribute, fill it with nans and then set the most recent value to LDF
-        if not hasattr(self.results, 'ldfs'):
-            self.results.ldfs = [np.nan] * len(self.results.fit_errs)
-            self.results.ldfs[-1] = ldf
-        elif isinstance(self.results.ldfs, list):
-            self.results.ldfs.append(ldf)
-        elif isinstance(self.results.ldfs, np.ndarray):
-            self.results.ldfs = np.append(self.results.ldfs, ldf)
+            # If there is no ldf attribute, fill it with nans and then set the most recent value to LDF
+            if not hasattr(self.results, 'ldfs'):
+                self.results.ldfs = [np.nan] * len(self.results.fit_errs)
+                self.results.ldfs[-1] = ldf
+            elif isinstance(self.results.ldfs, list):
+                self.results.ldfs.append(ldf)
+            elif isinstance(self.results.ldfs, np.ndarray):
+                self.results.ldfs = np.append(self.results.ldfs, ldf)
 
     def rem_doas_results(self, time_obj, inplace=False):
         """
@@ -983,9 +599,12 @@ class IFitWorker:
         fit_errs = np.array(list(compress(self.results.fit_errs, fit_err_idxs)))
         ldfs = np.array(list(compress(self.results.ldfs, fit_err_idxs)))
         if inplace:
-            self.results.drop(indices, inplace=True)
-            self.results.fit_errs = fit_errs
-            self.results.ldfs = ldfs
+            # Note this function is used in PyplisWorker and self.lock is acquired there, so I don't
+            # need to acquire it directly in this function (if we do it would freeze the program.
+            with self.lock:
+                self.results.drop(indices, inplace=True)
+                self.results.fit_errs = fit_errs
+                self.results.ldfs = ldfs
             results = None
         else:
             results = DoasResults(self.results.drop(indices, inplace=False))
@@ -1013,66 +632,7 @@ class IFitWorker:
         else:
             doas_results.ldfs = [np.nan] * len(stds)
         return doas_results
-
-    def save_results(self, pathname=None, start_time=None, end_time=None, save_all=False):
-        """Saves doas results"""
-        if len(self.results) < 1:
-            print('No DOAS results to save')
-            return
-
-        # Extract data from specific index if we are given a start time
-        if start_time is not None:
-            idx_start = np.argmin(np.abs(self.results.index - start_time))
-        else:
-            if save_all:
-                idx_start = 0
-            else:
-                # Go back to the last hour (as data will already be saved up to there)
-                current_time = self.results.index[-1]
-                if current_time.minute == 0 and current_time.second == 0:
-                    new_hour = current_time.hour - 1
-                    start_time == current_time.replace(hour=new_hour)
-                else:
-                    start_time = current_time.replace(minute=0, second=0)
-                idx_start = np.argmin(np.abs(self.results.index - start_time))
-
-        if end_time is not None:
-            idx_end = np.argmin(np.abs(self.results.index - end_time)) + 1
-        else:
-            idx_end = None      # -1 doesn't work as it cuts the last item out - use None to go right to end of list
-
-        # Generate pathname
-        if pathname is None:
-            start_time_str = datetime.datetime.strftime(self.results.index[0], self.save_date_fmt)
-            end_time_str = datetime.datetime.strftime(self.results.index[-1], self.save_date_fmt).split('T')[-1]
-            filename = 'doas_results_{}_{}.csv'.format(start_time_str, end_time_str)
-
-            subdir = 'Processed_{}_spec'
-            i = 1
-            while os.path.exists(os.path.join(self.spec_dir, subdir.format(i))):
-                i += 1
-            pathname = os.path.join(self.spec_dir, subdir.format(i))
-            os.mkdir(pathname)
-            pathname = os.path.join(pathname, filename)
-
-        # Create full database to save
-        frame = {'Time': pd.Series(self.results.index[idx_start:idx_end]),
-                 'Column density': pd.Series(self.results.values[idx_start:idx_end]),
-                 'CD error': pd.Series(self.results.fit_errs[idx_start:idx_end]),
-                 'LDF': pd.Series(self.results.ldfs[idx_start:idx_end])}
-        df = pd.DataFrame(frame)
-
-        # self.results[idx_start:idx_end].to_csv(pathname)
-        df.to_csv(pathname)
-        print('DOAS results saved: {}'.format(pathname))
-        pathname = pathname.replace('.csv', '.txt')
-        with open(pathname, 'w') as f:
-            f.write('DOAS processing parameters\n')
-            f.write('Stray range={}:{}\n'.format(self.start_stray_wave, self.end_stray_wave))
-            f.write('Fit window={}:{}\n'.format(self.start_fit_wave, self.end_fit_wave))
-            f.write('Light dilution correction={}\n'.format(self.corr_light_dilution))
-            f.write('Light dilution recal time [mins]={}\n'.format(self.recal_ld_mins))
-
+ 
     def load_results(self, filename=None, plot=True):
         """
         Loads DOAS results from csv file
@@ -1143,16 +703,6 @@ class IFitWorker:
         # Begin processing
         self._process_loop(continuous_save=False)
 
-    def start_processing_thread(self):
-        """Public access thread starter for _processing"""
-        # Reset self
-        self.reset_self()
-
-        self.processing_in_thread = True
-        self.process_thread = threading.Thread(target=self._process_loop, args=())
-        self.process_thread.daemon = True
-        self.process_thread.start()
-
     def _process_loop(self, continuous_save=True):
         """
         Main process loop for doas
@@ -1183,10 +733,11 @@ class IFitWorker:
                 # Update plot at end if we haven't been updating it as we go - this should speed up processing as plotting takes a long time
                 if self.fig_series is not None and not self.plot_iter:
                     self.fig_series.update_plot()
-                if continuous_save:
-                    self.save_results(end_time=self.spec_time)
-                else:
-                    self.save_results(save_all=True)
+                
+                # I think I only need to do this if not continuous_save
+                if not continuous_save:
+                    self.save_results()
+
                 break
 
             spec_type = self.get_spec_type(pathname)
@@ -1197,6 +748,20 @@ class IFitWorker:
                 # Extract filename and create datetime object of spectrum time
                 working_dir, filename = os.path.split(pathname)
                 self.spec_dir = working_dir     # Update working directory to where most recent file has come from
+
+                spec_time = self.get_spec_time(filename)
+
+                if not self.first_spec and spec_time.day != self.spec_time.day:
+                    print("new day found")
+                    self.reset_self()
+
+                if self.first_spec:
+                    # Set output dir
+                    self.set_output_dir(working_dir)
+                    # Save processing params
+                    self.save_doas_params()
+                    header = True
+
                 self.spec_time = self.get_spec_time(filename)
 
                 # Extract shutter speed
@@ -1245,8 +810,12 @@ class IFitWorker:
                     self.fig_series.update_plot()
 
                 # Save all results if we are on the 0 or 30th minute of the hour
-                if continuous_save and self.spec_time.second == 0 and self.spec_time.minute in self.save_freq:
-                    self.save_results(end_time=self.spec_time)
+                if continuous_save:
+                    self.save_results(save_last = True, header = header)
+                    header = False
+
+                if self.first_spec:
+                    self.first_spec = False
 
                 #print('IFit worker: Processed file: {}'.format(filename))
 
@@ -1273,15 +842,15 @@ class IFitWorker:
         Also starts a processing thread, so that the images which arrive can be processed
         """
         if self.watching:
-            print('IFit worker: Already watching for spectra: {}'.format(self.watching_dir))
+            print('IFit worker: Already watching for spectra: {}'.format(self.transfer_dir))
             print('IFit worker: Please stop watcher before attempting to start new watch. '
                   'This isssue may be caused by having manual acquisitions running alongside continuous watching')
             return
         self.watcher = create_dir_watcher(directory, recursive, self.directory_watch_handler)
         self.watcher.start()
-        self.watching_dir = directory
+        self.transfer_dir = directory
         self.watching = True
-        print('IFit worker: Watching {} for new spectra'.format(self.watching_dir[-30:]))
+        print('IFit worker: Watching {} for new spectra'.format(self.transfer_dir[-30:]))
 
         # Start the processing thread
         self.start_processing_thread()
@@ -1291,7 +860,7 @@ class IFitWorker:
         if self.watching:
             if self.watcher is not None:
                 self.watcher.stop()
-                print('Stopped watching {} for new images'.format(self.watching_dir[-30:]))
+                print('Stopped watching {} for new images'.format(self.transfer_dir[-30:]))
                 self.watching = False
 
                 # Stop processing thread when we stop watching the directory
@@ -1304,13 +873,13 @@ class IFitWorker:
     def directory_watch_handler(self, pathname, t):
         """Handles new spectra passed from watcher"""
         _, ext = os.path.splitext(pathname)
-        if ext != self.spec_specs.file_ext:
+        if "Processed" in pathname or ext != self.spec_specs.file_ext:
             return
 
         # Wait until lockfile is removed
         pathname_lock = pathname.replace(ext, '.lock')
         while os.path.exists(pathname_lock):
-            pass
+            time.sleep(0.5)
 
         print('IFit worker: New file found {}'.format(pathname))
         # Pass path to queue
@@ -1402,9 +971,9 @@ class IFitWorker:
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
                                  ils_path=self.ils_path)
 
-        if force_both or self.analyser1 is None or self.start_fit_wave_2 != self.analyser1.fit_window[0] \
-                or self.end_fit_wave_2 != self.analyser1.fit_window[1]:
-            self.analyser1 = Analyser(params=self.params, fit_window=[self.start_fit_wave_2, self.end_fit_wave_2],
+        if force_both or self.analyser1 is None or self.start_fit_wave_ld != self.analyser1.fit_window[0] \
+                or self.end_fit_wave_ld != self.analyser1.fit_window[1]:
+            self.analyser1 = Analyser(params=self.params, fit_window=[self.start_fit_wave_ld, self.end_fit_wave_ld],
                                  frs_path=self.frs_path, stray_flag=False, dark_flag=False, ils_type='File',
                                  ils_path=self.ils_path)
 
@@ -1458,7 +1027,7 @@ class IFitWorker:
         # Create generator that encompasses full fit window
         pad = 1
         analyser = Analyser(params=self.params,
-                            fit_window=[self.start_fit_wave - pad, self.end_fit_wave_2 + pad],
+                            fit_window=[self.start_fit_wave - pad, self.end_fit_wave_ld + pad],
                             frs_path=self.frs_path,
                             stray_flag=False,      # We stray correct prior to passing spectrum to Analyser
                             dark_flag=False,
@@ -1469,7 +1038,7 @@ class IFitWorker:
 
         ld_results = generate_ld_curves(analyser, [wavelengths, spec],
                                         wb1=[self.start_fit_wave, self.end_fit_wave],
-                                        wb2=[self.start_fit_wave_2, self.end_fit_wave_2],
+                                        wb2=[self.start_fit_wave_ld, self.end_fit_wave_ld],
                                         so2_lims=so2_lims, so2_step=so2_step, ldf_lims=ldf_lims, ldf_step=ldf_step)
 
         num_rows = ld_results.shape[0]
@@ -1507,8 +1076,8 @@ class IFitWorker:
                                                                              int(np.round(self.end_fit_wave)),
                                                                              self.grid_max_ppmm, self.grid_increment_ppmm,
                                                                              ldf_step)
-        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm_ldf-0-1-{}.npy'.format(date_str, int(np.round(self.start_fit_wave_2)),
-                                                                             int(np.round(self.end_fit_wave_2)),
+        filename_1 = '{}_ld_lookup_{}-{}_0-{}-{}ppmm_ldf-0-1-{}.npy'.format(date_str, int(np.round(self.start_fit_wave_ld)),
+                                                                             int(np.round(self.end_fit_wave_ld)),
                                                                              self.grid_max_ppmm, self.grid_increment_ppmm,
                                                                              ldf_step)
         file_path_0 = os.path.join(FileLocator.LD_LOOKUP, filename_0)
@@ -1573,7 +1142,7 @@ class IFitWorker:
         if fit_num == 0:
             self.start_fit_wave, self.end_fit_wave = int(start_fit_wave), int(end_fit_wave)
         elif fit_num == 1:
-            self.start_fit_wave_2, self.end_fit_wave_2 = int(start_fit_wave), int(end_fit_wave)
+            self.start_fit_wave_ld, self.end_fit_wave_ld = int(start_fit_wave), int(end_fit_wave)
 
         # Update analysers with fit window settings
         self.update_ld_analysers()
@@ -1809,15 +1378,6 @@ class IFitWorker:
 
         self.ldf_best = ldf
         return fit0, fit1
-    # ==================================================================================================================
-
-
-class SpectraError(Exception):
-    """
-    Error raised if correct spectra aren't present for processing
-    """
-    pass
-
 
 if __name__ == '__main__':
     # Calibration paths

@@ -11,8 +11,9 @@ from .utils import check_filename
 
 
 pycam_details = {
-    'version': '2024.06 Erebus',
-    'date': '6 June 2024'
+    'version': '2024.11 - Paricutin',
+    'date': '29 Nov 2024',
+    'repo_url': 'https://github.com/volcanotech-sw/PyCamPermanent/'
     }
 
 
@@ -97,7 +98,6 @@ class FileLocator:
     DEFAULT_GEOM = CAM_GEOM + 'default.txt'                     # File containing default geometry file
 
     PROCESS_DEFAULTS = CONF_DIR_WINDOWS + 'processing_setting_defaults.yml'
-    PROCESS_DEFAULTS_BACKUP = CONF_DIR_WINDOWS + 'processing_setting_backup.yml'
     PROCESS_DEFAULTS_LOC = CONF_DIR_WINDOWS + 'default_conf_location.txt'
     
 
